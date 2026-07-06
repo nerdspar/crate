@@ -613,6 +613,9 @@ body.idle #find-grip::after { opacity: 0; }
   font-size: 1.5vh; font-weight: 600; padding: 0.5vh 1.6vw; letter-spacing: 0.04em;
 }
 .cc-room.grouped .cc-room-join { color: var(--ink); border-color: var(--ink); }
+/* Armed for 2-tap grouping. */
+.cc-room.pending .cc-room-name { color: var(--brass); }
+.cc-room.pending .cc-room-join { color: var(--brass); border-color: var(--brass); }
 .cc-room input[type=range] { width: 100%; accent-color: var(--ink); }
 
 /* Group cell: combined volume + a dropdown of individual room volumes. */

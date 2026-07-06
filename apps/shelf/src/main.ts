@@ -912,10 +912,16 @@ const ccDur = document.getElementById('cc-dur') as HTMLElement;
 const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
 
 /** Which player's playback the now-playing hero follows (for multi-room). Null =
-    auto-pick whatever's playing. Set by tapping a room. */
+    auto-pick whatever's playing. Set by tapping a room name. */
 let focusedPlayerId: string | null = null;
-/** Whether a group's individual room volumes are expanded under the group slider. */
-let groupExpanded = false;
+/** Which group cells have their member list expanded (by leader id) — per-group. */
+const expandedGroups = new Set<string>();
+/** 2-tap grouping: the "armed" room waiting for a second one to group with. */
+let pendingGroup: string | null = null;
+/** Optimistic grouping guard: hold the just-applied grouping through stale MA
+    frames for a moment so it doesn't flash apart and back. */
+let groupOverride: Map<string, string> | null = null;
+let groupGuardUntil = 0;
 
 function ccIsOpen(): boolean {
   return cc.classList.contains('open');
@@ -1071,34 +1077,57 @@ function renderRoomUIs(): void {
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
 }
 
-/** Tap a room to control it: the now-playing hero follows its playback and new
-    plays / grouping target it. */
+/** Snapshot the current (optimistic) grouping and hold it against stale MA frames
+    for a few seconds, so a group/ungroup doesn't flash apart before MA catches up. */
+function armGroupGuard(): void {
+  groupOverride = new Map(rooms.map((r) => [r.id, leaderOf(r.id)]));
+  groupGuardUntil = performance.now() + 3000;
+}
+
+/** Tap a room name to control it (hero follows its playback; new plays target
+    it). Toggles off. Independent of grouping. */
 function focusRoom(id: string): void {
-  focusedPlayerId = id;
-  activePlayerId = id;
+  focusedPlayerId = focusedPlayerId === id ? null : id;
+  if (focusedPlayerId) activePlayerId = id;
   renderRoomUIs();
   handleState(lastStates);
 }
-/** Add a room to the focused room's group (forms/extends a group). Optimistic:
-    reflect it immediately, then a slow/failed MA write self-corrects on the next
-    real state frame. */
+/** 2-tap grouping: first "Group" arms a room, the second groups the two. Tapping
+    the armed room again cancels. Optimistic + guarded. */
 function groupRoom(id: string): void {
-  const target = activePlayerId;
-  if (!target || target === id) return;
-  const leader = leaderOf(target);
-  const ids = [...new Set([leader, target, ...groupMembers(leader).map((r) => r.id), id])];
+  if (pendingGroup === id) {
+    pendingGroup = null;
+    renderRoomUIs();
+    return;
+  }
+  if (!pendingGroup) {
+    pendingGroup = id;
+    renderRoomUIs();
+    return;
+  }
+  const leader = pendingGroup;
+  const ids = [
+    ...new Set([
+      leader,
+      id,
+      ...groupMembers(leaderOf(leader)).map((r) => r.id),
+      ...groupMembers(leaderOf(id)).map((r) => r.id),
+    ]),
+  ];
   ids.forEach((m) => setLeaderLocal(m, leader));
+  armGroupGuard();
+  pendingGroup = null;
   renderRoomUIs();
   void client.group({ playerIds: [leader, ...ids.filter((x) => x !== leader)] }).catch(() => {});
 }
-/** Remove a room from its group (member or leader) and focus it to play on its
-    own. Optimistic, same as groupRoom. */
+/** Remove a room from its group (member or leader) and focus it to play on its own. */
 function ungroupRoom(id: string): void {
   const members = groupMembers(leaderOf(id)).map((r) => r.id);
   if (members.length >= 2) {
     const remaining = members.filter((x) => x !== id);
     setLeaderLocal(id, id); // this room becomes solo
     remaining.forEach((m) => setLeaderLocal(m, remaining[0] ?? id)); // rest keep a leader
+    armGroupGuard();
     void client.group({ playerIds: remaining }).catch(() => {});
   }
   focusRoom(id);
@@ -1121,26 +1150,21 @@ function renderCCRooms(): void {
   for (const c of cells) wrap.appendChild(c);
 }
 
+/** A solo speaker: tap the name to control it; "Group" arms it, then a second
+    room's "Group" joins them ("Cancel" while armed). */
 function roomCell(r: Player): HTMLElement {
-  const grouped = groupMembers(leaderOf(r.id)).length >= 2;
-  const isTarget = r.id === activePlayerId;
+  const armed = r.id === pendingGroup;
   const row = document.createElement('div');
-  row.className = 'cc-room' + (grouped ? ' grouped' : '') + (r.id === focusedPlayerId ? ' focused' : '');
-  const btn = grouped ? 'Leave' : isTarget ? '' : 'Group';
+  row.className = 'cc-room' + (r.id === focusedPlayerId ? ' focused' : '') + (armed ? ' pending' : '');
   row.innerHTML =
     `<div class="cc-room-top">` +
     `<span class="cc-room-name">${escapeHtml(r.name)}</span>` +
-    (btn ? `<button class="cc-room-join">${btn}</button>` : '') +
+    `<button class="cc-room-join">${armed ? 'Cancel' : pendingGroup ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
   wireVolume(row.querySelector('input') as HTMLInputElement, r.id);
-  // Tapping a grouped speaker pulls it out of the group to play on its own;
-  // tapping a solo one just focuses/controls it.
-  (row.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () =>
-    grouped ? ungroupRoom(r.id) : focusRoom(r.id),
-  );
-  const jb = row.querySelector('.cc-room-join') as HTMLButtonElement | null;
-  if (jb) jb.addEventListener('click', () => (grouped ? ungroupRoom(r.id) : groupRoom(r.id)));
+  (row.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
+  (row.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', () => groupRoom(r.id));
   return row;
 }
 
@@ -1148,21 +1172,23 @@ function roomCell(r: Player): HTMLElement {
 function groupCell(leader: string, members: Player[]): HTMLElement {
   const avg = Math.round(members.reduce((s, r) => s + roomVol(r.id), 0) / members.length);
   const leaderName = rooms.find((r) => r.id === leader)?.name ?? 'Group';
+  const expanded = expandedGroups.has(leader);
   const cell = document.createElement('div');
   cell.className = 'cc-room grouped cc-group';
   cell.innerHTML =
     `<div class="cc-room-top">` +
     `<span class="cc-room-name">${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
-    `<button class="cc-group-toggle">${groupExpanded ? 'Hide' : 'Rooms'}</button>` +
+    `<button class="cc-group-toggle">${expanded ? 'Hide' : 'Rooms'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +
-    `<div class="cc-group-members"${groupExpanded ? '' : ' hidden'}></div>`;
+    `<div class="cc-group-members"${expanded ? '' : ' hidden'}></div>`;
   (cell.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
     const level = +(e.target as HTMLInputElement).value;
     for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
   });
   (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', () => {
-    groupExpanded = !groupExpanded;
+    if (expandedGroups.has(leader)) expandedGroups.delete(leader);
+    else expandedGroups.add(leader);
     renderCCRooms();
   });
   const memWrap = cell.querySelector('.cc-group-members') as HTMLElement;
@@ -1719,6 +1745,15 @@ let lastStates: PlayerState[] = [];
 
 function handleState(states: PlayerState[]): void {
   lastStates = states;
+  // Hold a just-applied grouping through stale MA frames (else it flashes apart
+  // then back); after the guard window, let the real state stand (fallback).
+  if (groupOverride) {
+    if (performance.now() < groupGuardUntil) {
+      for (const [pid, leader] of groupOverride) setLeaderLocal(pid, leader);
+    } else {
+      groupOverride = null;
+    }
+  }
   // Volume of the active player → open slider.
   const active = states.find((s) => s.playerId === activePlayerId);
   if (active && active.volume !== null) {
