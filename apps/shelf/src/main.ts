@@ -944,6 +944,10 @@ function updateCCSeek(): void {
 function renderCCRooms(): void {
   const wrap = document.getElementById('cc-rooms') as HTMLElement;
   wrap.innerHTML = '';
+  // 2 columns by default; add a 3rd only when 2 columns would run too tall.
+  const maxRows = 6;
+  const cols = Math.min(3, Math.max(2, Math.ceil(rooms.length / maxRows)));
+  wrap.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   rooms.forEach((r) => {
     const st = lastStates.find((s) => s.playerId === r.id);
     const vol = st?.volume ?? volume;
