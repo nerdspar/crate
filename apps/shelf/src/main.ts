@@ -888,9 +888,6 @@ const ccCur = document.getElementById('cc-cur') as HTMLElement;
 const ccDur = document.getElementById('cc-dur') as HTMLElement;
 const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
 
-/** Rooms intended to play together (leader = activePlayerId). Toggling a chip
-    rebuilds this and pushes exact membership to the server. */
-let groupSet = new Set<string>();
 /** Which player's playback the now-playing hero follows (for multi-room). Null =
     auto-pick whatever's playing. Set by tapping a room. */
 let focusedPlayerId: string | null = null;
@@ -1014,7 +1011,7 @@ function updateCCSeek(): void {
   }
 }
 
-/* ---- Rooms: per-player volume, group join/leave, and tap-to-focus ---- */
+/* ---- Rooms: real groups (from MA state) + volume, focus, group/ungroup ---- */
 function roomVol(id: string): number {
   return lastStates.find((s) => s.playerId === id)?.volume ?? volume;
 }
@@ -1023,97 +1020,114 @@ function wireVolume(input: HTMLInputElement, playerId: string): void {
     void client.setVolume({ playerId, level: +(e.target as HTMLInputElement).value }).catch(() => {});
   });
 }
-/** Tap a room to make the now-playing hero (and its transport) follow that
-    room's playback — for controlling independent multi-room playback. Toggles
-    off to auto-pick. Doesn't touch grouping. */
+/** The group leader a room is synced to (from MA state); solo rooms lead themselves. */
+function leaderOf(id: string): string {
+  return lastStates.find((s) => s.playerId === id)?.groupLeader ?? id;
+}
+/** Displayed rooms that share a leader (i.e. one group). */
+function groupMembers(leader: string): Player[] {
+  return rooms.filter((r) => leaderOf(r.id) === leader);
+}
+
+/** Tap a room to control it: the now-playing hero follows its playback and new
+    plays / grouping target it. */
 function focusRoom(id: string): void {
-  focusedPlayerId = focusedPlayerId === id ? null : id;
+  focusedPlayerId = id;
+  activePlayerId = id;
   renderCCRooms();
   handleState(lastStates);
+}
+/** Add a room to the focused room's group (forms/extends a group). */
+function groupRoom(id: string): void {
+  const target = activePlayerId;
+  if (!target || target === id) return;
+  const ids = new Set([target, ...groupMembers(leaderOf(target)).map((r) => r.id), id]);
+  void client.group({ playerIds: [target, ...[...ids].filter((x) => x !== target)] }).catch(() => {});
+}
+/** Remove a room from its group and focus it so it plays on its own. */
+function ungroupRoom(id: string): void {
+  const leader = leaderOf(id);
+  if (leader !== id) {
+    const remaining = groupMembers(leader)
+      .map((r) => r.id)
+      .filter((x) => x !== id && x !== leader);
+    void client.group({ playerIds: [leader, ...remaining] }).catch(() => {});
+  }
+  focusRoom(id);
 }
 
 function renderCCRooms(): void {
   const wrap = document.getElementById('cc-rooms') as HTMLElement;
   wrap.innerHTML = '';
-  const grouped = rooms.filter((r) => r.id === activePlayerId || groupSet.has(r.id));
-  const solo = rooms.filter((r) => r.id !== activePlayerId && !groupSet.has(r.id));
   const cells: HTMLElement[] = [];
-  // Grouped rooms collapse into one group cell with a dropdown; else the leader
-  // shows as a normal room.
-  if (grouped.length >= 2) cells.push(groupCell(grouped));
-  else for (const r of grouped) cells.push(roomCell(r));
-  for (const r of solo) cells.push(roomCell(r));
+  // Real groups (≥2 rooms sharing a leader) first, then every speaker on its own.
+  for (const leader of [...new Set(rooms.map((r) => leaderOf(r.id)))]) {
+    const members = groupMembers(leader);
+    if (members.length >= 2) cells.push(groupCell(leader, members));
+  }
+  for (const r of rooms) cells.push(roomCell(r));
 
-  const maxRows = 6;
-  const cols = Math.min(3, Math.max(2, Math.ceil(cells.length / maxRows)));
+  const cols = Math.min(3, Math.max(2, Math.ceil(cells.length / 6)));
   wrap.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   for (const c of cells) wrap.appendChild(c);
 }
 
 function roomCell(r: Player): HTMLElement {
-  const isLeader = r.id === activePlayerId;
-  const joined = isLeader || groupSet.has(r.id);
+  const grouped = groupMembers(leaderOf(r.id)).length >= 2;
+  const isTarget = r.id === activePlayerId;
   const row = document.createElement('div');
-  row.className = 'cc-room' + (joined ? ' grouped' : '') + (r.id === focusedPlayerId ? ' focused' : '');
+  row.className = 'cc-room' + (grouped ? ' grouped' : '') + (r.id === focusedPlayerId ? ' focused' : '');
+  const btn = grouped ? 'Leave' : isTarget ? '' : 'Group';
   row.innerHTML =
     `<div class="cc-room-top">` +
     `<span class="cc-room-name">${escapeHtml(r.name)}</span>` +
-    `<button class="cc-room-join">${isLeader ? 'Leader' : joined ? 'Leave' : 'Join'}</button>` +
+    (btn ? `<button class="cc-room-join">${btn}</button>` : '') +
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
   wireVolume(row.querySelector('input') as HTMLInputElement, r.id);
-  (row.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
-  const joinBtn = row.querySelector('.cc-room-join') as HTMLButtonElement;
-  if (isLeader) joinBtn.disabled = true;
-  else
-    joinBtn.addEventListener('click', () => {
-      if (groupSet.has(r.id)) groupSet.delete(r.id);
-      else groupSet.add(r.id);
-      pushGroup();
-      renderCCRooms();
-    });
+  // Tapping a grouped speaker pulls it out of the group to play on its own;
+  // tapping a solo one just focuses/controls it.
+  (row.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () =>
+    grouped ? ungroupRoom(r.id) : focusRoom(r.id),
+  );
+  const jb = row.querySelector('.cc-room-join') as HTMLButtonElement | null;
+  if (jb) jb.addEventListener('click', () => (grouped ? ungroupRoom(r.id) : groupRoom(r.id)));
   return row;
 }
 
-/** A grouped set of rooms: one combined volume (sets them all) + a dropdown to
-    reveal each room's individual volume. */
-function groupCell(grouped: Player[]): HTMLElement {
-  const avg = Math.round(grouped.reduce((s, r) => s + roomVol(r.id), 0) / grouped.length);
-  const leaderName = rooms.find((r) => r.id === activePlayerId)?.name ?? 'Group';
+/** A real group: one combined volume (sets them all) + a dropdown of members. */
+function groupCell(leader: string, members: Player[]): HTMLElement {
+  const avg = Math.round(members.reduce((s, r) => s + roomVol(r.id), 0) / members.length);
+  const leaderName = rooms.find((r) => r.id === leader)?.name ?? 'Group';
   const cell = document.createElement('div');
   cell.className = 'cc-room grouped cc-group';
   cell.innerHTML =
     `<div class="cc-room-top">` +
-    `<span class="cc-room-name">${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${grouped.length - 1}</span>` +
+    `<span class="cc-room-name">${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
     `<button class="cc-group-toggle">${groupExpanded ? 'Hide' : 'Rooms'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +
     `<div class="cc-group-members"${groupExpanded ? '' : ' hidden'}></div>`;
   (cell.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
     const level = +(e.target as HTMLInputElement).value;
-    for (const r of grouped) void client.setVolume({ playerId: r.id, level }).catch(() => {});
+    for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
   });
   (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', () => {
     groupExpanded = !groupExpanded;
     renderCCRooms();
   });
-  const members = cell.querySelector('.cc-group-members') as HTMLElement;
-  for (const r of grouped) {
+  const memWrap = cell.querySelector('.cc-group-members') as HTMLElement;
+  for (const r of members) {
     const m = document.createElement('div');
     m.className = 'cc-group-member' + (r.id === focusedPlayerId ? ' focused' : '');
     m.innerHTML =
-      `<span class="cc-room-name">${escapeHtml(r.name)}${r.id === activePlayerId ? ' <span class="cc-room-tag">leader</span>' : ''}</span>` +
+      `<span class="cc-room-name">${escapeHtml(r.name)}${r.id === leader ? ' <span class="cc-room-tag">leader</span>' : ''}</span>` +
       `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
     wireVolume(m.querySelector('input') as HTMLInputElement, r.id);
     (m.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
-    members.appendChild(m);
+    memWrap.appendChild(m);
   }
   return cell;
-}
-function pushGroup(): void {
-  if (!activePlayerId) return;
-  const ids = [activePlayerId, ...[...groupSet].filter((id) => id !== activePlayerId)];
-  void client.group({ playerIds: ids }).catch(() => {});
 }
 
 /* ---- Sort (persisted setting; also on the shelf) ---- */
