@@ -58,10 +58,10 @@ interface NowState {
   trackIndex: number;
   elapsed: number;
   duration: number;
-  playing: boolean;
+  state: 'playing' | 'paused' | 'idle';
   at: number; // performance.now() at last elapsed sample
 }
-let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, duration: 0, playing: false, at: performance.now() };
+let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, duration: 0, state: 'idle', at: performance.now() };
 
 const trackCache = new Map<string, Track[]>();
 
@@ -143,7 +143,7 @@ function buildShelf(): void {
     el.querySelector('.panel')!.addEventListener('pointerdown', stop);
     el.querySelector('.play')!.addEventListener('click', (e) => {
       stop(e);
-      void play(i);
+      void onPlayButton(i);
     });
     (el.querySelector('.vol input') as HTMLInputElement).addEventListener('input', (e) => {
       volume = +(e.target as HTMLInputElement).value;
@@ -197,6 +197,7 @@ function openAlbum(i: number, autoscroll = true): void {
   void renderTracks(el, i);
   (el.querySelector('.vol input') as HTMLInputElement).value = String(volume);
   updateNowbar();
+  updatePlayButton();
   el.classList.add('open');
   if (openMode === 'card') el.classList.add('expanded');
   el.style.width = openWidth(el) + 'px';
@@ -297,6 +298,21 @@ function fmtDur(seconds: number): string {
 }
 
 /* ---------- Playback ---------- */
+/** Panel Play button: toggles pause/resume when this album is loaded, else plays it.
+   Full transport (prev/next) lives in the control center (§6, Phase 3). */
+async function onPlayButton(i: number): Promise<void> {
+  if (playingIdx === i && now.playerId && now.state !== 'idle') {
+    const playerId = now.playerId;
+    const pausing = now.state === 'playing';
+    now.state = pausing ? 'paused' : 'playing';
+    if (!pausing) now.at = performance.now();
+    applyNow();
+    await client.transport({ playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
+    return;
+  }
+  await play(i);
+}
+
 async function play(i: number, trackIndex = 0): Promise<void> {
   const item = items[i]!;
   try {
@@ -311,7 +327,7 @@ async function play(i: number, trackIndex = 0): Promise<void> {
     return;
   }
   // Optimistic now-state; the next WS state/progress corrects it.
-  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, playing: true, at: performance.now() };
+  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   playingIdx = i;
   playingTrack = trackIndex;
   document.querySelectorAll('.spine').forEach((s) => s.classList.remove('playing'));
@@ -514,21 +530,21 @@ function handleState(states: PlayerState[]): void {
   }
   // Now-playing: a playing player mapped to a shelf album — includes playback
   // started externally (phone / Sonos app), which MA reports over the same WS.
-  const np =
-    states.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
-    states.find((s) => s.state === 'playing' && s.nowPlaying);
-  if (np?.nowPlaying) {
+  const cand =
+    states.find((s) => s.nowPlaying?.albumId && (s.state === 'playing' || s.state === 'paused')) ??
+    states.find((s) => s.nowPlaying && (s.state === 'playing' || s.state === 'paused'));
+  if (cand?.nowPlaying) {
     now = {
-      playerId: np.playerId,
-      albumId: np.nowPlaying.albumId,
-      trackIndex: np.nowPlaying.trackIndex ?? 0,
-      elapsed: np.nowPlaying.elapsed ?? 0,
-      duration: np.nowPlaying.duration ?? 0,
-      playing: true,
+      playerId: cand.playerId,
+      albumId: cand.nowPlaying.albumId,
+      trackIndex: cand.nowPlaying.trackIndex ?? 0,
+      elapsed: cand.nowPlaying.elapsed ?? 0,
+      duration: cand.nowPlaying.duration ?? 0,
+      state: cand.state === 'playing' ? 'playing' : 'paused',
       at: performance.now(),
     };
   } else {
-    now = { ...now, playing: false };
+    now = { ...now, state: 'idle' };
   }
   applyNow();
 }
@@ -536,13 +552,25 @@ function handleState(states: PlayerState[]): void {
 function applyNow(): void {
   document.querySelectorAll('.spine.playing').forEach((s) => s.classList.remove('playing'));
   const idx = now.albumId ? items.findIndex((it) => it.albumId === now.albumId) : -1;
-  playingIdx = idx >= 0 ? idx : null;
+  const loaded = idx >= 0 && now.state !== 'idle';
+  playingIdx = loaded ? idx : null;
   playingTrack = now.trackIndex;
-  if (idx >= 0 && now.playing) (shelf.children[idx] as HTMLElement | undefined)?.classList.add('playing');
+  if (loaded && now.state === 'playing') (shelf.children[idx] as HTMLElement | undefined)?.classList.add('playing');
   if (openIdx !== null) {
     updateOpenTrackIndicator();
     updateNowbar();
+    updatePlayButton();
   }
+}
+
+function updatePlayButton(): void {
+  if (openIdx === null) return;
+  const panel = shelf.children[openIdx] as HTMLElement;
+  const btn = panel.querySelector('.play') as HTMLElement | null;
+  const eyebrow = panel.querySelector('.eyebrow') as HTMLElement | null;
+  const isThis = playingIdx === openIdx;
+  if (btn) btn.textContent = isThis ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
+  if (eyebrow) eyebrow.textContent = isThis ? 'Now playing' : 'From your library';
 }
 
 function updateOpenTrackIndicator(): void {
@@ -557,7 +585,7 @@ function updateOpenTrackIndicator(): void {
 }
 
 function liveElapsed(): number {
-  const e = now.playing ? now.elapsed + (performance.now() - now.at) / 1000 : now.elapsed;
+  const e = now.state === 'playing' ? now.elapsed + (performance.now() - now.at) / 1000 : now.elapsed;
   return now.duration > 0 ? Math.min(e, now.duration) : e;
 }
 
@@ -579,7 +607,7 @@ function handleProgress(playerId: string, elapsed: number): void {
   if (playerId !== now.playerId) return;
   now.elapsed = elapsed;
   now.at = performance.now();
-  now.playing = true;
+  if (now.state === 'idle') now.state = 'playing';
 }
 
 function tick(): void {

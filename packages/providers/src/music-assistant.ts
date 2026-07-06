@@ -244,7 +244,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 title: str(media['name']) ?? str(current['name']) ?? null,
                 artist: firstArtistName(media),
                 album: str(rec(media['album'])['name']) ?? null,
-                trackIndex: num(current['index']) ?? null,
+                trackIndex: num(queue['current_index']) ?? null,
                 duration: num(current['duration']) ?? num(media['duration']) ?? null,
                 elapsed: num(queue['elapsed_time']) ?? null,
               }
