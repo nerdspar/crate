@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Crate</title>
+<!-- TODO(Phase 5): bundle Archivo Narrow + Newsreader locally; the kiosk must not depend on Google Fonts (§12). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="shelf-viewport">
+  <div id="shelf"></div>
+</div>
+<div id="ledge"></div>
+
+<button id="gear" aria-label="Settings">⚙</button>
+
+<div id="settings">
+  <button id="settings-close" class="room" style="position:absolute; top:4vh; right:4vw;">Done</button>
+  <div id="settings-card">
+    <div class="eyebrow">Shelf settings</div>
+    <div class="setting-row">
+      <div class="label">Spine labels</div>
+      <div class="choices" id="label-choices"></div>
+    </div>
+    <div class="setting-row">
+      <div class="label">Opening an album shows</div>
+      <div class="choices" id="open-choices"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
