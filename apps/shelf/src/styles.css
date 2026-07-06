@@ -149,10 +149,6 @@ body {
 
 .spine.open { z-index: 3; margin: 0 1.5vw; }
 .spine.open .flap { transform: rotateY(-90deg); }
-/* hide the generated spine label/imprint when open — it sits above the materials
-   layer so it renders flat (mirrored) instead of rotating away with the face */
-.spine.open .spine-label,
-.spine.open .cat { opacity: 0; }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 
@@ -314,8 +310,11 @@ button {
   max-height: 86%;
   overflow: hidden;
   text-overflow: ellipsis;
-  z-index: 1;
-  transition: opacity 0.2s ease;
+  /* position (not z-index) keeps the label above the ::before materials while
+     staying in the 3D flip context, so it rotates away with the face when the
+     album opens instead of rendering flat/mirrored, and doesn't get promoted to
+     its own layer (which flickered labels during stepping). */
+  position: relative;
 }
 .spine-label .artist { opacity: 0.72; font-weight: 500; }
 .spine-label .title { font-weight: 700; }
