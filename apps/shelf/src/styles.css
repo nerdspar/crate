@@ -41,7 +41,8 @@ body {
   flex: 0 0 auto;
   cursor: pointer;
   perspective: 1400px;
-  transition: width var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
+  transition: width var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1),
+              margin var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
 }
 
 .flap {
@@ -146,8 +147,12 @@ body {
 /* real art present → drop the typographic fallback */
 .face-cover.has-art .cover-type { display: none; }
 
-.spine.open { z-index: 3; }
+.spine.open { z-index: 3; margin: 0 1.5vw; }
 .spine.open .flap { transform: rotateY(-90deg); }
+/* hide the generated spine label/imprint when open — it sits above the materials
+   layer so it renders flat (mirrored) instead of rotating away with the face */
+.spine.open .spine-label,
+.spine.open .cat { opacity: 0; }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 
@@ -310,6 +315,7 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   z-index: 1;
+  transition: opacity 0.2s ease;
 }
 .spine-label .artist { opacity: 0.72; font-weight: 500; }
 .spine-label .title { font-weight: 700; }
