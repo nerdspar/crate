@@ -421,15 +421,35 @@ function smoothScrollTo(el: HTMLElement, target: number, dur = 380): void {
   })(t0);
 }
 
+/** Album-card play-target picker: chips for each real group AND every individual
+    speaker. Group management + volume live in the control center; here you just
+    choose where this album plays. */
 function renderRooms(el: HTMLElement): void {
   const wrap = el.querySelector('.rooms') as HTMLElement;
   wrap.innerHTML = '';
+  // Group chips first — play to the whole group (targets its leader).
+  for (const leader of [...new Set(rooms.map((r) => leaderOf(r.id)))]) {
+    const members = groupMembers(leader);
+    if (members.length < 2) continue;
+    const name = rooms.find((r) => r.id === leader)?.name ?? 'Group';
+    const b = document.createElement('button');
+    b.className = 'room room-group' + (activePlayerId === leader ? ' on' : '');
+    b.textContent = `${name} +${members.length - 1}`;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      activePlayerId = leader;
+      renderRooms(el);
+    };
+    wrap.appendChild(b);
+  }
+  // Then every individual speaker — picking a grouped one pulls it out to play solo.
   rooms.forEach((r) => {
     const b = document.createElement('button');
     b.className = 'room' + (r.id === activePlayerId ? ' on' : '');
     b.textContent = r.name;
     b.onclick = (e) => {
       e.stopPropagation();
+      if (groupMembers(leaderOf(r.id)).length >= 2) ungroupRoom(r.id);
       activePlayerId = r.id;
       renderRooms(el);
     };

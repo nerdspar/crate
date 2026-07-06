@@ -277,6 +277,8 @@ button {
   letter-spacing: 0.04em;
 }
 .room.on { color: var(--ink); border-color: var(--ink); }
+.room.room-group { border-color: var(--brass); color: var(--brass); }
+.room.room-group.on { color: #131114; background: var(--brass); border-color: var(--brass); }
 
 .vol { display: flex; align-items: center; gap: 1.4vh; }
 .vol .vol-ico { display: flex; align-items: center; color: var(--ink-dim); }
