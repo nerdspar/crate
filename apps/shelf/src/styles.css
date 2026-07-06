@@ -701,6 +701,41 @@ body.idle #find-grip::after { opacity: 0; }
 .find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
 .find-row .choices { flex: 1 1 auto; }
 
+/* Shelf switcher (top of the Find bar): Albums/Playlists tabs + a list of shelves. */
+#find-shelves { display: flex; flex-direction: column; gap: 1.2vh; }
+.find-shelf-tabs { display: flex; gap: 4vw; border-bottom: 1px solid rgba(236,231,221,0.12); }
+.find-shelf-tab {
+  background: transparent; border: none; border-bottom: 3px solid transparent; border-radius: 0;
+  margin-bottom: -1px; color: var(--ink-dim);
+  font-family: 'Newsreader Variable', serif; font-size: 2.8vh; font-weight: 500;
+  padding: 0 0.5vw 1vh;
+}
+.find-shelf-tab.on { color: var(--ink); border-bottom-color: var(--brass); }
+#find-shelf-list { display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
+.find-shelf {
+  text-align: left; background: transparent; color: var(--ink-dim);
+  border: 1px solid rgba(236,231,221,0.18); border-radius: 999px;
+  font-size: 2.2vh; font-weight: 600; padding: 0.8vh 2.4vw; letter-spacing: 0.02em;
+}
+.find-shelf.on { color: #131114; background: var(--ink); border-color: var(--ink); }
+.find-shelf-new { color: var(--brass); border-style: dashed; }
+.find-shelf-input {
+  background: rgba(0,0,0,0.3); color: var(--ink);
+  border: 1px solid var(--brass); border-radius: 999px;
+  font-size: 2.2vh; padding: 0.8vh 2.4vw; min-width: 30vw;
+}
+.find-shelf-input::placeholder { color: var(--ink-dim); }
+
+/* "Add to shelf" list inside the card ⋯ menu. */
+.panel-pop-label { font-size: 1.4vh; letter-spacing: 0.2em; text-transform: uppercase; color: var(--brass); font-weight: 600; padding: 0.4vh 2vh; }
+.panel-add-shelves { display: flex; flex-direction: column; }
+.panel-shelf-add {
+  background: transparent; color: var(--ink); border: none; text-align: left;
+  border-radius: 0.8vh; font-size: 1.9vh; font-weight: 600; padding: 1vh 2vh; white-space: nowrap;
+}
+.panel-shelf-add:disabled { color: var(--ink-dim); }
+.panel-pop-empty { font-size: 1.5vh; color: var(--ink-dim); padding: 0.8vh 2vh; max-width: 44vh; white-space: normal; line-height: 1.35; }
+
 /* Add-from-Apple-Music results: a horizontal strip of album cards above the input. */
 #find-results { display: flex; gap: 1.6vw; overflow-x: auto; padding-bottom: 0.6vh; }
 #find-results[hidden] { display: none; }

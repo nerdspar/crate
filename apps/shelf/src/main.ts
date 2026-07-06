@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type SearchAlbum, type Settings, type ShelfItem, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type SearchAlbum, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -28,6 +28,10 @@ let items: ShelfItem[] = [];
 let players: Player[] = [];
 let rooms: Player[] = [];
 let settings: Settings = { ...DEFAULT_SETTINGS };
+/** Named shelves ("crates") and which one the wall currently shows. */
+let shelves: Shelf[] = [];
+let activeShelf = 'all';
+let shelfTab: ShelfKind = 'album';
 
 type ResolvedLayout = 'split' | 'center' | 'top' | 'bottom';
 /** Resolve the artist/title layout for an album; 'varied' picks one deterministically. */
@@ -242,6 +246,8 @@ function buildShelf(): void {
       <div class="panel">
         <button class="panel-menu" aria-label="More">⋯</button>
         <div class="panel-pop" hidden>
+          <div class="panel-pop-label">Add to shelf</div>
+          <div class="panel-add-shelves"></div>
           <button class="panel-remove">Remove from shelf</button>
         </div>
         <div class="eyebrow">From your library</div>
@@ -285,6 +291,7 @@ function buildShelf(): void {
     el.querySelector('.panel-menu')!.addEventListener('click', (e) => {
       stop(e);
       panelPop.hidden = !panelPop.hidden;
+      if (!panelPop.hidden) renderAddShelves(el.querySelector('.panel-add-shelves') as HTMLElement, a.albumId);
     });
     // Remove from shelf — two-tap to arm, so it can't fire by accident on a wall.
     const removeBtn = el.querySelector('.panel-remove') as HTMLButtonElement;
@@ -1188,9 +1195,9 @@ const findSearch = document.getElementById('find-search') as HTMLInputElement;
 function openFind(): void {
   find.classList.add('open');
   renderCCSort();
-  // preventScroll: focusing an input otherwise scrolls the whole document up
-  // (bypassing overflow:hidden), which shifts later absolute overlays.
-  setTimeout(() => findSearch.focus({ preventScroll: true }), 60);
+  renderShelfList();
+  // No auto-focus: the shelf list is the primary content; tapping the search
+  // field is what pops the on-screen keyboard.
 }
 function closeFind(): void {
   find.classList.remove('open');
@@ -1363,6 +1370,95 @@ function clearSearch(): void {
   items.forEach((_, i) => (shelf.children[i] as HTMLElement | undefined)?.classList.remove('sliver'));
   sizeFaces();
   clearFindResults();
+}
+
+/* =====================================================================
+   Shelves ("crates"): the Find bar doubles as the shelf switcher — Albums /
+   Playlists tabs + a list of shelves you tap to switch the wall.
+   ===================================================================== */
+const findShelfList = document.getElementById('find-shelf-list') as HTMLElement;
+
+document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    shelfTab = tab.dataset['kind'] as ShelfKind;
+    document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', t === tab));
+    renderShelfList();
+  });
+});
+
+function renderShelfList(): void {
+  findShelfList.innerHTML = '';
+  for (const s of shelves.filter((sh) => sh.kind === shelfTab)) {
+    const b = document.createElement('button');
+    b.className = 'find-shelf' + (s.id === activeShelf ? ' on' : '');
+    b.textContent = s.name;
+    b.onclick = () => void switchShelf(s.id);
+    findShelfList.appendChild(b);
+  }
+  const add = document.createElement('button');
+  add.className = 'find-shelf find-shelf-new';
+  add.textContent = '+ New';
+  add.onclick = () => newShelfInput();
+  findShelfList.appendChild(add);
+}
+
+async function switchShelf(id: string): Promise<void> {
+  const res = await client.getShelf(id === 'all' ? undefined : id);
+  activeShelf = id;
+  items = res.items;
+  shelves = res.shelves;
+  applySort();
+  openIdx = null;
+  buildShelf();
+  sizeFaces();
+  applyNow();
+  renderShelfList();
+  closeFind();
+  showToast(shelves.find((s) => s.id === id)?.name ?? 'Shelf');
+}
+
+function newShelfInput(): void {
+  const input = document.createElement('input');
+  input.className = 'find-shelf-input';
+  input.placeholder = 'Name this shelf…';
+  input.autocomplete = 'off';
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && input.value.trim()) void createNamedShelf(input.value.trim());
+    else if (e.key === 'Escape') renderShelfList();
+  });
+  findShelfList.appendChild(input);
+  input.focus({ preventScroll: true });
+}
+
+async function createNamedShelf(name: string): Promise<void> {
+  const sh = await client.createShelf({ name, kind: shelfTab }).catch(() => null);
+  if (!sh) return;
+  shelves.push(sh);
+  await switchShelf(sh.id);
+}
+
+/** Populate the card ⋯ menu's "Add to shelf" list for one album. */
+function renderAddShelves(container: HTMLElement, albumId: string): void {
+  container.innerHTML = '';
+  const targets = shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
+  if (!targets.length) {
+    container.innerHTML = '<div class="panel-pop-empty">No shelves yet — make one from the bottom bar</div>';
+    return;
+  }
+  for (const s of targets) {
+    const b = document.createElement('button');
+    b.className = 'panel-shelf-add';
+    b.textContent = s.name;
+    b.onclick = () => {
+      b.disabled = true;
+      b.textContent = `${s.name} ✓`;
+      void client.addAlbumToShelf(s.id, albumId).catch(() => {
+        b.disabled = false;
+        b.textContent = s.name;
+      });
+    };
+    container.appendChild(b);
+  }
 }
 
 /* ---- System rows: brightness, display sleep, IP + restart/reboot (§6/§7) ---- */
@@ -1705,7 +1801,7 @@ function connectWs(): void {
     }
     if (msg.type === 'state') handleState(msg.state);
     else if (msg.type === 'progress') handleProgress(msg.playerId, msg.elapsed);
-    else if (msg.type === 'shelf') void reloadShelf();
+    else if (msg.type === 'shelf' || msg.type === 'shelves') void reloadShelf();
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
     else if (msg.type === 'system') applySystemStatus(msg.status);
@@ -1714,9 +1810,10 @@ function connectWs(): void {
 }
 
 async function reloadShelf(): Promise<void> {
-  const res = await client.getShelf();
+  const res = await client.getShelf(activeShelf === 'all' ? undefined : activeShelf);
   const openId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
   items = res.items;
+  shelves = res.shelves;
   applySort();
   openIdx = null;
   buildShelf();
@@ -1724,6 +1821,7 @@ async function reloadShelf(): Promise<void> {
   const reopen = openId ? items.findIndex((it) => it.albumId === openId) : -1;
   if (reopen >= 0) openAlbum(reopen, false);
   applyNow(); // restore EQ on playing spines after the rebuild
+  renderShelfList();
 }
 
 async function reloadPlayers(): Promise<void> {
@@ -1791,11 +1889,12 @@ window.addEventListener('scroll', () => {
 /* ---------- Boot ---------- */
 async function boot(): Promise<void> {
   const [shelfRes, playersRes, settingsRes] = await Promise.all([
-    client.getShelf().catch(() => ({ items: [], stacks: [] })),
+    client.getShelf().catch(() => ({ items: [], stacks: [], shelves: [] })),
     client.getPlayers().catch(() => ({ players: [], state: [] })),
     client.getSettings().catch(() => settings),
   ]);
   items = shelfRes.items;
+  shelves = shelfRes.shelves;
   players = playersRes.players;
   rooms = players.filter((p) => p.type === 'sonos' && p.available);
   if (rooms.length === 0) rooms = players.filter((p) => p.available);
