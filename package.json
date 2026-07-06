@@ -1,0 +1,19 @@
+{
+  "name": "crate-phase0",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Crate — Phase 0 risk spike. Standalone; replaced by the monorepo in Phase 1.",
+  "type": "module",
+  "scripts": {
+    "phase0": "tsx scripts/phase0.ts",
+    "phase0:ma": "tsx scripts/phase0-ma.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "ws": "^8.21.0"
+  }
+}

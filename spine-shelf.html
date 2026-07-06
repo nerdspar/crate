@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Spine Shelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #131114;
+    --shelf: #1b181c;
+    --ink: #ece7dd;
+    --ink-dim: #9a948a;
+    --brass: #8a8578;
+    --flip-t: 0.55s;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); }
+  body {
+    font-family: 'Archivo Narrow', sans-serif;
+    color: var(--ink);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+
+  /* ---------- Shelf ---------- */
+  #shelf-viewport {
+    position: absolute; inset: 0;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none;
+    display: flex; align-items: stretch;
+  }
+  #shelf-viewport::-webkit-scrollbar { display: none; }
+
+  #shelf {
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+    padding: 4vh 6vw 7vh 6vw;
+    gap: 3px;
+  }
+
+  .spine {
+    position: relative;
+    height: 89%;
+    flex: 0 0 auto;
+    cursor: pointer;
+    perspective: 1400px;
+    transition: width var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
+  }
+
+  .flap {
+    position: absolute; inset: 0;
+    transform-style: preserve-3d;
+    transform-origin: left center;
+    transition: transform var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
+  }
+
+  .face {
+    position: absolute; top: 0; left: 0; height: 100%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+
+  .face-spine {
+    width: var(--spine-w);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset -3px 0 6px rgba(0,0,0,0.45),
+                inset 2px 0 3px rgba(255,255,255,0.07);
+  }
+
+  .face-cover {
+    width: var(--cover-w);
+    transform: rotateY(90deg);
+    transform-origin: left center;
+    display: flex; align-items: flex-end;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.55);
+  }
+  .face-cover .cover-type {
+    padding: 5%;
+    font-weight: 700;
+    font-size: 4vh;
+    line-height: 1.05;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  }
+
+  .spine.open { z-index: 3; }
+  .spine.open .flap { transform: rotateY(-90deg); }
+  .spine.open:active { filter: none; }
+  .spine:not(.open):active { filter: brightness(1.25); }
+
+  /* corner buttons on the opened cover */
+  .cover-btn {
+    position: absolute;
+    z-index: 4;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(15, 13, 16, 0.62);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(236,231,221,0.22);
+    color: var(--ink);
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+  .spine.open .cover-btn {
+    opacity: 1; transform: scale(1);
+    pointer-events: auto;
+    transition-delay: 0.3s;
+  }
+  .cover-play {
+    width: 8.5vh; height: 8.5vh;
+    right: 2.2vh; bottom: 2.2vh;
+    font-size: 3.2vh;
+    background: var(--ink); color: #131114;
+    border: none;
+    padding-left: 0.6vh; /* optical centering of the triangle */
+  }
+  .cover-play:active { transform: scale(0.92); }
+  .cover-menu {
+    width: 6vh; height: 6vh;
+    right: 2.2vh; top: 2.2vh;
+    font-size: 2.6vh;
+    letter-spacing: 0.1em;
+  }
+  .cover-menu:active { transform: scale(0.92); }
+  /* hide corner buttons when the full panel is out */
+  .spine.expanded .cover-menu { opacity: 0; pointer-events: none; }
+
+  /* meta panel: shown when expanded */
+  .panel {
+    position: absolute; top: 0; bottom: 0;
+    left: var(--cover-w);
+    width: var(--panel-w);
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 1.4vh;
+    padding: 0 2.4vh 0 3.2vh;
+    opacity: 0;
+    transform: translateX(-16px);
+    transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+    touch-action: pan-y;
+  }
+  .spine.expanded .panel {
+    opacity: 1; transform: translateX(0);
+    pointer-events: auto;
+    transition-delay: 0.18s;
+  }
+  .panel .eyebrow {
+    font-size: 1.7vh; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--brass); font-weight: 600;
+  }
+  .panel h1 {
+    font-family: 'Newsreader', serif;
+    font-weight: 500;
+    font-size: 4.2vh;
+    line-height: 1.02;
+  }
+  .panel h2 {
+    font-family: 'Newsreader', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 2.4vh;
+    color: var(--ink-dim);
+  }
+
+  .panel .actions { display: flex; flex-direction: column; gap: 1.3vh; margin-top: 0.6vh; }
+  button {
+    font-family: 'Archivo Narrow', sans-serif;
+    border: none; cursor: pointer;
+    border-radius: 999px;
+  }
+  .play {
+    background: var(--ink); color: #131114;
+    font-size: 2.3vh; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 1.6vh 0; width: 100%;
+  }
+  .play:active { transform: scale(0.97); }
+  .rooms { display: flex; gap: 1vh; flex-wrap: wrap; }
+  .room {
+    background: transparent; color: var(--ink-dim);
+    border: 1px solid rgba(236,231,221,0.25);
+    font-size: 1.8vh; font-weight: 600;
+    padding: 1vh 1.9vh;
+    letter-spacing: 0.04em;
+  }
+  .room.on { color: var(--ink); border-color: var(--ink); }
+
+  .vol { display: flex; align-items: center; gap: 1.4vh; }
+  .vol .vol-ico { font-size: 2vh; color: var(--ink-dim); }
+  .vol input[type="range"] {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 2px;
+    background: rgba(236,231,221,0.2);
+    outline: none;
+  }
+  .vol input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 2.6vh; height: 2.6vh; border-radius: 50%;
+    background: var(--ink); cursor: pointer;
+  }
+
+  .tracks {
+    margin-top: 0.6vh;
+    max-height: 22vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+    border-top: 1px solid rgba(236,231,221,0.12);
+  }
+  .tracks::-webkit-scrollbar { display: none; }
+  .track {
+    display: flex; align-items: baseline; gap: 1.2vh;
+    padding: 1.1vh 0.4vh;
+    font-size: 2vh;
+    color: var(--ink-dim);
+    border-bottom: 1px solid rgba(236,231,221,0.07);
+  }
+  .track .n { font-size: 1.6vh; width: 2.4vh; color: var(--brass); }
+  .track.now { color: var(--ink); }
+  .track.now .n { color: var(--ink); }
+  .track .dur { margin-left: auto; font-size: 1.7vh; }
+
+  .spine-label {
+    writing-mode: vertical-rl;
+    white-space: nowrap;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    pointer-events: none;
+    max-height: 92%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .spine-label .artist { opacity: 0.72; font-weight: 500; }
+  .spine-label .title { font-weight: 700; }
+
+  .spine.v-top .face-spine { justify-content: flex-start; }
+  .spine.v-top .spine-label { margin-top: 4%; }
+  .spine.v-bottom .face-spine { justify-content: flex-end; }
+  .spine.v-bottom .spine-label { margin-bottom: 4%; }
+  .spine.v-flip .spine-label { transform: rotate(180deg); }
+  .spine.v-top .face-spine, .spine.v-bottom .face-spine { flex-direction: column; }
+
+  .eq {
+    position: absolute; bottom: 5px; left: 50%;
+    transform: translateX(-50%);
+    display: none; gap: 2px; align-items: flex-end; height: 12px;
+    z-index: 2;
+  }
+  .spine.playing:not(.open) .eq { display: flex; }
+  .eq i { width: 3px; background: var(--ink); border-radius: 1px; animation: eq 0.9s ease-in-out infinite; opacity: 0.9; }
+  .eq i:nth-child(2) { animation-delay: 0.2s; }
+  .eq i:nth-child(3) { animation-delay: 0.45s; }
+  @keyframes eq {
+    0%, 100% { height: 3px; }
+    50% { height: 12px; }
+  }
+
+  #ledge {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 7vh;
+    background: linear-gradient(180deg, var(--shelf), #0d0b0e);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    pointer-events: none;
+  }
+
+  /* ---------- Settings ---------- */
+  #gear {
+    position: absolute; right: 1.6vw; bottom: 0;
+    height: 7vh; display: flex; align-items: center;
+    background: transparent; color: rgba(236,231,221,0.28);
+    font-size: 2.6vh; padding: 0 1.2vw;
+    z-index: 5;
+  }
+  #gear:active { color: var(--ink); }
+
+  #settings {
+    position: absolute; inset: 0;
+    background: rgba(10, 9, 11, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 15;
+  }
+  #settings.open { opacity: 1; pointer-events: auto; }
+
+  #settings-card { display: flex; flex-direction: column; gap: 3vh; min-width: 40vw; }
+  #settings-card .eyebrow {
+    font-size: 2vh; letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--brass); font-weight: 600;
+  }
+  .setting-row { display: flex; flex-direction: column; gap: 1.6vh; }
+  .setting-row .label { font-family: 'Newsreader', serif; font-size: 4vh; font-weight: 500; }
+  .choices { display: flex; gap: 1.4vh; flex-wrap: wrap; }
+  .choice {
+    background: transparent; color: var(--ink-dim);
+    border: 1px solid rgba(236,231,221,0.25);
+    font-size: 2.5vh; font-weight: 600;
+    padding: 1.8vh 3.4vh;
+    letter-spacing: 0.04em;
+  }
+  .choice.on { color: var(--ink); border-color: var(--ink); }
+  .choice .hint {
+    display: block; font-size: 1.8vh; font-weight: 500;
+    color: var(--ink-dim); letter-spacing: 0.02em; margin-top: 0.4vh;
+  }
+
+  #toast {
+    position: absolute; bottom: 9vh; left: 50%;
+    transform: translate(-50%, 200%);
+    background: var(--ink); color: #131114;
+    font-weight: 700; font-size: 2.4vh;
+    letter-spacing: 0.05em;
+    padding: 1.6vh 3.4vh; border-radius: 999px;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 20; pointer-events: none;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  }
+  #toast.show { transform: translate(-50%, 0); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="shelf-viewport">
+  <div id="shelf"></div>
+</div>
+<div id="ledge"></div>
+
+<button id="gear" aria-label="Settings">⚙</button>
+
+<div id="settings">
+  <button id="settings-close" class="room" style="position:absolute; top:4vh; right:4vw;">Done</button>
+  <div id="settings-card">
+    <div class="eyebrow">Shelf settings</div>
+    <div class="setting-row">
+      <div class="label">Spine labels</div>
+      <div class="choices" id="label-choices"></div>
+    </div>
+    <div class="setting-row">
+      <div class="label">Opening an album shows</div>
+      <div class="choices" id="open-choices"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   CONFIG — point this at Music Assistant when deployed on the Pi.
+   The UI runs in mock mode until MA_URL is set.
+   ===================================================================== */
+const CONFIG = {
+  MA_URL: "",                    // e.g. "http://homeassistant.local:8095"
+  DEFAULT_PLAYER: "Living Room", // Sonos player name in Music Assistant
+  ROOMS: ["Living Room", "Kitchen", "Pergola"],
+  LONG_PRESS_MS: 420,
+};
+
+/* Mock library. In production: fetched from the device service, which
+   syncs MA's library (Apple Music provider) incl. artwork + tracks. */
+const LIBRARY = [
+  ["Fleetwood Mac","Rumours","#c9b48a","#3a2f22",34],
+  ["Daft Punk","Discovery","#d4af37","#111111",30],
+  ["Miles Davis","Kind of Blue","#2f4f6f","#0e1420",26],
+  ["Joni Mitchell","Blue","#1e3a5f","#0a1526",26],
+  ["Radiohead","In Rainbows","#e8552f","#26150f",30],
+  ["Stevie Wonder","Songs in the Key of Life","#b0492c","#2a120a",38],
+  ["The Beatles","Abbey Road","#7d9c8f","#1c2622",30],
+  ["Kendrick Lamar","To Pimp a Butterfly","#8f8a80","#17150f",34],
+  ["Tame Impala","Currents","#5a6fb5","#141a30",30],
+  ["Nujabes","Modal Soul","#c9c0ae","#2e2a20",28],
+  ["Herbie Hancock","Head Hunters","#caa03c","#241c08",30],
+  ["LCD Soundsystem","Sound of Silver","#9aa3ad","#1a1d21",32],
+  ["Norah Jones","Come Away with Me","#b39b7d","#241d14",28],
+  ["Bon Iver","For Emma, Forever Ago","#7e8a7a","#181d17",32],
+  ["Anderson .Paak","Malibu","#d98a4b","#2a170c",28],
+  ["Khruangbin","Con Todo El Mundo","#b5543a","#22100a",34],
+  ["Yumi Arai","Hikōki-gumo","#87a6c4","#131c26",28],
+  ["Nirvana","Nevermind","#3a7ca5","#0d1c26",28],
+  ["Alabama Shakes","Sound & Color","#4ea6a0","#0f2422",32],
+  ["Frank Ocean","Blonde","#c4c4c0","#232320",26],
+  ["The War on Drugs","Lost in the Dream","#7a6a8f","#181420",34],
+  ["Erykah Badu","Baduizm","#6b8f5a","#151f10",28],
+  ["Toe","For Long Tomorrow","#c2b8a3","#2a2720",30],
+  ["Fela Kuti","Expensive Shit","#d1a133","#241a06",26],
+  ["Portishead","Dummy","#4a4a52","#111114",28],
+  ["SZA","Ctrl","#8fae87","#1a2418",26],
+  ["Dire Straits","Brothers in Arms","#8a3a2e","#1d0d0a",32],
+  ["Sade","Love Deluxe","#3f3f47","#101014",26],
+  ["Cowboy Bebop","OST 1 — Seatbelts","#2a4a7a","#0a1526",36],
+  ["Vulfpeck","Thrill of the Arts","#e0d6b8","#302c1e",28],
+];
+
+const LABEL_STYLES = {
+  uniform:   [""],
+  collected: ["", "v-top", "v-bottom", "", "v-bottom", "v-top"],
+  eclectic:  ["", "v-top", "v-bottom", "", "v-flip", ""],
+};
+let labelStyle = "uniform"; // persists via config file on the Pi build
+let openMode = "cover";     // "cover" = art + corner buttons, "card" = full panel
+
+const shelf = document.getElementById("shelf");
+const toast = document.getElementById("toast");
+let openIdx = null;
+let playingIdx = null;
+let playingTrack = 0;
+let activeRoom = CONFIG.DEFAULT_PLAYER;
+let volume = 42; // mock; real value comes from the Sonos player via MA
+
+function pickInk(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = 0.299*((n>>16)&255) + 0.587*((n>>8)&255) + 0.114*(n&255);
+  return lum > 150 ? "rgba(20,18,16,0.88)" : "rgba(240,236,228,0.92)";
+}
+
+function coverW() { return shelf.clientHeight * 0.89; }
+function panelW() { return Math.min(window.innerWidth * 0.3, 420); }
+
+/* mock track list; MA provides real ones */
+function mockTracks(i) {
+  const n = 8 + (i % 4);
+  return Array.from({ length: n }, (_, t) => ({
+    name: `Track ${t + 1}`,
+    dur: `${3 + ((i + t) % 3)}:${String(10 + ((i * 7 + t * 13) % 50)).padStart(2, "0")}`,
+  }));
+}
+
+/* ---------- Build the shelf ---------- */
+LIBRARY.forEach((a, i) => {
+  const [artist, title, c1, c2, w] = a;
+  const spineW = w * 2;
+  const el = document.createElement("div");
+  el.className = "spine";
+  el.dataset.idx = i;
+  el.style.width = spineW + "px";
+  el.style.setProperty("--spine-w", spineW + "px");
+  const fontSize = Math.min(w * 0.62, 19);
+  const ink = pickInk(c1);
+  el.innerHTML = `
+    <div class="flap">
+      <div class="face face-spine" style="background:linear-gradient(90deg, ${c2}, ${c1} 45%, ${c2})">
+        <div class="spine-label" style="font-size:${fontSize}px; color:${ink}">
+          <span class="artist">${artist}</span>&nbsp;&nbsp;<span class="title">${title}</span>
+        </div>
+      </div>
+      <div class="face face-cover" style="background:linear-gradient(145deg, ${c1}, ${c2} 85%)">
+        <div class="cover-type" style="color:${ink}">${title}</div>
+      </div>
+    </div>
+    <button class="cover-btn cover-play" aria-label="Play">▶</button>
+    <button class="cover-btn cover-menu" aria-label="More">⋯</button>
+    <div class="panel">
+      <div class="eyebrow">From your library</div>
+      <h1>${title}</h1>
+      <h2>${artist}</h2>
+      <div class="actions">
+        <button class="play">Play</button>
+        <div class="rooms"></div>
+        <div class="vol">
+          <span class="vol-ico">🔉</span>
+          <input type="range" min="0" max="100" value="42">
+          <span class="vol-ico">🔊</span>
+        </div>
+      </div>
+      <div class="tracks"></div>
+    </div>
+    <div class="eq"><i></i><i></i><i></i></div>`;
+
+  // corner + panel controls own their pointer events
+  const stop = e => e.stopPropagation();
+  el.querySelector(".cover-play").addEventListener("pointerdown", stop);
+  el.querySelector(".cover-play").addEventListener("click", e => { stop(e); play(i); });
+  el.querySelector(".cover-menu").addEventListener("pointerdown", stop);
+  el.querySelector(".cover-menu").addEventListener("click", e => { stop(e); expand(el, true); });
+  el.querySelector(".panel").addEventListener("pointerdown", stop);
+  el.querySelector(".play").addEventListener("click", e => { stop(e); play(i); });
+  el.querySelector(".vol input").addEventListener("input", e => {
+    volume = +e.target.value;
+    /* production: MA player volume_set for activeRoom */
+  });
+  shelf.appendChild(el);
+});
+
+function sizeFaces() {
+  const cw = coverW();
+  document.querySelectorAll(".spine").forEach(el => {
+    el.style.setProperty("--cover-w", cw + "px");
+    el.style.setProperty("--panel-w", panelW() + "px");
+    if (el.classList.contains("open")) {
+      el.style.width = openWidth(el) + "px";
+    }
+  });
+}
+window.addEventListener("resize", sizeFaces);
+
+function openWidth(el) {
+  return coverW() + (el.classList.contains("expanded") ? panelW() : 0);
+}
+
+/* ---------- Open / close / expand ---------- */
+function openAlbum(i, autoscroll = true) {
+  if (openIdx === i) return;
+  closeAlbum();
+  const el = shelf.children[i];
+  openIdx = i;
+  renderRooms(el);
+  renderTracks(el, i);
+  el.querySelector(".vol input").value = volume;
+  el.classList.add("open");
+  if (openMode === "card") el.classList.add("expanded");
+  el.style.width = openWidth(el) + "px";
+  if (!autoscroll) return;
+  requestAnimationFrame(() => {
+    smoothScrollTo(vp, settledLeft(i) - vp.clientWidth * 0.12);
+  });
+}
+
+function expand(el, on) {
+  el.classList.toggle("expanded", on);
+  el.style.width = openWidth(el) + "px";
+}
+
+function closeAlbum() {
+  if (openIdx === null) return;
+  const el = shelf.children[openIdx];
+  el.classList.remove("open", "expanded");
+  el.style.width = el.style.getPropertyValue("--spine-w");
+  openIdx = null;
+}
+
+function settledLeft(i) {
+  const cs = getComputedStyle(shelf);
+  const gap = parseFloat(cs.columnGap) || 3;
+  let x = parseFloat(cs.paddingLeft);
+  for (let j = 0; j < i; j++) {
+    x += parseFloat(shelf.children[j].style.getPropertyValue("--spine-w")) + gap;
+  }
+  return x;
+}
+
+let scrollToken = 0;
+function smoothScrollTo(el, target, dur = 380) {
+  const token = ++scrollToken;
+  const start = el.scrollLeft, dist = target - start, t0 = performance.now();
+  (function step(t) {
+    if (token !== scrollToken) return;
+    const p = Math.min((t - t0) / dur, 1);
+    el.scrollLeft = start + dist * (1 - Math.pow(1 - p, 3));
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+function renderRooms(el) {
+  const wrap = el.querySelector(".rooms");
+  wrap.innerHTML = "";
+  CONFIG.ROOMS.forEach(r => {
+    const b = document.createElement("button");
+    b.className = "room" + (r === activeRoom ? " on" : "");
+    b.textContent = r;
+    b.onclick = e => { e.stopPropagation(); activeRoom = r; renderRooms(el); };
+    wrap.appendChild(b);
+  });
+}
+
+function renderTracks(el, i) {
+  const wrap = el.querySelector(".tracks");
+  wrap.innerHTML = "";
+  mockTracks(i).forEach((t, ti) => {
+    const row = document.createElement("div");
+    const isNow = playingIdx === i && playingTrack === ti;
+    row.className = "track" + (isNow ? " now" : "");
+    row.innerHTML = `<span class="n">${isNow ? "♪" : ti + 1}</span>${t.name}<span class="dur">${t.dur}</span>`;
+    wrap.appendChild(row);
+  });
+}
+
+/* ---------- Playback ---------- */
+async function play(i) {
+  const [artist, title] = LIBRARY[i];
+  if (CONFIG.MA_URL) {
+    /* Production path: Music Assistant play_media with the Apple Music
+       album URI, targeting the Sonos player activeRoom. */
+    try {
+      await fetch(`${CONFIG.MA_URL}/api/play`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ album: `${artist} — ${title}`, player: activeRoom }),
+      });
+    } catch (e) { console.error("MA call failed", e); }
+  }
+  document.querySelectorAll(".spine").forEach(s => s.classList.remove("playing"));
+  shelf.children[i].classList.add("playing");
+  playingIdx = i; playingTrack = 0;
+  closeAlbum();
+  showToast(`Playing on ${activeRoom}`);
+}
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(showToast.t);
+  showToast.t = setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+/* ---------- Settings ---------- */
+function applyLabelStyle(style) {
+  labelStyle = style;
+  const variants = LABEL_STYLES[style];
+  [...shelf.children].forEach((el, i) => {
+    el.classList.remove("v-top", "v-bottom", "v-flip");
+    const v = variants[i % variants.length];
+    if (v) el.classList.add(v);
+  });
+  renderChoices();
+}
+
+const settings = document.getElementById("settings");
+document.getElementById("gear").onclick = () => settings.classList.add("open");
+document.getElementById("settings-close").onclick = () => settings.classList.remove("open");
+settings.addEventListener("click", e => {
+  if (e.target === settings) settings.classList.remove("open");
+});
+
+function renderChoices() {
+  const labelWrap = document.getElementById("label-choices");
+  labelWrap.innerHTML = "";
+  [["uniform","Uniform","Centered, top to bottom"],
+   ["collected","Collected","Mixed placement, all readable"],
+   ["eclectic","Eclectic","Full variation, some flipped"]].forEach(([key, name, hint]) => {
+    const b = document.createElement("button");
+    b.className = "choice" + (key === labelStyle ? " on" : "");
+    b.innerHTML = `${name}<span class="hint">${hint}</span>`;
+    b.onclick = () => applyLabelStyle(key);
+    labelWrap.appendChild(b);
+  });
+
+  const openWrap = document.getElementById("open-choices");
+  openWrap.innerHTML = "";
+  [["cover","Cover only","Art with play + menu buttons"],
+   ["card","Full card","Cover plus details panel"]].forEach(([key, name, hint]) => {
+    const b = document.createElement("button");
+    b.className = "choice" + (key === openMode ? " on" : "");
+    b.innerHTML = `${name}<span class="hint">${hint}</span>`;
+    b.onclick = () => { openMode = key; renderChoices(); };
+    openWrap.appendChild(b);
+  });
+}
+
+applyLabelStyle(labelStyle);
+sizeFaces();
+
+/* =====================================================================
+   Gesture engine
+   - nothing open + drag  → scroll the shelf (with momentum)
+   - quick tap            → flip album out / flip the open one closed
+   - hold 420ms           → flip out under the finger
+   - anything open + drag → step through albums, shelf glides along
+   ===================================================================== */
+const vp = document.getElementById("shelf-viewport");
+const STEP_PX = 110;
+let pDown = false, moved = false, startX = 0, lastX = 0, scrollStart = 0;
+let vel = 0, raf = null, holdTimer = null, downTarget = null;
+let stepping = false, stepAccum = 0;
+
+function followOpen() {
+  smoothScrollTo(vp, settledLeft(openIdx) - vp.clientWidth * 0.12, 320);
+}
+
+function stepAlbum(dir) {
+  if (openIdx === null) return;
+  const next = Math.min(Math.max(openIdx + dir, 0), LIBRARY.length - 1);
+  if (next === openIdx) return;
+  openAlbum(next, false);
+  followOpen();
+}
+
+vp.addEventListener("pointerdown", e => {
+  pDown = true; moved = false;
+  startX = lastX = e.clientX;
+  scrollStart = vp.scrollLeft;
+  cancelAnimationFrame(raf); vel = 0;
+  downTarget = e.target.closest(".spine");
+
+  stepping = openIdx !== null;
+  stepAccum = 0;
+
+  if (downTarget && openIdx === null) {
+    holdTimer = setTimeout(() => {
+      if (!moved && pDown) {
+        openAlbum(+downTarget.dataset.idx);
+        stepping = true;
+        stepAccum = 0;
+        lastX = startX;
+      }
+    }, CONFIG.LONG_PRESS_MS);
+  }
+});
+
+window.addEventListener("pointermove", e => {
+  if (!pDown) return;
+
+  if (stepping) {
+    stepAccum += e.clientX - lastX;
+    lastX = e.clientX;
+    while (stepAccum <= -STEP_PX) { stepAlbum(1);  stepAccum += STEP_PX; }
+    while (stepAccum >=  STEP_PX) { stepAlbum(-1); stepAccum -= STEP_PX; }
+    return;
+  }
+
+  if (Math.abs(e.clientX - startX) > 8) {
+    moved = true;
+    clearTimeout(holdTimer);
+  }
+  vel = e.clientX - lastX; lastX = e.clientX;
+  if (moved) vp.scrollLeft = scrollStart - (e.clientX - startX);
+});
+
+window.addEventListener("pointerup", e => {
+  if (!pDown) return;
+  pDown = false;
+  clearTimeout(holdTimer);
+
+  if (stepping) {
+    stepping = false;
+    if (Math.abs(e.clientX - startX) <= 8 && downTarget) {
+      if (downTarget.classList.contains("open")) {
+        closeAlbum();
+      } else {
+        openAlbum(+downTarget.dataset.idx);
+      }
+    }
+    return;
+  }
+
+  if (moved) {
+    (function glide() {
+      vp.scrollLeft -= vel;
+      vel *= 0.94;
+      if (Math.abs(vel) > 0.4) raf = requestAnimationFrame(glide);
+    })();
+    return;
+  }
+
+  if (!downTarget) return;
+  openAlbum(+downTarget.dataset.idx);
+});
+</script>
+</body>
+</html>
