@@ -203,7 +203,9 @@ function buildShelf(): void {
           `<div class="spine-label title-label" style="${labelCss}">${titleSpan}</div>`
         : `<div class="spine-label" style="${labelCss}; color:${baseInk}">${artistSpan}&nbsp;&nbsp;${titleSpan}</div>`;
 
+    const glowBg = a.artworkUrl ? `background-image:url('${a.artworkUrl}')` : `background:${a.primaryColor}`;
     el.innerHTML = `
+      <div class="glow" style="${glowBg}"></div>
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
           ${labelHtml}
@@ -233,6 +235,7 @@ function buildShelf(): void {
           <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
         </div>
         <div class="tracks"></div>
+        <button class="panel-remove">Remove from shelf</button>
       </div>
       <div class="eq"><i></i><i></i><i></i></div>`;
 
@@ -251,6 +254,29 @@ function buildShelf(): void {
     el.querySelector('.play')!.addEventListener('click', (e) => {
       stop(e);
       void onPlayButton(i);
+    });
+    // Remove from shelf — two-tap to arm, so it can't fire by accident on a wall.
+    const removeBtn = el.querySelector('.panel-remove') as HTMLButtonElement;
+    let removeArmed = false;
+    let removeTimer: ReturnType<typeof setTimeout> | null = null;
+    removeBtn.addEventListener('click', (e) => {
+      stop(e);
+      if (!removeArmed) {
+        removeArmed = true;
+        removeBtn.textContent = 'Tap again to remove';
+        removeBtn.classList.add('armed');
+        removeTimer = setTimeout(() => {
+          removeArmed = false;
+          removeBtn.textContent = 'Remove from shelf';
+          removeBtn.classList.remove('armed');
+        }, 3000);
+        return;
+      }
+      if (removeTimer) clearTimeout(removeTimer);
+      void client
+        .removeFromShelf(a.albumId)
+        .then(() => showToast('Removed'))
+        .catch(() => showToast('Remove failed'));
     });
     (el.querySelector('.vol input') as HTMLInputElement).addEventListener('input', (e) => {
       volume = +(e.target as HTMLInputElement).value;

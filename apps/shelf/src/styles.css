@@ -156,6 +156,19 @@ body {
 
 .spine.open { z-index: 3; margin: 0 1.5vw; }
 .spine.open .flap { transform: rotateY(-90deg); }
+
+/* Blurred cover glow behind an opened album — bleeds its colors out around the
+   cover to accentuate the artwork. Invisible until the album opens. */
+.glow {
+  position: absolute; top: 0; left: 0;
+  width: var(--cover-w); height: 100%;
+  background-size: cover; background-position: center;
+  filter: blur(7vh) saturate(1.6);
+  transform: scale(1.25);
+  opacity: 0; z-index: 0; pointer-events: none;
+  transition: opacity 0.5s ease 0.2s;
+}
+.spine.open .glow { opacity: 0.75; }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 
@@ -297,6 +310,13 @@ button {
   border-top: 1px solid rgba(236,231,221,0.12);
 }
 .tracks::-webkit-scrollbar { display: none; }
+.panel-remove {
+  align-self: flex-start; margin-top: 1.6vh;
+  background: transparent; color: var(--ink-dim);
+  border: 1px solid rgba(236,231,221,0.2);
+  font-size: 1.7vh; font-weight: 600; padding: 0.8vh 2vh; letter-spacing: 0.03em;
+}
+.panel-remove.armed { color: #e5686a; border-color: #e5686a; }
 .track {
   display: flex; align-items: baseline; gap: 1.2vh;
   padding: 1.1vh 0.4vh;
