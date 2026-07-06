@@ -7,6 +7,7 @@
   --ink-dim: #9a948a;
   --brass: #8a8578;
   --flip-t: 0.55s;
+  --year-gutter: 3.2rem;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; background: var(--bg); }
@@ -347,6 +348,18 @@ button {
 .spine.layout-bottom .spine-label:last-of-type { margin-bottom: 16px; }
 .spine.layout-split .artist-label { margin-top: 16px; }
 .spine.layout-split .title-label { margin-bottom: 16px; }
+
+/* Year gutter (global): reserve a uniform strip on the year's end so the
+   imprint never collides with the label and every spine aligns shelf-wide.
+   Padding lives on .face-spine (inside the plastic lip); the .cat sits in it. */
+#shelf.ygut-top .face-spine { padding-top: var(--year-gutter); }
+#shelf.ygut-bottom .face-spine { padding-bottom: var(--year-gutter); }
+/* The gutter already clears that end, so drop the redundant label margin there
+   to avoid double-padding (keeps the label snug against the reserved strip). */
+#shelf.ygut-top .spine.layout-top .spine-label:first-of-type,
+#shelf.ygut-top .spine.layout-split .artist-label { margin-top: 0; }
+#shelf.ygut-bottom .spine.layout-bottom .spine-label:last-of-type,
+#shelf.ygut-bottom .spine.layout-split .title-label { margin-bottom: 0; }
 /* spine text direction: bottom → top (classic US CD spine) rotates the label 180° */
 #shelf.text-btt .spine-label { transform: rotate(180deg); }
 

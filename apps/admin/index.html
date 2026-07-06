@@ -44,6 +44,15 @@
       <input type="file" id="ov-spine" accept="image/*">
     </div>
     <div class="field">
+      <label>Spine mode</label>
+      <select id="ov-spinemode">
+        <option value="">Default (global)</option>
+        <option value="art">Generated (art)</option>
+        <option value="scan">Real scan</option>
+        <option value="palette">Palette (plain)</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Label font</label>
       <select id="ov-font">
         <option value="">Default (generated)</option>
@@ -66,24 +75,14 @@
         <option value="bottom">Bottom</option>
       </select>
     </div>
-    <div class="field2">
-      <div class="field">
-        <label>Album year</label>
-        <select id="ov-year">
-          <option value="">Default (global)</option>
-          <option value="off">Off</option>
-          <option value="vertical">Vertical</option>
-          <option value="horizontal">Horizontal</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Year position</label>
-        <select id="ov-yearpos">
-          <option value="">Default (global)</option>
-          <option value="top">Top</option>
-          <option value="bottom">Bottom</option>
-        </select>
-      </div>
+    <div class="field">
+      <label>Album year <span class="hint">(position is a global setting)</span></label>
+      <select id="ov-year">
+        <option value="">Default (global)</option>
+        <option value="off">Off</option>
+        <option value="vertical">Vertical</option>
+        <option value="horizontal">Horizontal</option>
+      </select>
     </div>
     <div class="field2">
       <div class="field">

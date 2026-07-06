@@ -102,10 +102,11 @@ export interface ShelfItem {
   labelTracking: string | null;
   artistColor: string | null;
   titleColor: string | null;
-  /** Per-album overrides for layout/year (null = inherit the global setting). */
+  /** Per-album overrides (null = inherit the global setting). Year position is
+      global-only, so it isn't here. */
+  overrideSpineMode: SpineMode | null;
   overrideLayout: LabelLayoutFixed | null;
   overrideYearDisplay: YearDisplay | null;
-  overrideYearPos: YearPos | null;
   /** Cover artwork URL (local cached path preferred, else remote). */
   artworkUrl: string | null;
 }
@@ -138,17 +139,18 @@ export type YearPos = 'top' | 'bottom';
 /** A concrete label layout (per-album; no 'varied'). */
 export type LabelLayoutFixed = 'split' | 'center' | 'top' | 'bottom';
 
-/** Per-album manual overrides (admin), all optional; null/absent = inherit global. */
+/** Per-album manual overrides (admin), all optional; null/absent = inherit global.
+    Year *position* is intentionally global-only (drives the shared gutter). */
 export interface AlbumOverride {
   spinePath?: string | null;
   coverPath?: string | null;
+  spineMode?: SpineMode | null;
   font?: string | null;
   tracking?: string | null;
   artistColor?: string | null;
   titleColor?: string | null;
   layout?: LabelLayoutFixed | null;
   yearDisplay?: YearDisplay | null;
-  yearPos?: YearPos | null;
 }
 
 export interface Settings {

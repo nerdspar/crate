@@ -132,9 +132,10 @@ function buildShelf(): void {
     // Spine source precedence: uploaded custom spine → real scan → cover
     // edge-slice → flat gradient. A custom spine keeps the label (with overrides);
     // only a real scan (its own text baked in) suppresses the generated label.
+    const spineMode = a.overrideSpineMode ?? settings.spineMode; // per-album override wins
     const useCustom = !!a.customSpineUrl;
-    const useScan = !useCustom && settings.spineMode === 'scan' && !!a.spineScanUrl;
-    const useStrip = !useCustom && !useScan && settings.spineMode !== 'palette' && !!a.spineStripUrl;
+    const useScan = !useCustom && spineMode === 'scan' && !!a.spineScanUrl;
+    const useStrip = !useCustom && !useScan && spineMode !== 'palette' && !!a.spineStripUrl;
     const layout = a.overrideLayout ?? resolveLayout(a); // per-album override wins
     const el = document.createElement('div');
     el.className = `spine layout-${layout}` + (useScan ? ' scan' : '');
@@ -161,11 +162,11 @@ function buildShelf(): void {
           ? `background-image:url('${a.spineStripUrl}')`
           : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
-    const yearDisplay = a.overrideYearDisplay ?? settings.yearDisplay; // per-album wins
-    const yearPos = a.overrideYearPos ?? settings.yearPos;
+    // Year display/orientation is per-album; position is global (drives the shared gutter).
+    const yearDisplay = a.overrideYearDisplay ?? settings.yearDisplay;
     const yearOn = yearDisplay !== 'off' && !useScan && a.year;
     const cat = yearOn
-      ? `<div class="cat cat-${yearPos}${yearDisplay === 'horizontal' ? ' horizontal' : ''}" style="color:${baseInk}">${a.year}</div>`
+      ? `<div class="cat cat-${settings.yearPos}${yearDisplay === 'horizontal' ? ' horizontal' : ''}" style="color:${baseInk}">${a.year}</div>`
       : '';
 
     // Split layout puts the artist and title at opposite ends of the spine;
@@ -455,6 +456,15 @@ function applyTextDir(): void {
   shelf.classList.toggle('text-btt', settings.spineTextDir === 'btt');
 }
 
+/** Reserve a uniform year gutter (global) so every label aligns and never
+    collides with the year. Only the year's side is padded; off = no gutter. */
+function applyYearGutter(): void {
+  shelf.classList.remove('ygut-top', 'ygut-bottom');
+  if (settings.yearDisplay !== 'off') {
+    shelf.classList.add(settings.yearPos === 'top' ? 'ygut-top' : 'ygut-bottom');
+  }
+}
+
 function choiceRow(
   wrapId: string,
   opts: ReadonlyArray<readonly [string, string, string]>,
@@ -534,6 +544,7 @@ function renderChoices(): void {
     (k) => settings.yearDisplay === k,
     (k) => {
       settings.yearDisplay = k as YearDisplay;
+      applyYearGutter();
       buildShelf();
       sizeFaces();
       void client.putSettings({ yearDisplay: settings.yearDisplay }).catch(() => {});
@@ -546,6 +557,7 @@ function renderChoices(): void {
     (k) => settings.yearPos === k,
     (k) => {
       settings.yearPos = k as YearPos;
+      applyYearGutter();
       buildShelf();
       sizeFaces();
       void client.putSettings({ yearPos: settings.yearPos }).catch(() => {});
@@ -909,6 +921,7 @@ function applySettings(s: Settings): void {
   settings = s;
   openMode = s.openMode;
   applyTextDir();
+  applyYearGutter();
   if (
     s.spineMode !== prev.spineMode ||
     s.spineThickness !== prev.spineThickness ||
@@ -941,6 +954,7 @@ async function boot(): Promise<void> {
 
   buildShelf();
   applyTextDir();
+  applyYearGutter();
   sizeFaces();
   renderChoices();
   handleState(playersRes.state);

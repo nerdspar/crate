@@ -8,10 +8,10 @@ import type {
   PlayerState,
   Settings,
   ShelfItem,
+  SpineMode,
   Stack,
   Track,
   YearDisplay,
-  YearPos,
 } from './domain.js';
 
 export interface AlbumDetail {
@@ -22,13 +22,13 @@ export interface AlbumDetail {
 
 /** Per-album label override (uploads go through a separate multipart endpoint). */
 export interface OverrideRequest {
+  spineMode?: SpineMode | null;
   font?: string | null;
   tracking?: string | null;
   artistColor?: string | null;
   titleColor?: string | null;
   layout?: LabelLayoutFixed | null;
   yearDisplay?: YearDisplay | null;
-  yearPos?: YearPos | null;
 }
 
 export interface ShelfResponse {
