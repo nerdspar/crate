@@ -110,12 +110,19 @@ function coverW(): number {
 function panelW(): number {
   return Math.min(window.innerWidth * 0.3, 420);
 }
+/** Uniform spine width, proportional to a real CD jewel case (~10mm spine on a
+    ~117mm case ≈ 9% of the case height). Every CD is the same size. Per-album
+    variation (a fatter double album, SPINE_RENDERING §4) is a separate opt-in. */
+const CD_SPINE_RATIO = 0.09;
+function spineWidthPx(): number {
+  return Math.round(Math.max(34, Math.min(coverW() * CD_SPINE_RATIO, 90)));
+}
 
 /* ---------- Build the shelf ---------- */
 function buildShelf(): void {
   shelf.innerHTML = '';
   items.forEach((a, i) => {
-    const spineW = a.spineWidth;
+    const spineW = spineWidthPx(); // uniform — every CD is the same thickness
     // 'scan' mode: real spine image when we have one, else fall back to generated.
     const useScan = settings.spineMode === 'scan' && !!a.spineScanUrl;
     const el = document.createElement('div');
@@ -137,9 +144,9 @@ function buildShelf(): void {
         ? `background-image:url('${a.spineStripUrl}')`
         : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
-    // Catalog imprint on wider spines with a known year (SPINE_RENDERING §1).
-    // Suppressed for scans — the scan carries its own label/imprint.
-    const cat = !useScan && spineW >= 56 && a.year ? `<div class="cat" style="color:${ink}">${a.year}</div>` : '';
+    // Catalog imprint (release year) at the foot (SPINE_RENDERING §1). Suppressed
+    // for scans — the scan carries its own label/imprint.
+    const cat = !useScan && a.year ? `<div class="cat" style="color:${ink}">${a.year}</div>` : '';
 
     el.innerHTML = `
       <div class="flap">
@@ -220,12 +227,12 @@ function escapeHtml(s: string): string {
 
 function sizeFaces(): void {
   const cw = coverW();
+  const sw = spineWidthPx();
   document.querySelectorAll<HTMLElement>('.spine').forEach((el) => {
     el.style.setProperty('--cover-w', cw + 'px');
     el.style.setProperty('--panel-w', panelW() + 'px');
-    if (el.classList.contains('open')) {
-      el.style.width = openWidth(el) + 'px';
-    }
+    el.style.setProperty('--spine-w', sw + 'px');
+    el.style.width = el.classList.contains('open') ? openWidth(el) + 'px' : sw + 'px';
   });
 }
 window.addEventListener('resize', sizeFaces);
