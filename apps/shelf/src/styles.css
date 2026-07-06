@@ -404,19 +404,28 @@ button {
   background: rgba(10, 9, 11, 0.72);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto; padding: 6vh 4vw;
   opacity: 0; pointer-events: none;
   transition: opacity 0.3s ease;
   z-index: 15;
 }
 #settings.open { opacity: 1; pointer-events: auto; }
+#settings::-webkit-scrollbar { display: none; }
 
-#settings-card { display: flex; flex-direction: column; gap: 3vh; min-width: 40vw; }
+/* Multi-column so the (now longer) settings fit the wide, short kiosk without a
+   long scroll; rows never split across columns. */
+#settings-card {
+  columns: 3 24vw; column-gap: 5vw;
+  max-width: 92vw;
+}
+#settings-card > * { break-inside: avoid; }
 #settings-card .eyebrow {
   font-size: 2vh; letter-spacing: 0.32em; text-transform: uppercase;
   color: var(--brass); font-weight: 600;
+  margin-bottom: 2vh;
 }
-.setting-row { display: flex; flex-direction: column; gap: 1.6vh; }
+.setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }
 .setting-row .label { font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 500; }
 .choices { display: flex; gap: 1.4vh; flex-wrap: wrap; }
 .choice {

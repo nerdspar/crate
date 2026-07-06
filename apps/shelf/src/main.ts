@@ -471,7 +471,10 @@ function showToast(msg: string): void {
 
 /* ---------- Settings ---------- */
 const settingsEl = document.getElementById('settings') as HTMLElement;
-(document.getElementById('gear') as HTMLElement).onclick = () => settingsEl.classList.add('open');
+(document.getElementById('gear') as HTMLElement).onclick = () => {
+  settingsEl.classList.add('open');
+  refreshSystem(); // device status (brightness/IP/appliance) lives in Settings now
+};
 (document.getElementById('settings-close') as HTMLElement).onclick = () => settingsEl.classList.remove('open');
 settingsEl.addEventListener('click', (e) => {
   if (e.target === settingsEl) settingsEl.classList.remove('open');
@@ -720,7 +723,6 @@ function openCC(): void {
   renderCCNow();
   renderCCRooms();
   renderCCSort();
-  refreshSystem();
 }
 function closeCC(): void {
   cc.classList.remove('open');
