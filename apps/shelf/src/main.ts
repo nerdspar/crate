@@ -65,6 +65,9 @@ let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, 
 /** Latch: the user paused. Some MA player providers report a paused queue as
     'idle', so we hold the now-playing paused until resume / a new play. */
 let userPaused = false;
+/** After a user pause, ignore stale 'playing' frames for this player until this
+    time (the pause command hasn't propagated through MA yet). */
+let pauseGuardUntil = 0;
 
 const trackCache = new Map<string, Track[]>();
 
@@ -309,6 +312,7 @@ async function onPlayButton(i: number): Promise<void> {
     const pausing = now.state === 'playing';
     now.state = pausing ? 'paused' : 'playing';
     userPaused = pausing;
+    pauseGuardUntil = pausing ? performance.now() + 3000 : 0;
     if (!pausing) now.at = performance.now();
     applyNow();
     await client.transport({ playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
@@ -332,6 +336,7 @@ async function play(i: number, trackIndex = 0): Promise<void> {
   }
   // Optimistic now-state; the next WS state/progress corrects it.
   userPaused = false;
+  pauseGuardUntil = 0;
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   playingIdx = i;
   playingTrack = trackIndex;
@@ -539,12 +544,16 @@ function handleState(states: PlayerState[]): void {
   // an explicitly paused one. Album identity is sticky per player so a frame that
   // loses resolution doesn't wipe it. If nothing is playing/paused but the user
   // just paused (MA may report the queue as idle), hold it paused in place.
+  // During the pause-guard window, drop stale 'playing' frames for the paused
+  // player so a not-yet-propagated pause command can't re-adopt it as playing.
+  const guard = performance.now() < pauseGuardUntil;
+  const pool = guard ? states.filter((s) => !(s.playerId === now.playerId && s.state === 'playing')) : states;
   const playingS =
-    states.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
-    states.find((s) => s.state === 'playing' && s.nowPlaying);
+    pool.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
+    pool.find((s) => s.state === 'playing' && s.nowPlaying);
   const pausedS =
-    states.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
-    states.find((s) => s.state === 'paused' && s.nowPlaying);
+    pool.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
+    pool.find((s) => s.state === 'paused' && s.nowPlaying);
   const cand = playingS ?? pausedS;
   if (cand?.nowPlaying) {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
