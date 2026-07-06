@@ -530,16 +530,21 @@ function handleState(states: PlayerState[]): void {
   }
   // Now-playing: a playing player mapped to a shelf album — includes playback
   // started externally (phone / Sonos app), which MA reports over the same WS.
-  const cand =
-    states.find((s) => s.nowPlaying?.albumId && (s.state === 'playing' || s.state === 'paused')) ??
-    states.find((s) => s.nowPlaying && (s.state === 'playing' || s.state === 'paused'));
-  if (cand?.nowPlaying) {
+  // Any player that's playing or paused holds a now-playing album. Prefer one
+  // whose album resolved to a shelf item; fall back to any such player. Album
+  // identity is sticky per player so a transient frame that loses resolution (or
+  // a paused frame) doesn't wipe the now-playing — we only clear on true idle.
+  const pp = states.filter((s) => s.state === 'playing' || s.state === 'paused');
+  const cand = pp.find((s) => s.nowPlaying?.albumId) ?? pp.find((s) => s.nowPlaying) ?? pp[0];
+  if (cand) {
+    const npd = cand.nowPlaying;
+    const samePlayer = cand.playerId === now.playerId;
     now = {
       playerId: cand.playerId,
-      albumId: cand.nowPlaying.albumId,
-      trackIndex: cand.nowPlaying.trackIndex ?? 0,
-      elapsed: cand.nowPlaying.elapsed ?? 0,
-      duration: cand.nowPlaying.duration ?? 0,
+      albumId: npd?.albumId ?? (samePlayer ? now.albumId : null),
+      trackIndex: npd?.trackIndex ?? (samePlayer ? now.trackIndex : 0),
+      elapsed: npd?.elapsed ?? 0,
+      duration: npd?.duration ?? (samePlayer ? now.duration : 0),
       state: cand.state === 'playing' ? 'playing' : 'paused',
       at: performance.now(),
     };
