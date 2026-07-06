@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type Track, type WsMessage, type YearDisplay, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -490,6 +490,12 @@ function applyYearGutter(): void {
   }
 }
 
+/** Year imprint legibility (global): 'bold' bumps size/opacity via a shelf class
+    (styling only, so no rebuild is needed). */
+function applyYearEmphasis(): void {
+  shelf.classList.toggle('year-bold', settings.yearEmphasis === 'bold');
+}
+
 function choiceRow(
   wrapId: string,
   opts: ReadonlyArray<readonly [string, string, string]>,
@@ -601,6 +607,21 @@ function renderChoices(): void {
       buildShelf();
       sizeFaces();
       void client.putSettings({ yearPos: settings.yearPos }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'yearemph-choices',
+    [
+      ['thin', 'Thin', 'Faint catalog stamp'],
+      ['bold', 'Bold', 'Readable from across the room'],
+    ],
+    (k) => settings.yearEmphasis === k,
+    (k) => {
+      settings.yearEmphasis = k as YearEmphasis;
+      applyYearEmphasis();
+      renderChoices();
+      void client.putSettings({ yearEmphasis: settings.yearEmphasis }).catch(() => {});
     },
   );
 
@@ -1222,6 +1243,7 @@ function applySettings(s: Settings): void {
   openMode = s.openMode;
   applyTextDir();
   applyYearGutter();
+  applyYearEmphasis();
   if (s.sortBy !== prev.sortBy) applySort();
   if (
     s.sortBy !== prev.sortBy ||
@@ -1261,6 +1283,7 @@ async function boot(): Promise<void> {
   buildShelf();
   applyTextDir();
   applyYearGutter();
+  applyYearEmphasis();
   sizeFaces();
   renderChoices();
   handleState(playersRes.state);

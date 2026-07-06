@@ -145,6 +145,9 @@ export type InkMode = 'contrast' | 'match';
 export type YearDisplay = 'off' | 'vertical' | 'horizontal';
 /** Which end of the spine the year imprint sits at. */
 export type YearPos = 'top' | 'bottom';
+/** Year imprint legibility: 'thin' = the faint ported catalog stamp; 'bold' =
+    larger and more opaque, readable from across the room on a wall kiosk. */
+export type YearEmphasis = 'thin' | 'bold';
 
 /** A concrete label layout (per-album; no 'varied'). */
 export type LabelLayoutFixed = 'split' | 'center' | 'top' | 'bottom';
@@ -174,6 +177,7 @@ export interface Settings {
   inkMode: InkMode;
   yearDisplay: YearDisplay;
   yearPos: YearPos;
+  yearEmphasis: YearEmphasis;
   sortBy: SortBy;
   defaultPlayerId: string | null;
   longPressMs: number;
@@ -195,6 +199,7 @@ export const DEFAULT_SETTINGS: Settings = {
   inkMode: 'contrast',
   yearDisplay: 'vertical',
   yearPos: 'bottom',
+  yearEmphasis: 'thin',
   sortBy: 'artist',
   defaultPlayerId: null,
   longPressMs: 420,

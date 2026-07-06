@@ -101,6 +101,9 @@ body {
 .cat-bottom { bottom: 8px; }
 .cat-top { top: 8px; }
 .cat.horizontal { writing-mode: horizontal-tb; letter-spacing: 0.1em; }
+/* 'bold' year emphasis: bigger + more opaque so it reads on a wall kiosk,
+   while 'thin' (default) keeps the faint ported catalog-stamp look. */
+#shelf.year-bold .cat { font-size: 10px; font-weight: 600; opacity: 0.85; }
 
 .face-cover {
   width: var(--cover-w);
