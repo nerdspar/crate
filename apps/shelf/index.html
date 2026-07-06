@@ -62,88 +62,95 @@
 <div id="sleep"></div>
 
 <div id="settings">
-  <button id="settings-close" class="room" style="position:absolute; top:4vh; right:4vw;">Done</button>
+  <button id="settings-close" class="room" style="position:absolute; top:4vh; right:4vw; z-index:2;">Done</button>
   <div id="settings-card">
-    <div class="eyebrow">Shelf settings</div>
-    <div class="setting-row">
-      <div class="label">Spine art</div>
-      <div class="choices" id="spine-choices"></div>
+    <div class="set-tabs">
+      <button class="set-tab on" data-pane="shelf">Shelf</button>
+      <button class="set-tab" data-pane="device">Device</button>
     </div>
-    <div class="setting-row">
-      <div class="label">Spine thickness</div>
-      <div class="choices" id="thickness-choices"></div>
+    <div class="set-pane on" data-pane="shelf">
+      <div class="setting-row">
+        <div class="label">Spine art</div>
+        <div class="choices" id="spine-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Spine thickness</div>
+        <div class="choices" id="thickness-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Spine width</div>
+        <div class="choices" id="width-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Spine text direction</div>
+        <div class="choices" id="dir-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Label ink</div>
+        <div class="choices" id="ink-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Album year</div>
+        <div class="choices" id="year-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Year position</div>
+        <div class="choices" id="yearpos-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Year emphasis</div>
+        <div class="choices" id="yearemph-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Label layout</div>
+        <div class="choices" id="layout-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Typography</div>
+        <div class="choices" id="vary-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">Opening an album shows</div>
+        <div class="choices" id="open-choices"></div>
+      </div>
+      <div class="setting-row">
+        <div class="label">After playing</div>
+        <div class="choices" id="afterplay-choices"></div>
+      </div>
     </div>
-    <div class="setting-row">
-      <div class="label">Spine width</div>
-      <div class="choices" id="width-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Spine text direction</div>
-      <div class="choices" id="dir-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Label ink</div>
-      <div class="choices" id="ink-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Album year</div>
-      <div class="choices" id="year-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Year position</div>
-      <div class="choices" id="yearpos-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Year emphasis</div>
-      <div class="choices" id="yearemph-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Label layout</div>
-      <div class="choices" id="layout-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Typography</div>
-      <div class="choices" id="vary-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">Opening an album shows</div>
-      <div class="choices" id="open-choices"></div>
-    </div>
-    <div class="setting-row">
-      <div class="label">After playing</div>
-      <div class="choices" id="afterplay-choices"></div>
-    </div>
-
-    <div class="eyebrow">Device</div>
-    <div class="setting-row">
-      <div class="label">Brightness</div>
-      <input id="cc-brightness" type="range" min="8" max="100" value="100">
-    </div>
-    <div class="setting-row">
-      <div class="label">Display &amp; system</div>
-      <div class="cc-syscols">
-        <div class="cc-syscol">
-          <div class="cc-block-label">Display</div>
-          <div class="cc-sys-actions">
-            <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
+    <div class="set-pane" data-pane="device">
+      <div class="setting-row">
+        <div class="label">Brightness</div>
+        <input id="cc-brightness" type="range" min="8" max="100" value="100">
+      </div>
+      <div class="setting-row">
+        <div class="label">Display &amp; system</div>
+        <div class="cc-syscols">
+          <div class="cc-syscol">
+            <div class="cc-block-label">Display</div>
+            <div class="cc-sys-actions">
+              <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
+            </div>
           </div>
-        </div>
-        <div class="cc-syscol">
-          <div class="cc-block-label">System</div>
-          <div class="cc-sys-actions">
-            <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
-            <button id="cc-restart" class="cc-sysbtn">Restart app</button>
-            <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
+          <div class="cc-syscol">
+            <div class="cc-block-label">System</div>
+            <div class="cc-sys-actions">
+              <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
+              <button id="cc-restart" class="cc-sysbtn">Restart app</button>
+              <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
+            </div>
           </div>
-        </div>
-        <div class="cc-syscol">
-          <div class="cc-block-label">Status</div>
-          <div class="cc-sysline"><span id="cc-ip">—</span><span class="cc-ver" id="cc-ver"></span></div>
+          <div class="cc-syscol">
+            <div class="cc-block-label">Status</div>
+            <div class="cc-sysline"><span id="cc-ip">—</span><span class="cc-ver" id="cc-ver"></span></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<div id="set-tip"></div>
 
 <div id="toast"></div>
 

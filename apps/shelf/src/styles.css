@@ -404,8 +404,7 @@ button {
   background: rgba(10, 9, 11, 0.72);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  display: flex; align-items: flex-start; justify-content: center;
-  overflow-y: auto; padding: 6vh 4vw;
+  display: block; overflow-y: auto; padding: 6vh 4vw;
   opacity: 0; pointer-events: none;
   transition: opacity 0.3s ease;
   z-index: 15;
@@ -413,20 +412,37 @@ button {
 #settings.open { opacity: 1; pointer-events: auto; }
 #settings::-webkit-scrollbar { display: none; }
 
-/* Multi-column so the (now longer) settings fit the wide, short kiosk without a
-   long scroll; rows never split across columns. */
-#settings-card {
-  columns: 3 24vw; column-gap: 5vw;
-  max-width: 92vw;
+#settings-card { display: flex; flex-direction: column; gap: 3vh; width: 92vw; max-width: 92vw; margin: 0 auto; }
+
+/* Tabs: Shelf appearance vs Device (hardware). */
+.set-tabs { display: flex; gap: 1.6vw; }
+.set-tab {
+  background: transparent; color: var(--ink-dim);
+  border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
+  font-size: 2.4vh; font-weight: 600; padding: 1vh 4vw; letter-spacing: 0.04em;
 }
-#settings-card > * { break-inside: avoid; }
-#settings-card .eyebrow {
-  font-size: 2vh; letter-spacing: 0.32em; text-transform: uppercase;
-  color: var(--brass); font-weight: 600;
-  margin-bottom: 2vh;
-}
+.set-tab.on { color: var(--ink); border-color: var(--ink); }
+
+/* Each pane is multi-column so it fits the wide, short kiosk; rows never split. */
+.set-pane { display: none; }
+.set-pane.on { display: block; columns: 3 24vw; column-gap: 5vw; }
+.set-pane > * { break-inside: avoid; }
+
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }
-.setting-row .label { font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 500; }
+.setting-row.hidden-row { display: none; }
+.setting-row .label {
+  font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 500;
+  display: flex; align-items: center; gap: 1.4vw;
+}
+/* "?" help affordance next to a setting label; taps show an anchored tooltip. */
+.tip-btn {
+  flex-shrink: 0; width: 3vh; height: 3vh; line-height: 1;
+  border-radius: 50%; border: 1px solid rgba(236,231,221,0.35);
+  background: transparent; color: var(--ink-dim);
+  font-family: system-ui, sans-serif; font-size: 1.7vh; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.tip-btn:active { color: var(--ink); border-color: var(--ink); }
 .choices { display: flex; gap: 1.4vh; flex-wrap: wrap; }
 .choice {
   background: transparent; color: var(--ink-dim);
@@ -436,10 +452,18 @@ button {
   letter-spacing: 0.04em;
 }
 .choice.on { color: var(--ink); border-color: var(--ink); }
-.choice .hint {
-  display: block; font-size: 1.8vh; font-weight: 500;
-  color: var(--ink-dim); letter-spacing: 0.02em; margin-top: 0.4vh;
+
+/* Anchored help tooltip (shown on "?" tap; dismissed by tapping elsewhere). */
+#set-tip {
+  position: fixed; z-index: 30; max-width: 56vw;
+  background: var(--ink); color: #131114;
+  font-size: 2vh; font-weight: 500; line-height: 1.45; white-space: pre-line;
+  padding: 1.4vh 2.2vh; border-radius: 1.2vh;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  opacity: 0; pointer-events: none; transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
+#set-tip.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
 
 /* ---------- Control center (swipe down from top edge, §6) ---------- */
 #cc-grip {
@@ -586,9 +610,9 @@ body.idle #find-grip::after { opacity: 0; }
 }
 #sleep.on { opacity: 1; pointer-events: auto; }
 
-/* Search slivers: non-matching spines collapse to a thin blank plate */
-.spine.sliver .spine-label, .spine.sliver .cat, .spine.sliver .cover-btn { display: none; }
-.spine.sliver { opacity: 0.5; }
+/* Search: non-matching spines are hidden so only matches remain (no leftover
+   slivers of album art). */
+.spine.sliver { display: none; }
 
 /* ---------- Find bar: swipe up from the bottom edge ---------- */
 #find-grip {

@@ -129,7 +129,7 @@ function spineBaseW(): number {
     the width around it (SPINE_RENDERING §4). Clamped so an EP is still grabbable
     and a boxed set never dominates the shelf. */
 const WIDTH_REF_SEC = 2400;
-const SLIVER_W = 5; // search non-matches collapse to a thin sliver
+const SLIVER_W = 0; // search non-matches are hidden (.sliver → display:none); width 0 keeps settledLeft exact
 /** Effective spine width (px) for one album, honoring the width mode and the
     live search filter. Deterministic → layout math (settledLeft) stays exact. */
 function spineWidthPx(a: ShelfItem): number {
@@ -477,10 +477,34 @@ function openSettings(): void {
   settingsEl.classList.add('open');
   refreshSystem();
 }
+const settingsCard = document.getElementById('settings-card') as HTMLElement;
 (document.getElementById('settings-close') as HTMLElement).onclick = () => settingsEl.classList.remove('open');
+// Tap any black space (the overlay padding or empty areas of the card/panes) to close.
 settingsEl.addEventListener('click', (e) => {
-  if (e.target === settingsEl) settingsEl.classList.remove('open');
+  const t = e.target as HTMLElement;
+  if (t === settingsEl || t === settingsCard || t.classList.contains('set-pane')) settingsEl.classList.remove('open');
 });
+
+/** Close an open sheet when the user swipes it back the way it came (opposite of
+    the opening swipe). Ignores drags that begin on a slider so volume still works. */
+function swipeToClose(sheet: HTMLElement, dir: 'up' | 'down', close: () => void): void {
+  let startY = 0;
+  let active = false;
+  sheet.addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement).closest('input[type="range"]')) {
+      active = false;
+      return;
+    }
+    active = true;
+    startY = e.clientY;
+  });
+  sheet.addEventListener('pointerup', (e) => {
+    if (!active) return;
+    active = false;
+    const dy = e.clientY - startY;
+    if (dir === 'up' ? dy < -45 : dy > 45) close();
+  });
+}
 
 function applyTextDir(): void {
   shelf.classList.toggle('text-btt', settings.spineTextDir === 'btt');
@@ -510,14 +534,72 @@ function choiceRow(
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
   wrap.innerHTML = '';
-  for (const [key, name, hint] of opts) {
+  for (const [key, name] of opts) {
     const b = document.createElement('button');
     b.className = 'choice' + (isOn(key) ? ' on' : '');
-    b.innerHTML = `${escapeHtml(name)}${hint ? `<span class="hint">${escapeHtml(hint)}</span>` : ''}`;
+    b.textContent = name; // compact, uniform buttons — explanations move to the "?" tooltip
     b.onclick = () => onPick(key);
     wrap.appendChild(b);
   }
+  attachHelp(wrap, opts);
 }
+
+/* ---------- Settings help tooltip ---------- */
+const setTip = document.getElementById('set-tip') as HTMLElement;
+let tipAnchor: HTMLElement | null = null;
+function showTip(anchor: HTMLElement, text: string): void {
+  if (tipAnchor === anchor) {
+    hideTip();
+    return;
+  }
+  setTip.textContent = text;
+  setTip.classList.add('show');
+  const r = anchor.getBoundingClientRect();
+  let left = r.left + r.width / 2 - setTip.offsetWidth / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - setTip.offsetWidth - 8));
+  let top = r.bottom + 8;
+  if (top + setTip.offsetHeight > window.innerHeight - 8) top = r.top - setTip.offsetHeight - 8;
+  setTip.style.left = `${left}px`;
+  setTip.style.top = `${top}px`;
+  tipAnchor = anchor;
+}
+function hideTip(): void {
+  setTip.classList.remove('show');
+  tipAnchor = null;
+}
+window.addEventListener('click', (e) => {
+  if (tipAnchor && e.target !== tipAnchor && !setTip.contains(e.target as Node)) hideTip();
+});
+
+/** Add a "?" next to a setting's label that reveals the option explanations
+    (moved out of the buttons to keep them compact). No "?" if nothing to explain. */
+function attachHelp(wrap: HTMLElement, opts: ReadonlyArray<readonly [string, string, string]>): void {
+  const label = wrap.closest('.setting-row')?.querySelector('.label') as HTMLElement | null;
+  if (!label || label.querySelector('.tip-btn')) return;
+  const tips = opts.filter(([, , h]) => h).map(([, name, h]) => `${name} — ${h}`);
+  if (!tips.length) return;
+  const q = document.createElement('button');
+  q.className = 'tip-btn';
+  q.type = 'button';
+  q.textContent = '?';
+  q.setAttribute('aria-label', 'What is this?');
+  q.onclick = (e) => {
+    e.stopPropagation();
+    showTip(q, tips.join('\n'));
+  };
+  label.appendChild(q);
+}
+
+/* ---------- Settings tabs (Shelf / Device) ---------- */
+document.querySelectorAll<HTMLElement>('.set-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    const pane = tab.dataset['pane'];
+    document.querySelectorAll('.set-tab').forEach((t) => t.classList.toggle('on', t === tab));
+    document
+      .querySelectorAll<HTMLElement>('.set-pane')
+      .forEach((p) => p.classList.toggle('on', p.dataset['pane'] === pane));
+  });
+});
 
 function renderChoices(): void {
   choiceRow(
@@ -596,6 +678,7 @@ function renderChoices(): void {
     (k) => {
       settings.yearDisplay = k as YearDisplay;
       applyYearGutter();
+      updateConditionalRows();
       buildShelf();
       sizeFaces();
       void client.putSettings({ yearDisplay: settings.yearDisplay }).catch(() => {});
@@ -691,6 +774,16 @@ function renderChoices(): void {
       void client.putSettings({ afterPlay: settings.afterPlay }).catch(() => {});
     },
   );
+  updateConditionalRows();
+}
+
+/** Hide settings that only apply in another setting's state — the year position
+    and emphasis are meaningless when the year is off. */
+function updateConditionalRows(): void {
+  const yearOn = settings.yearDisplay !== 'off';
+  for (const id of ['yearpos-choices', 'yearemph-choices']) {
+    document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !yearOn);
+  }
 }
 
 /* =====================================================================
@@ -730,6 +823,8 @@ function closeCC(): void {
 cc.addEventListener('click', (e) => {
   if (e.target === cc) closeCC();
 });
+// Swipe the sheet back up (opposite of the opening swipe) to close.
+swipeToClose(document.getElementById('cc-sheet') as HTMLElement, 'up', closeCC);
 
 // Open: press the top-edge grip and drag down. Close: tap or swipe up the handle.
 let gripDown = false,
@@ -950,7 +1045,9 @@ const findSearch = document.getElementById('find-search') as HTMLInputElement;
 function openFind(): void {
   find.classList.add('open');
   renderCCSort();
-  setTimeout(() => findSearch.focus(), 60);
+  // preventScroll: focusing an input otherwise scrolls the whole document up
+  // (bypassing overflow:hidden), which shifts later absolute overlays.
+  setTimeout(() => findSearch.focus({ preventScroll: true }), 60);
 }
 function closeFind(): void {
   find.classList.remove('open');
@@ -959,6 +1056,8 @@ function closeFind(): void {
 find.addEventListener('click', (e) => {
   if (e.target === find) closeFind();
 });
+// Swipe the bar back down (opposite of the opening swipe) to close.
+swipeToClose(document.getElementById('find-bar') as HTMLElement, 'down', closeFind);
 
 // Open: press the bottom-edge grip and drag up. Close: tap/swipe the handle.
 let fGripDown = false,
@@ -1413,6 +1512,16 @@ function markActive(): void {
 window.addEventListener('pointerdown', markActive, { passive: true });
 window.addEventListener('pointermove', markActive, { passive: true });
 window.addEventListener('keydown', markActive);
+
+/* Only #shelf-viewport should ever scroll. Focusing an input (e.g. the Find
+   search) can still nudge the document itself, which shifts the absolute
+   overlays (control center / find / settings). Clamp any document scroll to 0. */
+window.addEventListener('scroll', () => {
+  if (document.documentElement.scrollTop || document.body.scrollTop) {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
+});
 
 /* ---------- Boot ---------- */
 async function boot(): Promise<void> {
