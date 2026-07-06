@@ -429,6 +429,108 @@ button {
   color: var(--ink-dim); letter-spacing: 0.02em; margin-top: 0.4vh;
 }
 
+/* ---------- Control center (swipe down from top edge, §6) ---------- */
+#cc-grip {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3.2vh; z-index: 16;
+  /* faint pull tab, centered, so the swipe zone is discoverable */
+}
+#cc-grip::after {
+  content: ""; position: absolute; top: 1vh; left: 50%; transform: translateX(-50%);
+  width: 9vw; height: 0.5vh; border-radius: 999px;
+  background: rgba(236,231,221,0.22);
+}
+
+#cc {
+  position: absolute; inset: 0;
+  background: rgba(10, 9, 11, 0.55);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.28s ease;
+  z-index: 17;
+}
+#cc.open { opacity: 1; pointer-events: auto; }
+
+#cc-sheet {
+  position: absolute; top: 0; left: 0; right: 0;
+  max-height: 92vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2.4vh;
+  padding: 2vh 5vw 4vh;
+  background: linear-gradient(180deg, rgba(27,24,28,0.98), rgba(19,17,20,0.98));
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+  transform: translateY(-102%);
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#cc.open #cc-sheet { transform: translateY(0); }
+
+.cc-handle {
+  align-self: center; width: 12vw; height: 0.6vh; border-radius: 999px;
+  background: rgba(236,231,221,0.28); margin-bottom: 0.6vh; cursor: grab;
+}
+
+/* Now playing */
+.cc-np { display: flex; gap: 3vw; align-items: center; }
+.cc-art {
+  width: 12vh; height: 12vh; flex-shrink: 0; border-radius: 1vh;
+  background: #26232a center/cover no-repeat;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+.cc-np-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.8vh; }
+.cc-title {
+  font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 600;
+  color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cc-sub { font-size: 2.4vh; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-seek { height: 0.7vh; border-radius: 999px; background: rgba(236,231,221,0.15); margin-top: 0.6vh; }
+.cc-seek-fill { height: 100%; width: 0; border-radius: 999px; background: var(--ink); }
+.cc-times { display: flex; justify-content: space-between; font-size: 1.7vh; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+
+/* Transport */
+.cc-transport { display: flex; justify-content: center; align-items: center; gap: 6vw; }
+.cc-transport button {
+  background: transparent; color: var(--ink); font-size: 4vh;
+  width: 9vh; height: 9vh; display: flex; align-items: center; justify-content: center;
+}
+.cc-transport #cc-playpause {
+  border: 1px solid rgba(236,231,221,0.3); border-radius: 50%; font-size: 3.6vh;
+}
+.cc-transport button:active { color: var(--brass); }
+
+/* Blocks (rooms / search / sort) */
+.cc-block { display: flex; flex-direction: column; gap: 1.4vh; }
+.cc-block-label {
+  font-size: 1.8vh; letter-spacing: 0.28em; text-transform: uppercase;
+  color: var(--brass); font-weight: 600;
+}
+#cc-rooms { display: flex; flex-direction: column; gap: 1.4vh; }
+.cc-room { display: flex; align-items: center; gap: 2vw; }
+.cc-room-name {
+  flex-shrink: 0; min-width: 22vw; font-size: 2.4vh; color: var(--ink-dim);
+  display: flex; align-items: center; gap: 1.4vw;
+}
+.cc-room.grouped .cc-room-name { color: var(--ink); }
+.cc-room-join {
+  flex-shrink: 0; background: transparent; color: var(--ink-dim);
+  border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
+  font-size: 1.8vh; font-weight: 600; padding: 0.8vh 2.4vw; letter-spacing: 0.04em;
+}
+.cc-room.grouped .cc-room-join { color: var(--ink); border-color: var(--ink); }
+.cc-room input[type=range] { flex: 1; accent-color: var(--ink); }
+
+#cc-search {
+  background: rgba(0,0,0,0.28); color: var(--ink);
+  border: 1px solid rgba(236,231,221,0.25); border-radius: 1.2vh;
+  font-size: 2.6vh; padding: 1.6vh 3vw; width: 100%;
+}
+#cc-search::placeholder { color: var(--ink-dim); }
+
+.cc-note { font-size: 1.7vh; color: var(--ink-dim); font-style: italic; text-align: center; opacity: 0.7; }
+
+/* Search slivers: non-matching spines collapse to a thin blank plate */
+.spine.sliver .spine-label, .spine.sliver .cat, .spine.sliver .cover-btn { display: none; }
+.spine.sliver { opacity: 0.5; }
+
 #toast {
   position: absolute; bottom: 9vh; left: 50%;
   transform: translate(-50%, 200%);

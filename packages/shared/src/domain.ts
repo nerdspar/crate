@@ -85,12 +85,19 @@ export interface ShelfItem {
   year: number | null;
   order: number;
   stackId: string | null;
+  /** ISO timestamp the album was shelved (for the 'added' sort). */
+  addedAt: string;
+  /** Lifetime play count (for the 'played' sort). */
+  playCount: number;
   /** Spine gradient endpoints (`#rrggbb`). */
   primaryColor: string;
   darkColor: string;
   inkColor: InkColor;
   /** Base spine width in px (UI scales it); mirrors the prototype's per-album width. */
   spineWidth: number;
+  /** Total album runtime in seconds (sum of track durations), or null if unknown.
+      Drives duration-scaled spine widths when spineWidthMode is 'duration'. */
+  durationSec: number | null;
   /** Pre-rendered blurred art strip for spineMode `art`, else null. */
   spineStripUrl: string | null;
   /** Real spine scan (MusicBrainz CAA) for spineMode `scan`, else null. */
@@ -125,6 +132,9 @@ export type LabelVary = 'uniform' | 'varied';
 export type OpenMode = 'cover' | 'card';
 export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color';
 export type SpineThickness = 'thin' | 'medium' | 'thick';
+/** How spine widths are sized: one uniform CD width, or scaled by album runtime
+    (a 78-min double album is visibly fatter than a 34-min record). */
+export type SpineWidthMode = 'uniform' | 'duration';
 /** Spine text reading direction: top→bottom or bottom→top (classic US CD spine). */
 export type SpineTextDir = 'ttb' | 'btt';
 /** What happens to the open album after you hit play. */
@@ -159,6 +169,7 @@ export interface Settings {
   openMode: OpenMode;
   spineMode: SpineMode;
   spineThickness: SpineThickness;
+  spineWidthMode: SpineWidthMode;
   spineTextDir: SpineTextDir;
   inkMode: InkMode;
   yearDisplay: YearDisplay;
@@ -179,6 +190,7 @@ export const DEFAULT_SETTINGS: Settings = {
   openMode: 'cover',
   spineMode: 'art',
   spineThickness: 'medium',
+  spineWidthMode: 'uniform',
   spineTextDir: 'ttb',
   inkMode: 'contrast',
   yearDisplay: 'vertical',

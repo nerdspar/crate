@@ -14,6 +14,7 @@ export interface AlbumRow {
   spine_strip_path: string | null;
   spine_scan_path: string | null;
   spine_width: number;
+  total_duration: number | null;
   added_at: string;
   play_count: number;
   overrides: string | null;
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS albums (
   spine_strip_path TEXT,
   spine_scan_path TEXT,
   spine_width INTEGER NOT NULL DEFAULT 60,
+  total_duration INTEGER,
   added_at TEXT NOT NULL,
   play_count INTEGER NOT NULL DEFAULT 0,
   overrides TEXT
@@ -104,6 +106,9 @@ export class Db {
     if (!cols.some((c) => c.name === 'overrides')) {
       this.db.exec('ALTER TABLE albums ADD COLUMN overrides TEXT');
     }
+    if (!cols.some((c) => c.name === 'total_duration')) {
+      this.db.exec('ALTER TABLE albums ADD COLUMN total_duration INTEGER');
+    }
   }
 
   getOverride(id: string): AlbumOverride {
@@ -130,12 +135,13 @@ export class Db {
     this.db
       .prepare(
         `INSERT INTO albums (id, provider_uri, provider, title, artist, year, artwork_url, artwork_path,
-           palette, spine_strip_path, spine_width, added_at, play_count)
+           palette, spine_strip_path, spine_width, total_duration, added_at, play_count)
          VALUES (@id, @provider_uri, @provider, @title, @artist, @year, @artwork_url, @artwork_path,
-           @palette, @spine_strip_path, @spine_width, @added_at, @play_count)
+           @palette, @spine_strip_path, @spine_width, @total_duration, @added_at, @play_count)
          ON CONFLICT(id) DO UPDATE SET
            title=@title, artist=@artist, year=@year, artwork_url=@artwork_url, artwork_path=@artwork_path,
-           palette=@palette, spine_strip_path=@spine_strip_path, spine_width=@spine_width`,
+           palette=@palette, spine_strip_path=@spine_strip_path, spine_width=@spine_width,
+           total_duration=@total_duration`,
       )
       .run(row);
   }
@@ -160,6 +166,10 @@ export class Db {
 
   setSpineScan(id: string, spineScanPath: string | null): void {
     this.db.prepare('UPDATE albums SET spine_scan_path = ? WHERE id = ?').run(spineScanPath, id);
+  }
+
+  setDuration(id: string, totalDuration: number | null): void {
+    this.db.prepare('UPDATE albums SET total_duration = ? WHERE id = ?').run(totalDuration, id);
   }
 
   // --- Shelf --------------------------------------------------------------

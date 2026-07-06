@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage, type YearDisplay, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type Track, type WsMessage, type YearDisplay, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -99,6 +99,15 @@ let resumeGuardUntil = 0;
 
 const trackCache = new Map<string, Track[]>();
 
+/** Live shelf search (control center). Empty = everything matches; non-matches
+    collapse to slivers via spineWidthPx. */
+let filterQuery = '';
+function matchesFilter(a: ShelfItem): boolean {
+  if (!filterQuery) return true;
+  const q = filterQuery.toLowerCase();
+  return a.title.toLowerCase().includes(q) || a.artist.toLowerCase().includes(q);
+}
+
 function roomName(id: string | null): string {
   return players.find((p) => p.id === id)?.name ?? 'player';
 }
@@ -109,12 +118,26 @@ function coverW(): number {
 function panelW(): number {
   return Math.min(window.innerWidth * 0.3, 420);
 }
-/** Uniform spine width, proportional to a real CD jewel case (~10mm spine on a
-    ~117mm case ≈ 9% of the case height). Every CD is the same size. Per-album
-    variation (a fatter double album, SPINE_RENDERING §4) is a separate opt-in. */
+/** Base spine width, proportional to a real CD jewel case (~10mm spine on a
+    ~117mm case ≈ 9% of the case height). This is the uniform "every CD is the
+    same size" width, and the anchor a duration-scaled width flexes around. */
 const THICKNESS_RATIO: Record<SpineThickness, number> = { thin: 0.05, medium: 0.062, thick: 0.082 };
-function spineWidthPx(): number {
+function spineBaseW(): number {
   return Math.round(Math.max(26, Math.min(coverW() * THICKNESS_RATIO[settings.spineThickness], 92)));
+}
+/** A 40-minute album sits at the base thickness; longer/shorter runtimes flex
+    the width around it (SPINE_RENDERING §4). Clamped so an EP is still grabbable
+    and a boxed set never dominates the shelf. */
+const WIDTH_REF_SEC = 2400;
+const SLIVER_W = 5; // search non-matches collapse to a thin sliver
+/** Effective spine width (px) for one album, honoring the width mode and the
+    live search filter. Deterministic → layout math (settledLeft) stays exact. */
+function spineWidthPx(a: ShelfItem): number {
+  if (!matchesFilter(a)) return SLIVER_W;
+  const base = spineBaseW();
+  if (settings.spineWidthMode !== 'duration' || !a.durationSec) return base;
+  const mult = Math.max(0.68, Math.min(a.durationSec / WIDTH_REF_SEC, 1.7));
+  return Math.round(Math.max(20, Math.min(base * mult, 120)));
 }
 
 /** Ink-match test (inkMode 'match'): color the title with the album's accent,
@@ -128,7 +151,7 @@ function matchInk(a: ShelfItem): string {
 function buildShelf(): void {
   shelf.innerHTML = '';
   items.forEach((a, i) => {
-    const spineW = spineWidthPx(); // uniform — every CD is the same thickness
+    const spineW = spineWidthPx(a); // uniform, duration-scaled, or a search sliver
     // Spine source precedence: uploaded custom spine → real scan → cover
     // edge-slice → flat gradient. A custom spine keeps the label (with overrides);
     // only a real scan (its own text baked in) suppresses the generated label.
@@ -138,7 +161,7 @@ function buildShelf(): void {
     const useStrip = !useCustom && !useScan && spineMode !== 'palette' && !!a.spineStripUrl;
     const layout = a.overrideLayout ?? resolveLayout(a); // per-album override wins
     const el = document.createElement('div');
-    el.className = `spine layout-${layout}` + (useScan ? ' scan' : '');
+    el.className = `spine layout-${layout}` + (useScan ? ' scan' : '') + (matchesFilter(a) ? '' : ' sliver');
     el.dataset['idx'] = String(i);
     el.style.width = spineW + 'px';
     el.style.setProperty('--spine-w', spineW + 'px');
@@ -257,10 +280,12 @@ function escapeHtml(s: string): string {
 
 function sizeFaces(): void {
   const cw = coverW();
-  const sw = spineWidthPx();
+  const pw = panelW();
   document.querySelectorAll<HTMLElement>('.spine').forEach((el) => {
+    const a = items[+el.dataset['idx']!];
+    const sw = a ? spineWidthPx(a) : spineBaseW();
     el.style.setProperty('--cover-w', cw + 'px');
-    el.style.setProperty('--panel-w', panelW() + 'px');
+    el.style.setProperty('--panel-w', pw + 'px');
     el.style.setProperty('--spine-w', sw + 'px');
     el.style.width = el.classList.contains('open') ? openWidth(el) + 'px' : sw + 'px';
   });
@@ -512,6 +537,21 @@ function renderChoices(): void {
   );
 
   choiceRow(
+    'width-choices',
+    [
+      ['uniform', 'Uniform', 'Every CD the same width'],
+      ['duration', 'By length', 'Longer albums render fatter'],
+    ],
+    (k) => settings.spineWidthMode === k,
+    (k) => {
+      settings.spineWidthMode = k as SpineWidthMode;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ spineWidthMode: settings.spineWidthMode }).catch(() => {});
+    },
+  );
+
+  choiceRow(
     'dir-choices',
     [['ttb', 'Top → bottom', ''], ['btt', 'Bottom → top', '']],
     (k) => settings.spineTextDir === k,
@@ -626,6 +666,261 @@ function renderChoices(): void {
     },
   );
 }
+
+/* =====================================================================
+   Control center (§6): a swipe-down top sheet with now-playing + transport,
+   per-room volume & grouping, live shelf search, and sort. Opened from a thin
+   top-edge grip so the horizontal shelf gesture engine below stays untouched.
+   Brightness / display / system rows are deferred to the appliance layer.
+   ===================================================================== */
+const cc = document.getElementById('cc') as HTMLElement;
+const ccGrip = document.getElementById('cc-grip') as HTMLElement;
+const ccHandle = cc.querySelector('.cc-handle') as HTMLElement;
+const ccArt = document.getElementById('cc-art') as HTMLElement;
+const ccTitle = document.getElementById('cc-title') as HTMLElement;
+const ccArtistEl = document.getElementById('cc-artist') as HTMLElement;
+const ccSeekEl = document.getElementById('cc-seek') as HTMLElement;
+const ccSeekFill = document.getElementById('cc-seek-fill') as HTMLElement;
+const ccCur = document.getElementById('cc-cur') as HTMLElement;
+const ccDur = document.getElementById('cc-dur') as HTMLElement;
+const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
+const ccSearch = document.getElementById('cc-search') as HTMLInputElement;
+
+/** Rooms intended to play together (leader = activePlayerId). Toggling a chip
+    rebuilds this and pushes exact membership to the server. */
+let groupSet = new Set<string>();
+
+function ccIsOpen(): boolean {
+  return cc.classList.contains('open');
+}
+function openCC(): void {
+  groupSet = new Set(activePlayerId ? [activePlayerId] : []);
+  cc.classList.add('open');
+  renderCCNow();
+  renderCCRooms();
+  renderCCSort();
+}
+function closeCC(): void {
+  cc.classList.remove('open');
+}
+cc.addEventListener('click', (e) => {
+  if (e.target === cc) closeCC();
+});
+
+// Open: press the top-edge grip and drag down. Close: tap or swipe up the handle.
+let gripDown = false,
+  gripY = 0,
+  gripOpened = false;
+ccGrip.addEventListener('pointerdown', (e) => {
+  gripDown = true;
+  gripY = e.clientY;
+  gripOpened = false;
+});
+let handleDown = false,
+  handleY = 0;
+ccHandle.addEventListener('pointerdown', (e) => {
+  handleDown = true;
+  handleY = e.clientY;
+  e.stopPropagation();
+});
+window.addEventListener('pointermove', (e) => {
+  if (gripDown && !gripOpened && e.clientY - gripY > 30) {
+    openCC();
+    gripOpened = true;
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (gripDown) gripDown = false;
+  if (handleDown) {
+    handleDown = false;
+    if (handleY - e.clientY > 40 || Math.abs(handleY - e.clientY) < 8) closeCC();
+  }
+});
+
+/* ---- Transport ---- */
+(document.getElementById('cc-prev') as HTMLElement).addEventListener('click', () => ccSkip('previous'));
+(document.getElementById('cc-next') as HTMLElement).addEventListener('click', () => ccSkip('next'));
+ccPlayPauseBtn.addEventListener('click', () => void ccPlayPause());
+
+function ccSkip(cmd: 'previous' | 'next'): void {
+  if (!now.playerId) return;
+  void client.transport({ playerId: now.playerId, cmd }).catch(() => {});
+}
+async function ccPlayPause(): Promise<void> {
+  if (!now.playerId || !now.albumId || now.state === 'idle') {
+    const i = openIdx ?? 0; // nothing loaded → start the open (or first) album
+    if (items[i]) await play(i);
+    return;
+  }
+  const pausing = now.state === 'playing';
+  now.elapsed = liveElapsed();
+  now.at = performance.now();
+  now.state = pausing ? 'paused' : 'playing';
+  userPaused = pausing;
+  pauseGuardUntil = pausing ? performance.now() + 3000 : 0;
+  resumeGuardUntil = pausing ? 0 : performance.now() + 3000;
+  applyNow();
+  await client.transport({ playerId: now.playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
+}
+
+ccSeekEl.addEventListener('click', (e) => {
+  if (now.duration <= 0 || !now.playerId) return;
+  const rect = ccSeekEl.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const pos = Math.floor(ratio * now.duration);
+  now.elapsed = pos;
+  now.at = performance.now();
+  updateCCSeek();
+  void client.transport({ playerId: now.playerId, cmd: 'seek', position: pos }).catch(() => {});
+});
+
+/* ---- Now-playing render ---- */
+function renderCCNow(): void {
+  if (!ccIsOpen()) return;
+  const it = playingIdx !== null ? items[playingIdx] : null;
+  if (!it || now.state === 'idle') {
+    ccArt.style.backgroundImage = '';
+    ccTitle.textContent = 'Nothing playing';
+    ccArtistEl.textContent = '';
+    ccPlayPauseBtn.textContent = '▶';
+    updateCCSeek();
+    return;
+  }
+  ccArt.style.backgroundImage = it.artworkUrl ? `url('${it.artworkUrl}')` : '';
+  ccTitle.textContent = it.title;
+  ccArtistEl.textContent = it.artist;
+  ccPlayPauseBtn.textContent = now.state === 'playing' ? '❚❚' : '▶';
+  updateCCSeek();
+}
+function updateCCSeek(): void {
+  if (!ccIsOpen()) return;
+  if (now.duration > 0 && playingIdx !== null) {
+    const e = liveElapsed();
+    ccSeekFill.style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
+    ccCur.textContent = fmtDur(e);
+    ccDur.textContent = fmtDur(now.duration);
+  } else {
+    ccSeekFill.style.width = '0';
+    ccCur.textContent = '0:00';
+    ccDur.textContent = '0:00';
+  }
+}
+
+/* ---- Rooms: per-player volume + group join/leave ---- */
+function renderCCRooms(): void {
+  const wrap = document.getElementById('cc-rooms') as HTMLElement;
+  wrap.innerHTML = '';
+  rooms.forEach((r) => {
+    const st = lastStates.find((s) => s.playerId === r.id);
+    const vol = st?.volume ?? volume;
+    const isLeader = r.id === activePlayerId;
+    const joined = isLeader || groupSet.has(r.id);
+    const row = document.createElement('div');
+    row.className = 'cc-room' + (joined ? ' grouped' : '');
+    row.innerHTML =
+      `<div class="cc-room-name">${escapeHtml(r.name)}</div>` +
+      `<input type="range" min="0" max="100" value="${vol}">` +
+      `<button class="cc-room-join">${isLeader ? 'Leader' : joined ? 'Leave' : 'Join'}</button>`;
+    (row.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
+      const level = +(e.target as HTMLInputElement).value;
+      void client.setVolume({ playerId: r.id, level }).catch(() => {});
+    });
+    const joinBtn = row.querySelector('.cc-room-join') as HTMLButtonElement;
+    if (isLeader) {
+      joinBtn.disabled = true;
+    } else {
+      joinBtn.addEventListener('click', () => {
+        if (groupSet.has(r.id)) groupSet.delete(r.id);
+        else groupSet.add(r.id);
+        pushGroup();
+        renderCCRooms();
+      });
+    }
+    wrap.appendChild(row);
+  });
+}
+function pushGroup(): void {
+  if (!activePlayerId) return;
+  const ids = [activePlayerId, ...[...groupSet].filter((id) => id !== activePlayerId)];
+  void client.group({ playerIds: ids }).catch(() => {});
+}
+
+/* ---- Sort (persisted setting; also on the shelf) ---- */
+function renderCCSort(): void {
+  choiceRow(
+    'sort-choices',
+    [
+      ['artist', 'Artist', ''],
+      ['title', 'Title', ''],
+      ['added', 'Recently added', ''],
+      ['played', 'Most played', ''],
+      ['year', 'Release year', ''],
+      ['color', 'Color', ''],
+    ],
+    (k) => settings.sortBy === k,
+    (k) => {
+      settings.sortBy = k as SortBy;
+      closeAlbum();
+      applySort();
+      buildShelf();
+      sizeFaces();
+      applyNow();
+      renderCCSort();
+      void client.putSettings({ sortBy: settings.sortBy }).catch(() => {});
+    },
+  );
+}
+
+/** Sort `items` in place by the current setting. Deterministic; color is a hue
+    ramp (rainbow shelf). Applied on load and whenever the sort changes. */
+function applySort(): void {
+  const by = settings.sortBy;
+  items.sort((a, b) => {
+    switch (by) {
+      case 'title':
+        return a.title.localeCompare(b.title);
+      case 'year':
+        return (b.year ?? 0) - (a.year ?? 0);
+      case 'added':
+        return b.addedAt.localeCompare(a.addedAt); // newest first
+      case 'played':
+        return b.playCount - a.playCount;
+      case 'color':
+        return hue(a.primaryColor) - hue(b.primaryColor);
+      case 'artist':
+      default:
+        return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
+    }
+  });
+}
+/** Hue (0–360) of a #rrggbb color, for the color sort. Greys sort last. */
+function hue(hex: string): number {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return 999;
+  const r = parseInt(m[1]!, 16) / 255,
+    g = parseInt(m[2]!, 16) / 255,
+    bl = parseInt(m[3]!, 16) / 255;
+  const max = Math.max(r, g, bl),
+    min = Math.min(r, g, bl),
+    d = max - min;
+  if (d < 0.02) return 400 + max; // near-grey: cluster at the end, light→dark
+  let h: number;
+  if (max === r) h = ((g - bl) / d) % 6;
+  else if (max === g) h = (bl - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60;
+  return h < 0 ? h + 360 : h;
+}
+
+/* ---- Live shelf search: non-matches collapse to slivers (no rebuild → keeps
+       the keyboard focus and caret while typing). ---- */
+ccSearch.addEventListener('input', () => {
+  filterQuery = ccSearch.value.trim();
+  items.forEach((a, i) => {
+    (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
+  });
+  sizeFaces();
+});
 
 /* =====================================================================
    Gesture engine (verbatim from the prototype — do not rework)
@@ -823,6 +1118,7 @@ function applyNow(): void {
     updateNowbar();
     updatePlayButton();
   }
+  renderCCNow();
 }
 
 function updatePlayButton(): void {
@@ -874,6 +1170,7 @@ function handleProgress(playerId: string, elapsed: number): void {
 
 function tick(): void {
   if (openIdx !== null && playingIdx === openIdx) updateNowbar();
+  if (ccIsOpen()) updateCCSeek();
   requestAnimationFrame(tick);
 }
 
@@ -898,12 +1195,14 @@ function connectWs(): void {
 
 async function reloadShelf(): Promise<void> {
   const res = await client.getShelf();
+  const openId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
   items = res.items;
-  const wasOpen = openIdx;
+  applySort();
   openIdx = null;
   buildShelf();
   sizeFaces();
-  if (wasOpen !== null && wasOpen < items.length) openAlbum(wasOpen, false);
+  const reopen = openId ? items.findIndex((it) => it.albumId === openId) : -1;
+  if (reopen >= 0) openAlbum(reopen, false);
   applyNow(); // restore EQ on playing spines after the rebuild
 }
 
@@ -914,6 +1213,7 @@ async function reloadPlayers(): Promise<void> {
   if (rooms.length === 0) rooms = players.filter((p) => p.available);
   if (!activePlayerId) activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+  if (ccIsOpen()) renderCCRooms();
 }
 
 function applySettings(s: Settings): void {
@@ -922,9 +1222,12 @@ function applySettings(s: Settings): void {
   openMode = s.openMode;
   applyTextDir();
   applyYearGutter();
+  if (s.sortBy !== prev.sortBy) applySort();
   if (
+    s.sortBy !== prev.sortBy ||
     s.spineMode !== prev.spineMode ||
     s.spineThickness !== prev.spineThickness ||
+    s.spineWidthMode !== prev.spineWidthMode ||
     s.labelLayout !== prev.labelLayout ||
     s.labelVary !== prev.labelVary ||
     s.inkMode !== prev.inkMode ||
@@ -933,8 +1236,10 @@ function applySettings(s: Settings): void {
   ) {
     buildShelf();
     sizeFaces();
+    applyNow();
   }
   renderChoices();
+  renderCCSort();
 }
 
 /* ---------- Boot ---------- */
@@ -952,6 +1257,7 @@ async function boot(): Promise<void> {
   openMode = settings.openMode;
   activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
 
+  applySort();
   buildShelf();
   applyTextDir();
   applyYearGutter();

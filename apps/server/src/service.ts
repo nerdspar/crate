@@ -17,8 +17,23 @@ import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, buildShelfItem, spineWidthFor } from './shelf.js';
+import type { Track } from '@crate/shared';
 
 const ART_BASE = '/art';
+
+/** Sum track durations (seconds) for duration-scaled spine widths; null when no
+    track reports a duration (so the UI can fall back to a uniform width). */
+function sumDuration(tracks: Track[]): number | null {
+  let total = 0;
+  let any = false;
+  for (const t of tracks) {
+    if (t.duration && t.duration > 0) {
+      total += t.duration;
+      any = true;
+    }
+  }
+  return any ? Math.round(total) : null;
+}
 
 export class Service {
   constructor(
@@ -99,6 +114,10 @@ export class Service {
     if (!album) throw new Error(`album not found: ${providerUri}`);
     const id = albumIdFromUri(providerUri);
     const existing = this.db.getAlbum(id);
+    // Album runtime for duration-scaled spine widths (best-effort; keep any
+    // previously-computed value if the track fetch fails).
+    const tracks = await this.ma.getTracks(providerUri).catch((): Track[] => []);
+    const totalDuration = sumDuration(tracks) ?? existing?.total_duration ?? null;
     const row: AlbumRow = {
       id,
       provider_uri: providerUri,
@@ -112,6 +131,7 @@ export class Service {
       spine_strip_path: existing?.spine_strip_path ?? null,
       spine_scan_path: existing?.spine_scan_path ?? null,
       spine_width: existing?.spine_width ?? spineWidthFor(id),
+      total_duration: totalDuration,
       added_at: existing?.added_at ?? new Date().toISOString(),
       play_count: existing?.play_count ?? 0,
       overrides: existing?.overrides ?? null,
@@ -160,6 +180,15 @@ export class Service {
     for (const row of this.db.listShelf()) {
       if (row.artwork_url) await this.processArtwork(row.id, row.artwork_url);
       else void this.processSpineScan(row.id);
+      // Backfill album runtime for shelves added before duration was tracked.
+      if (row.total_duration == null) {
+        const tracks = await this.ma.getTracks(row.provider_uri).catch((): Track[] => []);
+        const dur = sumDuration(tracks);
+        if (dur != null) {
+          this.db.setDuration(row.id, dur);
+          this.hub.broadcast({ type: 'shelf' });
+        }
+      }
     }
   }
 
@@ -210,7 +239,11 @@ export class Service {
   group(playerIds: string[]): Promise<void> {
     const [leader, ...members] = playerIds;
     if (!leader) return Promise.resolve();
-    return this.ma.setMembers(leader, members, []);
+    // Exact membership: everything not in the requested set is removed from the
+    // leader's group, so the control-center chips do both join and leave.
+    const all = this.db.listPlayers().map((p) => p.id);
+    const remove = all.filter((id) => id !== leader && !members.includes(id));
+    return this.ma.setMembers(leader, members, remove);
   }
 
   async getPlayers(): Promise<PlayersResponse> {
