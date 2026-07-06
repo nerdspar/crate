@@ -32,13 +32,13 @@ body {
   display: flex;
   align-items: flex-end;
   height: 100%;
-  padding: 4vh 6vw 7vh 6vw;
+  padding: 2vh 6vw 7vh 6vw;
   gap: 3px;
 }
 
 .spine {
   position: relative;
-  height: 89%;
+  height: 93%;
   flex: 0 0 auto;
   cursor: pointer;
   perspective: 1400px;
@@ -414,14 +414,17 @@ button {
 
 #settings-card { display: flex; flex-direction: column; gap: 3vh; width: 92vw; max-width: 92vw; margin: 0 auto; }
 
-/* Tabs: Shelf appearance vs Device (hardware). */
-.set-tabs { display: flex; gap: 1.6vw; }
+/* Tabs: Shelf appearance vs Device (hardware). Underline style so they read as
+   section tabs, clearly distinct from the pill option buttons below. */
+.set-tabs { display: flex; gap: 4vw; border-bottom: 1px solid rgba(236,231,221,0.14); }
 .set-tab {
-  background: transparent; color: var(--ink-dim);
-  border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
-  font-size: 2.4vh; font-weight: 600; padding: 1vh 4vw; letter-spacing: 0.04em;
+  background: transparent; border: none; border-bottom: 3px solid transparent;
+  border-radius: 0; margin-bottom: -1px;
+  color: var(--ink-dim); font-family: 'Newsreader Variable', serif;
+  font-size: 3.4vh; font-weight: 500; letter-spacing: 0.01em;
+  padding: 0 0.5vw 1.2vh;
 }
-.set-tab.on { color: var(--ink); border-color: var(--ink); }
+.set-tab.on { color: var(--ink); border-bottom-color: var(--brass); }
 
 /* Each pane is multi-column so it fits the wide, short kiosk; rows never split. */
 .set-pane { display: none; }

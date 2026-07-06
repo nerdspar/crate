@@ -541,8 +541,24 @@ function choiceRow(
     b.onclick = () => onPick(key);
     wrap.appendChild(b);
   }
-  attachHelp(wrap, opts);
+  attachHelp(wrapId);
 }
+
+/** One concise explanation per setting — every setting gets a "?" for uniformity. */
+const SETTING_HELP: Record<string, string> = {
+  'spine-choices': 'Use a real scanned spine when one is available, otherwise generate one from the cover art.',
+  'thickness-choices': 'How thick each CD spine looks on the shelf.',
+  'width-choices': "Give every spine the same width, or scale each by the album's runtime.",
+  'dir-choices': 'Which way the spine text reads — top-to-bottom or bottom-to-top.',
+  'ink-choices': "Guaranteed-contrast white/black label text, or tint the title with the album's accent color.",
+  'year-choices': 'Show the release year on the spine (vertical or horizontal), or hide it.',
+  'yearpos-choices': 'Which end of the spine the year sits at.',
+  'yearemph-choices': 'A faint catalog stamp, or bolder text readable from across the room.',
+  'layout-choices': 'Where the artist and title sit along the spine.',
+  'vary-choices': 'One shared font for every spine, or a different type style per artist.',
+  'open-choices': 'Tapping a spine shows just the cover, or a full details card.',
+  'afterplay-choices': 'What the open card does after you hit play.',
+};
 
 /* ---------- Settings help tooltip ---------- */
 const setTip = document.getElementById('set-tip') as HTMLElement;
@@ -571,13 +587,12 @@ window.addEventListener('click', (e) => {
   if (tipAnchor && e.target !== tipAnchor && !setTip.contains(e.target as Node)) hideTip();
 });
 
-/** Add a "?" next to a setting's label that reveals the option explanations
-    (moved out of the buttons to keep them compact). No "?" if nothing to explain. */
-function attachHelp(wrap: HTMLElement, opts: ReadonlyArray<readonly [string, string, string]>): void {
-  const label = wrap.closest('.setting-row')?.querySelector('.label') as HTMLElement | null;
-  if (!label || label.querySelector('.tip-btn')) return;
-  const tips = opts.filter(([, , h]) => h).map(([, name, h]) => `${name} — ${h}`);
-  if (!tips.length) return;
+/** Add a "?" next to a setting's label that reveals its explanation on tap
+    (kept out of the buttons so they stay compact). Every setting gets one. */
+function attachHelp(wrapId: string): void {
+  const label = document.getElementById(wrapId)?.closest('.setting-row')?.querySelector('.label') as HTMLElement | null;
+  const text = SETTING_HELP[wrapId];
+  if (!label || !text || label.querySelector('.tip-btn')) return;
   const q = document.createElement('button');
   q.className = 'tip-btn';
   q.type = 'button';
@@ -585,7 +600,7 @@ function attachHelp(wrap: HTMLElement, opts: ReadonlyArray<readonly [string, str
   q.setAttribute('aria-label', 'What is this?');
   q.onclick = (e) => {
     e.stopPropagation();
-    showTip(q, tips.join('\n'));
+    showTip(q, text);
   };
   label.appendChild(q);
 }
