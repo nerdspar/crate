@@ -220,10 +220,17 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     ]);
 
     const volumeById = new Map<string, { volume: number | null; muted: boolean }>();
+    const groupLeaderById = new Map<string, string | null>();
     for (const p of arr(playersRaw)) {
       const item = rec(p);
       const id = str(item['player_id']);
-      if (id) volumeById.set(id, { volume: num(item['volume_level']) ?? null, muted: item['volume_muted'] === true });
+      if (!id) continue;
+      volumeById.set(id, { volume: num(item['volume_level']) ?? null, muted: item['volume_muted'] === true });
+      // MA: `synced_to` = the leader this player follows; `group_childs` = members
+      // when this player IS the leader. Solo players lead themselves.
+      const syncedTo = str(item['synced_to']);
+      const childs = arr(item['group_childs']);
+      groupLeaderById.set(id, syncedTo ?? (childs.length ? id : id));
     }
 
     return arr(queuesRaw)
@@ -240,6 +247,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
           state: mapPlaybackState(str(queue['state'])),
           volume: vol.volume,
           muted: vol.muted,
+          groupLeader: groupLeaderById.get(id) ?? id,
           nowPlaying: hasNow
             ? {
                 albumId: null,

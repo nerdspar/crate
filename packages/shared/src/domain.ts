@@ -73,6 +73,9 @@ export interface PlayerState {
   volume: number | null;
   muted: boolean;
   nowPlaying: NowPlaying | null;
+  /** The player this one is synced to (its group leader). A solo player points
+      to itself; players sharing a leader form a group. Derived from MA state. */
+  groupLeader: string | null;
 }
 
 /** Everything the shelf needs to render one spine (derived from Album + palette). */
