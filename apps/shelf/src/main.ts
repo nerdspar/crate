@@ -65,9 +65,11 @@ let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, 
 /** Latch: the user paused. Some MA player providers report a paused queue as
     'idle', so we hold the now-playing paused until resume / a new play. */
 let userPaused = false;
-/** After a user pause, ignore stale 'playing' frames for this player until this
-    time (the pause command hasn't propagated through MA yet). */
+/** After a user pause/resume, ignore stale frames for this player until this time
+    (the command hasn't propagated through MA yet): pauseGuard drops stale
+    'playing' frames, resumeGuard drops stale non-playing frames. */
 let pauseGuardUntil = 0;
+let resumeGuardUntil = 0;
 
 const trackCache = new Map<string, Track[]>();
 
@@ -310,10 +312,13 @@ async function onPlayButton(i: number): Promise<void> {
   if (playingIdx === i && now.playerId && now.state !== 'idle') {
     const playerId = now.playerId;
     const pausing = now.state === 'playing';
+    // Freeze at the displayed (interpolated) position so pause doesn't jump back.
+    now.elapsed = liveElapsed();
+    now.at = performance.now();
     now.state = pausing ? 'paused' : 'playing';
     userPaused = pausing;
     pauseGuardUntil = pausing ? performance.now() + 3000 : 0;
-    if (!pausing) now.at = performance.now();
+    resumeGuardUntil = pausing ? 0 : performance.now() + 3000;
     applyNow();
     await client.transport({ playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
     return;
@@ -337,6 +342,7 @@ async function play(i: number, trackIndex = 0): Promise<void> {
   // Optimistic now-state; the next WS state/progress corrects it.
   userPaused = false;
   pauseGuardUntil = 0;
+  resumeGuardUntil = 0;
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   playingIdx = i;
   playingTrack = trackIndex;
@@ -544,10 +550,16 @@ function handleState(states: PlayerState[]): void {
   // an explicitly paused one. Album identity is sticky per player so a frame that
   // loses resolution doesn't wipe it. If nothing is playing/paused but the user
   // just paused (MA may report the queue as idle), hold it paused in place.
-  // During the pause-guard window, drop stale 'playing' frames for the paused
-  // player so a not-yet-propagated pause command can't re-adopt it as playing.
-  const guard = performance.now() < pauseGuardUntil;
-  const pool = guard ? states.filter((s) => !(s.playerId === now.playerId && s.state === 'playing')) : states;
+  // Guard windows drop this player's not-yet-propagated frames after a user
+  // pause/resume: pauseGuard drops stale 'playing' frames, resumeGuard drops
+  // stale non-playing frames.
+  const t = performance.now();
+  const pauseGuard = t < pauseGuardUntil;
+  const resumeGuard = t < resumeGuardUntil;
+  let pool = states;
+  if (pauseGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state === 'playing'));
+  if (resumeGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state !== 'playing'));
+
   const playingS =
     pool.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'playing' && s.nowPlaying);
@@ -563,11 +575,13 @@ function handleState(states: PlayerState[]): void {
       playerId: cand.playerId,
       albumId: cand.nowPlaying.albumId ?? (samePlayer ? now.albumId : null),
       trackIndex: cand.nowPlaying.trackIndex ?? (samePlayer ? now.trackIndex : 0),
-      elapsed: cand.nowPlaying.elapsed ?? 0,
+      elapsed: cand.nowPlaying.elapsed ?? now.elapsed,
       duration: cand.nowPlaying.duration ?? (samePlayer ? now.duration : 0),
       state: st,
       at: performance.now(),
     };
+  } else if (resumeGuard && now.albumId) {
+    now = { ...now, state: 'playing' }; // resume not propagated yet — keep playing
   } else if (userPaused && now.albumId) {
     now = { ...now, state: 'paused' };
   } else {
