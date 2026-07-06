@@ -1,0 +1,24 @@
+{
+  "name": "@crate/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crate/providers": "*",
+    "@crate/shared": "*",
+    "@fastify/static": "^8.0.3",
+    "@fastify/websocket": "^11.0.1",
+    "better-sqlite3": "^11.7.0",
+    "fastify": "^5.2.0",
+    "node-vibrant": "^4.0.3",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12"
+  }
+}
