@@ -3,6 +3,7 @@
 import type {
   AddToShelfRequest,
   AlbumDetail,
+  CreateShelfRequest,
   GroupRequest,
   OverrideRequest,
   PlayRequest,
@@ -13,7 +14,7 @@ import type {
   TransportRequest,
   VolumeRequest,
 } from './api.js';
-import type { Settings } from './domain.js';
+import type { Settings, Shelf } from './domain.js';
 
 export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -34,8 +35,26 @@ export class CrateClient {
     return this.req<T>(path, { method: 'POST', body: JSON.stringify(body) });
   }
 
-  getShelf(): Promise<ShelfResponse> {
-    return this.req('/api/shelf');
+  getShelf(shelfId?: string): Promise<ShelfResponse> {
+    return this.req(shelfId ? `/api/shelf?shelf=${encodeURIComponent(shelfId)}` : '/api/shelf');
+  }
+
+  createShelf(body: CreateShelfRequest): Promise<Shelf> {
+    return this.post('/api/shelves', body);
+  }
+  renameShelf(id: string, name: string): Promise<{ ok: true }> {
+    return this.req(`/api/shelves/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ name }) });
+  }
+  deleteShelf(id: string): Promise<{ ok: true }> {
+    return this.req(`/api/shelves/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  addAlbumToShelf(shelfId: string, albumId: string): Promise<{ ok: true }> {
+    return this.post(`/api/shelves/${encodeURIComponent(shelfId)}/albums`, { albumId });
+  }
+  removeAlbumFromShelf(shelfId: string, albumId: string): Promise<{ ok: true }> {
+    return this.req(`/api/shelves/${encodeURIComponent(shelfId)}/albums/${encodeURIComponent(albumId)}`, {
+      method: 'DELETE',
+    });
   }
 
   getAlbum(id: string): Promise<AlbumDetail> {

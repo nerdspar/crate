@@ -5,6 +5,8 @@ import type {
   PlayersResponse,
   SearchAlbum,
   Settings,
+  Shelf,
+  ShelfKind,
   ShelfResponse,
   SystemStatus,
   TransportCmd,
@@ -93,11 +95,42 @@ export class Service {
     });
   }
 
-  getShelf(): ShelfResponse {
+  getShelf(shelfId?: string): ShelfResponse {
+    const rows = !shelfId || shelfId === 'all' ? this.db.listShelf() : this.db.listShelfMembers(shelfId);
     return {
-      items: this.db.listShelf().map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
+      items: rows.map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
       stacks: this.db.listStacks(),
+      shelves: this.db.listShelves(),
     };
+  }
+
+  // --- Shelves (named curated collections) --------------------------------
+
+  createShelf(name: string, kind: ShelfKind = 'album'): Shelf {
+    const base = name.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'shelf';
+    const id = `sh-${base}-${this.db.listShelves().length}`;
+    const shelf = this.db.createShelf(id, name.trim() || 'New shelf', kind);
+    this.hub.broadcast({ type: 'shelves' });
+    return shelf;
+  }
+  renameShelf(id: string, name: string): void {
+    this.db.renameShelf(id, name);
+    this.hub.broadcast({ type: 'shelves' });
+  }
+  deleteShelf(id: string): void {
+    this.db.deleteShelf(id);
+    this.hub.broadcast({ type: 'shelves' });
+  }
+  addAlbumToShelf(shelfId: string, albumId: string): void {
+    this.db.addAlbumToShelf(shelfId, albumId);
+    this.hub.broadcast({ type: 'shelves' });
+  }
+  removeAlbumFromShelf(shelfId: string, albumId: string): void {
+    this.db.removeAlbumFromShelf(shelfId, albumId);
+    this.hub.broadcast({ type: 'shelves' });
+  }
+  albumShelfIds(albumId: string): string[] {
+    return this.db.shelvesForAlbum(albumId);
   }
 
   async search(query: string): Promise<SearchAlbum[]> {

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DEFAULT_SETTINGS, type Album, type AlbumOverride, type Palette, type Player, type Settings, type Stack } from '@crate/shared';
+import { DEFAULT_SETTINGS, type Album, type AlbumOverride, type Palette, type Player, type Settings, type Shelf, type ShelfKind, type Stack } from '@crate/shared';
 
 export interface AlbumRow {
   id: string;
@@ -55,6 +55,20 @@ CREATE TABLE IF NOT EXISTS stacks (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL
+);
+-- Named curated shelves (kind 'album'|'playlist'). "All" is virtual (every album).
+CREATE TABLE IF NOT EXISTS shelves (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'album',
+  sort_order INTEGER NOT NULL
+);
+-- Album↔shelf membership (an album can live on several shelves).
+CREATE TABLE IF NOT EXISTS shelf_members (
+  shelf_id TEXT NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+  album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (shelf_id, album_id)
 );
 CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY,
@@ -204,6 +218,62 @@ export class Db {
 
   removeFromShelf(albumId: string): void {
     this.db.prepare('DELETE FROM shelf_items WHERE album_id = ?').run(albumId);
+  }
+
+  // --- Shelves (named curated collections) --------------------------------
+
+  listShelves(): Shelf[] {
+    const rows = this.db.prepare('SELECT id, name, kind, sort_order FROM shelves ORDER BY sort_order, name').all() as Array<{
+      id: string;
+      name: string;
+      kind: string;
+      sort_order: number;
+    }>;
+    const user = rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind as ShelfKind, order: r.sort_order }));
+    return [{ id: 'all', name: 'All', kind: 'album', order: -1 }, ...user];
+  }
+
+  createShelf(id: string, name: string, kind: ShelfKind): Shelf {
+    const max = (this.db.prepare('SELECT MAX(sort_order) AS m FROM shelves').get() as { m: number | null }).m ?? 0;
+    this.db.prepare('INSERT INTO shelves (id, name, kind, sort_order) VALUES (?, ?, ?, ?)').run(id, name, kind, max + 1);
+    return { id, name, kind, order: max + 1 };
+  }
+
+  renameShelf(id: string, name: string): void {
+    this.db.prepare('UPDATE shelves SET name = ? WHERE id = ?').run(name, id);
+  }
+
+  deleteShelf(id: string): void {
+    this.db.prepare('DELETE FROM shelves WHERE id = ?').run(id);
+  }
+
+  addAlbumToShelf(shelfId: string, albumId: string): void {
+    const max = (
+      this.db.prepare('SELECT MAX(sort_order) AS m FROM shelf_members WHERE shelf_id = ?').get(shelfId) as { m: number | null }
+    ).m ?? 0;
+    this.db
+      .prepare('INSERT OR IGNORE INTO shelf_members (shelf_id, album_id, sort_order) VALUES (?, ?, ?)')
+      .run(shelfId, albumId, max + 1);
+  }
+
+  removeAlbumFromShelf(shelfId: string, albumId: string): void {
+    this.db.prepare('DELETE FROM shelf_members WHERE shelf_id = ? AND album_id = ?').run(shelfId, albumId);
+  }
+
+  listShelfMembers(shelfId: string): ShelfRow[] {
+    return this.db
+      .prepare(
+        `SELECT a.*, 'album' AS kind, m.sort_order AS sort_order, NULL AS stack_id
+         FROM shelf_members m JOIN albums a ON a.id = m.album_id
+         WHERE m.shelf_id = ? ORDER BY m.sort_order ASC`,
+      )
+      .all(shelfId) as ShelfRow[];
+  }
+
+  shelvesForAlbum(albumId: string): string[] {
+    return (
+      this.db.prepare('SELECT shelf_id FROM shelf_members WHERE album_id = ?').all(albumId) as Array<{ shelf_id: string }>
+    ).map((r) => r.shelf_id);
   }
 
   listStacks(): Stack[] {

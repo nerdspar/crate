@@ -124,6 +124,16 @@ export interface Stack {
   order: number;
 }
 
+/** A shelf holds albums or playlists (never mixed). "All" is the virtual shelf
+    of every album (id 'all'). */
+export type ShelfKind = 'album' | 'playlist';
+export interface Shelf {
+  id: string;
+  name: string;
+  kind: ShelfKind;
+  order: number;
+}
+
 export type SpineMode = 'palette' | 'art' | 'scan';
 /** How the artist + title sit along the spine. 'varied' = random per album. */
 export type LabelLayout = 'split' | 'center' | 'top' | 'bottom' | 'varied';

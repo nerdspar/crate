@@ -2,10 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import type {
   AddToShelfRequest,
   BrightnessRequest,
+  CreateShelfRequest,
   GroupRequest,
   OverrideRequest,
   PlayRequest,
   Settings,
+  ShelfAlbumRequest,
   TransportRequest,
   VolumeRequest,
 } from '@crate/shared';
@@ -16,7 +18,32 @@ interface MultipartRequest {
 }
 
 export function registerRoutes(app: FastifyInstance, service: Service): void {
-  app.get('/api/shelf', () => service.getShelf());
+  app.get('/api/shelf', (req) => service.getShelf((req.query as { shelf?: string }).shelf));
+
+  // Named shelves (curated collections; albums can belong to several).
+  app.post('/api/shelves', (req) => {
+    const b = req.body as CreateShelfRequest;
+    return service.createShelf(b.name, b.kind);
+  });
+  app.put('/api/shelves/:id', (req) => {
+    const { id } = req.params as { id: string };
+    service.renameShelf(id, (req.body as { name: string }).name);
+    return { ok: true };
+  });
+  app.delete('/api/shelves/:id', (req) => {
+    service.deleteShelf((req.params as { id: string }).id);
+    return { ok: true };
+  });
+  app.post('/api/shelves/:id/albums', (req) => {
+    const { id } = req.params as { id: string };
+    service.addAlbumToShelf(id, (req.body as ShelfAlbumRequest).albumId);
+    return { ok: true };
+  });
+  app.delete('/api/shelves/:id/albums/:albumId', (req) => {
+    const { id, albumId } = req.params as { id: string; albumId: string };
+    service.removeAlbumFromShelf(id, albumId);
+    return { ok: true };
+  });
 
   app.get('/api/albums/:id', async (req, reply) => {
     const { id } = req.params as { id: string };

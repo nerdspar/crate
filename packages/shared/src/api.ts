@@ -7,7 +7,9 @@ import type {
   Player,
   PlayerState,
   Settings,
+  Shelf,
   ShelfItem,
+  ShelfKind,
   SpineMode,
   Stack,
   Track,
@@ -34,6 +36,15 @@ export interface OverrideRequest {
 export interface ShelfResponse {
   items: ShelfItem[];
   stacks: Stack[];
+  shelves: Shelf[];
+}
+
+export interface CreateShelfRequest {
+  name: string;
+  kind?: ShelfKind;
+}
+export interface ShelfAlbumRequest {
+  albumId: string;
 }
 
 /** How the panel backlight is driven, in the plan's fallback order (§7). */
@@ -105,6 +116,7 @@ export type WsMessage =
   | { type: 'state'; state: PlayerState[] }
   | { type: 'progress'; playerId: string; elapsed: number }
   | { type: 'shelf' }
+  | { type: 'shelves' }
   | { type: 'players' }
   | { type: 'sync'; progress: number; message: string }
   | { type: 'settings'; settings: Settings }
