@@ -1399,6 +1399,21 @@ function applySettings(s: Settings): void {
   renderCCSort();
 }
 
+/* ---------- Idle chrome ---------- */
+/** After a spell without touch, fade the edge pull-tab hints (via body.idle)
+    so the resting shelf is pure art. Any input restores them; the edge swipe
+    zones stay live regardless, so a single swipe both reveals and opens. */
+const IDLE_MS = 10000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+function markActive(): void {
+  document.body.classList.remove('idle');
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => document.body.classList.add('idle'), IDLE_MS);
+}
+window.addEventListener('pointerdown', markActive, { passive: true });
+window.addEventListener('pointermove', markActive, { passive: true });
+window.addEventListener('keydown', markActive);
+
 /* ---------- Boot ---------- */
 async function boot(): Promise<void> {
   const [shelfRes, playersRes, settingsRes] = await Promise.all([
@@ -1425,6 +1440,7 @@ async function boot(): Promise<void> {
   refreshSystem();
   connectWs();
   requestAnimationFrame(tick);
+  markActive(); // start the idle countdown
 }
 
 void boot();

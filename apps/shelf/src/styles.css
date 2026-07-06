@@ -451,7 +451,14 @@ button {
   content: ""; position: absolute; top: 1vh; left: 50%; transform: translateX(-50%);
   width: 9vw; height: 0.5vh; border-radius: 999px;
   background: rgba(236,231,221,0.22);
+  transition: opacity 0.6s ease;
 }
+
+/* Idle: fade the edge pull-tab hints so the resting shelf is pure art. The
+   swipe zones stay live — only the visual hints hide, and any touch (which
+   fires markActive) brings them back. */
+body.idle #cc-grip::after,
+body.idle #find-grip::after { opacity: 0; }
 
 #cc {
   position: absolute; inset: 0;
@@ -592,6 +599,7 @@ button {
   content: ""; position: absolute; bottom: 1vh; left: 50%; transform: translateX(-50%);
   width: 9vw; height: 0.5vh; border-radius: 999px;
   background: rgba(236,231,221,0.22);
+  transition: opacity 0.6s ease;
 }
 /* Un-dimmed overlay: the shelf stays visible so live filtering shows. Tap the
    exposed shelf area to dismiss. */
