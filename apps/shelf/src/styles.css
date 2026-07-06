@@ -574,6 +574,47 @@ button {
 .spine.sliver .spine-label, .spine.sliver .cat, .spine.sliver .cover-btn { display: none; }
 .spine.sliver { opacity: 0.5; }
 
+/* ---------- Find bar: swipe up from the bottom edge ---------- */
+#find-grip {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 4vh; z-index: 16;
+}
+#find-grip::after {
+  content: ""; position: absolute; bottom: 1vh; left: 50%; transform: translateX(-50%);
+  width: 9vw; height: 0.5vh; border-radius: 999px;
+  background: rgba(236,231,221,0.22);
+}
+/* Un-dimmed overlay: the shelf stays visible so live filtering shows. Tap the
+   exposed shelf area to dismiss. */
+#find {
+  position: absolute; inset: 0; background: transparent;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 17;
+}
+#find.open { opacity: 1; pointer-events: auto; }
+#find-bar {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; gap: 1.6vh;
+  padding: 1.4vh 4vw 3vh;
+  background: linear-gradient(0deg, rgba(27,24,28,0.98), rgba(19,17,20,0.98));
+  border-top: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 -24px 60px rgba(0,0,0,0.55);
+  transform: translateY(102%);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#find.open #find-bar { transform: translateY(0); }
+#find-bar .cc-handle { align-self: center; margin-bottom: 0.4vh; cursor: grab; }
+#find-search {
+  width: 100%;
+  background: rgba(0,0,0,0.28); color: var(--ink);
+  border: 1px solid rgba(236,231,221,0.25); border-radius: 1.2vh;
+  font-size: 2.6vh; padding: 1.6vh 2.4vw;
+}
+#find-search::placeholder { color: var(--ink-dim); }
+.find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
+.find-row .choices { flex: 1 1 auto; }
+
 #toast {
   position: absolute; bottom: 9vh; left: 50%;
   transform: translate(-50%, 200%);

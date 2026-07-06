@@ -471,10 +471,12 @@ function showToast(msg: string): void {
 
 /* ---------- Settings ---------- */
 const settingsEl = document.getElementById('settings') as HTMLElement;
-(document.getElementById('gear') as HTMLElement).onclick = () => {
+/** Open the Settings sheet (launched from the Find bar). Device status
+    (brightness/IP/appliance) lives in Settings now, so refresh it on open. */
+function openSettings(): void {
   settingsEl.classList.add('open');
-  refreshSystem(); // device status (brightness/IP/appliance) lives in Settings now
-};
+  refreshSystem();
+}
 (document.getElementById('settings-close') as HTMLElement).onclick = () => settingsEl.classList.remove('open');
 settingsEl.addEventListener('click', (e) => {
   if (e.target === settingsEl) settingsEl.classList.remove('open');
@@ -708,7 +710,6 @@ const ccSeekFill = document.getElementById('cc-seek-fill') as HTMLElement;
 const ccCur = document.getElementById('cc-cur') as HTMLElement;
 const ccDur = document.getElementById('cc-dur') as HTMLElement;
 const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
-const ccSearch = document.getElementById('cc-search') as HTMLInputElement;
 
 /** Rooms intended to play together (leader = activePlayerId). Toggling a chip
     rebuilds this and pushes exact membership to the server. */
@@ -722,7 +723,6 @@ function openCC(): void {
   cc.classList.add('open');
   renderCCNow();
   renderCCRooms();
-  renderCCSort();
 }
 function closeCC(): void {
   cc.classList.remove('open');
@@ -936,10 +936,67 @@ function hue(hex: string): number {
   return h < 0 ? h + 360 : h;
 }
 
-/* ---- Live shelf search: non-matches collapse to slivers (no rebuild → keeps
-       the keyboard focus and caret while typing). ---- */
-ccSearch.addEventListener('input', () => {
-  filterQuery = ccSearch.value.trim();
+/* =====================================================================
+   Find bar (bottom-edge pull-up): live shelf search + sort + Settings launcher.
+   Un-dimmed so the shelf stays visible and filters as you type.
+   ===================================================================== */
+const find = document.getElementById('find') as HTMLElement;
+const findGrip = document.getElementById('find-grip') as HTMLElement;
+const findHandle = find.querySelector('.cc-handle') as HTMLElement;
+const findSearch = document.getElementById('find-search') as HTMLInputElement;
+
+function openFind(): void {
+  find.classList.add('open');
+  renderCCSort();
+  setTimeout(() => findSearch.focus(), 60);
+}
+function closeFind(): void {
+  find.classList.remove('open');
+}
+// Tap the exposed shelf area (outside the bar) to dismiss.
+find.addEventListener('click', (e) => {
+  if (e.target === find) closeFind();
+});
+
+// Open: press the bottom-edge grip and drag up. Close: tap/swipe the handle.
+let fGripDown = false,
+  fGripY = 0,
+  fGripOpened = false;
+findGrip.addEventListener('pointerdown', (e) => {
+  fGripDown = true;
+  fGripY = e.clientY;
+  fGripOpened = false;
+});
+let fHandleDown = false,
+  fHandleY = 0;
+findHandle.addEventListener('pointerdown', (e) => {
+  fHandleDown = true;
+  fHandleY = e.clientY;
+  e.stopPropagation();
+});
+window.addEventListener('pointermove', (e) => {
+  if (fGripDown && !fGripOpened && fGripY - e.clientY > 30) {
+    openFind();
+    fGripOpened = true;
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (fGripDown) fGripDown = false;
+  if (fHandleDown) {
+    fHandleDown = false;
+    if (e.clientY - fHandleY > 40 || Math.abs(e.clientY - fHandleY) < 8) closeFind();
+  }
+});
+
+(document.getElementById('find-settings') as HTMLElement).addEventListener('click', () => {
+  openSettings();
+  closeFind();
+});
+
+/* Live shelf search: non-matches collapse to slivers (no rebuild → keeps the
+   keyboard focus and caret while typing). */
+findSearch.addEventListener('input', () => {
+  filterQuery = findSearch.value.trim();
   items.forEach((a, i) => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });

@@ -35,13 +35,19 @@
       <div class="cc-block-label">Rooms &amp; volume</div>
       <div id="cc-rooms"></div>
     </div>
-    <div class="cc-block">
-      <div class="cc-block-label">Search</div>
-      <input id="cc-search" type="search" placeholder="Filter the shelf…" autocomplete="off" autocorrect="off" spellcheck="false">
-    </div>
-    <div class="cc-block">
-      <div class="cc-block-label">Sort by</div>
+  </div>
+</div>
+
+<!-- Find bar: swipe up from the bottom edge. Slim and un-dimmed so the shelf
+     stays visible and filters live as you type. Holds sort + Settings too. -->
+<div id="find-grip" aria-hidden="true"></div>
+<div id="find">
+  <div id="find-bar">
+    <div class="cc-handle" aria-label="Close"></div>
+    <input id="find-search" type="search" placeholder="Search your shelf…" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div class="find-row">
       <div class="choices" id="sort-choices"></div>
+      <button id="find-settings" class="cc-sysbtn">Settings</button>
     </div>
   </div>
 </div>
@@ -50,8 +56,6 @@
 <div id="dim"></div>
 <!-- Display sleep: full black, tap anywhere to wake -->
 <div id="sleep"></div>
-
-<button id="gear" aria-label="Settings">⚙</button>
 
 <div id="settings">
   <button id="settings-close" class="room" style="position:absolute; top:4vh; right:4vw;">Done</button>
