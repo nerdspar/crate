@@ -1402,7 +1402,7 @@ function renderShelfList(): void {
   findShelfList.appendChild(add);
 }
 
-async function switchShelf(id: string): Promise<void> {
+async function switchShelf(id: string, close = true): Promise<void> {
   const res = await client.getShelf(id === 'all' ? undefined : id);
   activeShelf = id;
   items = res.items;
@@ -1413,7 +1413,7 @@ async function switchShelf(id: string): Promise<void> {
   sizeFaces();
   applyNow();
   renderShelfList();
-  closeFind();
+  if (close) closeFind();
   showToast(shelves.find((s) => s.id === id)?.name ?? 'Shelf');
 }
 
@@ -1434,7 +1434,7 @@ async function createNamedShelf(name: string): Promise<void> {
   const sh = await client.createShelf({ name, kind: shelfTab }).catch(() => null);
   if (!sh) return;
   shelves.push(sh);
-  await switchShelf(sh.id);
+  await switchShelf(sh.id, false); // keep the Find bar open after creating
 }
 
 /** Populate the card ⋯ menu's "Add to shelf" list for one album. */
