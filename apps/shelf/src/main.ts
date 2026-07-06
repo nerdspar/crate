@@ -129,9 +129,11 @@ function buildShelf(): void {
     const fontSize = Math.min(baseW * (ts.font.includes('Newsreader') ? 0.66 : 0.6), 19);
     const ink = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
 
+    // Fallback chain: real scan → cover edge-slice strip → flat palette gradient.
+    const useStrip = !useScan && settings.spineMode !== 'palette' && !!a.spineStripUrl;
     const spineBg = useScan
       ? `background-image:url('${a.spineScanUrl}')`
-      : settings.spineMode === 'art' && a.spineStripUrl
+      : useStrip
         ? `background-image:url('${a.spineStripUrl}')`
         : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
@@ -422,11 +424,12 @@ function renderChoices(): void {
   (
     [
       ['scan', 'Real when available', 'Scanned spines, generated fallback'],
-      ['palette', 'Generated', 'Color spines from album art'],
+      ['art', 'Generated', 'Spine from the album cover edge'],
     ] as const
   ).forEach(([key, name, hint]) => {
+    const isOn = key === 'scan' ? settings.spineMode === 'scan' : settings.spineMode !== 'scan';
     const b = document.createElement('button');
-    b.className = 'choice' + (key === settings.spineMode ? ' on' : '');
+    b.className = 'choice' + (isOn ? ' on' : '');
     b.innerHTML = `${name}<span class="hint">${hint}</span>`;
     b.onclick = () => {
       settings.spineMode = key;

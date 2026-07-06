@@ -109,11 +109,17 @@ export async function buildArtwork(
   // Cover rendition at display height.
   await sharp(buf).resize({ height: h, withoutEnlargement: false }).jpeg({ quality: 82 }).toFile(join(opts.artDir, coverName));
 
-  // Spine strip: 1px center column, stretched to spine size, heavily blurred.
+  // Spine strip: the left-edge slice of the front art — the strip that wraps
+  // onto the spine on a real jewel case — lightly processed so the cover's real
+  // colors and texture carry onto the spine (how Spine's generated spines read),
+  // rather than a flat gradient. Slightly darkened to sit recessed under the
+  // plastic materials layer.
+  const sliceW = Math.max(1, Math.round(srcW * 0.07));
   await sharp(buf)
-    .extract({ left: Math.max(0, Math.floor(srcW / 2)), top: 0, width: 1, height: srcH })
-    .resize(120, h, { fit: 'fill' })
-    .blur(18)
+    .extract({ left: 0, top: 0, width: sliceW, height: srcH })
+    .resize(140, h, { fit: 'fill' })
+    .blur(2)
+    .modulate({ brightness: 0.92 })
     .png()
     .toFile(join(opts.artDir, spineName));
 

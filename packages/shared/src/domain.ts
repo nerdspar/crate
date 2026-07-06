@@ -124,7 +124,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   labelStyle: 'uniform',
   openMode: 'cover',
-  spineMode: 'palette',
+  spineMode: 'art',
   sortBy: 'artist',
   defaultPlayerId: null,
   longPressMs: 420,
