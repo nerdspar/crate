@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crate — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+</head>
+<body>
+<header>
+  <div class="eyebrow">Crate</div>
+  <h1>Admin</h1>
+</header>
+
+<main>
+  <section id="search-section">
+    <h2>Add albums</h2>
+    <form id="search-form">
+      <input id="q" type="search" placeholder="Search Apple Music — album or artist…" autocomplete="off" autofocus>
+      <button type="submit">Search</button>
+    </form>
+    <div id="results" class="grid"></div>
+  </section>
+
+  <section id="shelf-section">
+    <h2>On the shelf (<span id="shelf-count">0</span>)</h2>
+    <div id="shelf-list" class="grid"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
