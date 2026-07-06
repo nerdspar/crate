@@ -155,13 +155,13 @@ body {
   color: var(--brass); font-weight: 600;
 }
 .panel h1 {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader Variable', serif;
   font-weight: 500;
   font-size: 4.2vh;
   line-height: 1.02;
 }
 .panel h2 {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader Variable', serif;
   font-style: italic;
   font-weight: 400;
   font-size: 2.4vh;
@@ -297,7 +297,7 @@ button {
   color: var(--brass); font-weight: 600;
 }
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; }
-.setting-row .label { font-family: 'Newsreader', serif; font-size: 4vh; font-weight: 500; }
+.setting-row .label { font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 500; }
 .choices { display: flex; gap: 1.4vh; flex-wrap: wrap; }
 .choice {
   background: transparent; color: var(--ink-dim);

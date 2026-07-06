@@ -5,6 +5,10 @@
  */
 
 import { CrateClient, type SearchAlbum, type ShelfItem } from '@crate/shared';
+import '@fontsource/archivo-narrow/500.css';
+import '@fontsource/archivo-narrow/600.css';
+import '@fontsource/archivo-narrow/700.css';
+import '@fontsource-variable/newsreader/standard.css';
 import './styles.css';
 
 const client = new CrateClient('');

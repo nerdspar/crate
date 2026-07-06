@@ -10,6 +10,12 @@
  */
 
 import { CrateClient, type LabelStyle, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type Track, type WsMessage } from '@crate/shared';
+// Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
+import '@fontsource/archivo-narrow/500.css';
+import '@fontsource/archivo-narrow/600.css';
+import '@fontsource/archivo-narrow/700.css';
+import '@fontsource-variable/newsreader/standard.css';
+import '@fontsource-variable/newsreader/standard-italic.css';
 import './styles.css';
 
 const client = new CrateClient('');
