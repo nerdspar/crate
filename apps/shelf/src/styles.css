@@ -529,11 +529,9 @@ button {
 #cc-search::placeholder { color: var(--ink-dim); }
 
 #cc-brightness { width: 100%; accent-color: var(--ink); }
-.cc-block-row { flex-direction: row; gap: 6vw; align-items: flex-start; justify-content: space-between; }
-.cc-sysinfo { display: flex; flex-direction: column; gap: 1.4vh; flex: 1; }
-.cc-sysline { font-size: 2vh; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-.cc-ver { margin-left: 2vw; opacity: 0.6; }
-.cc-sys-actions { display: flex; gap: 1.4vh; flex-wrap: wrap; }
+.cc-sysline { font-size: 2.1vh; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.cc-ver { margin-left: 1.8vw; color: var(--ink-dim); }
+.cc-sys-actions { display: flex; gap: 1.6vw; flex-wrap: wrap; }
 .cc-sysbtn {
   background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
