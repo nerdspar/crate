@@ -57,6 +57,8 @@ export type PlaybackState = 'playing' | 'paused' | 'idle' | 'unknown';
 export interface NowPlaying {
   /** Resolved Crate album id if this maps to a shelf album, else null. */
   albumId: string | null;
+  /** Provider album uri if known (for robust shelf matching), else null. */
+  albumUri: string | null;
   title: string | null;
   artist: string | null;
   album: string | null;

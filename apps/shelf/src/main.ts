@@ -51,6 +51,18 @@ let playingTrack = 0;
 let activePlayerId: string | null = null;
 let volume = 42;
 
+/** Live now-playing state, driven by WS state + progress ticks. */
+interface NowState {
+  playerId: string | null;
+  albumId: string | null;
+  trackIndex: number;
+  elapsed: number;
+  duration: number;
+  playing: boolean;
+  at: number; // performance.now() at last elapsed sample
+}
+let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, duration: 0, playing: false, at: performance.now() };
+
 const trackCache = new Map<string, Track[]>();
 
 function roomName(id: string | null): string {
@@ -109,6 +121,10 @@ function buildShelf(): void {
             <span class="vol-ico">🔊</span>
           </div>
         </div>
+        <div class="nowbar" hidden>
+          <div class="seek"><div class="seek-fill"></div></div>
+          <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
+        </div>
         <div class="tracks"></div>
       </div>
       <div class="eq"><i></i><i></i><i></i></div>`;
@@ -132,6 +148,19 @@ function buildShelf(): void {
     (el.querySelector('.vol input') as HTMLInputElement).addEventListener('input', (e) => {
       volume = +(e.target as HTMLInputElement).value;
       if (activePlayerId) void client.setVolume({ playerId: activePlayerId, level: volume }).catch(() => {});
+    });
+    const seek = el.querySelector('.seek') as HTMLElement;
+    seek.addEventListener('pointerdown', stop);
+    seek.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (playingIdx !== i || now.duration <= 0 || !now.playerId) return;
+      const rect = seek.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, ((e as MouseEvent).clientX - rect.left) / rect.width));
+      const pos = Math.floor(ratio * now.duration);
+      now.elapsed = pos;
+      now.at = performance.now();
+      updateNowbar();
+      void client.transport({ playerId: now.playerId, cmd: 'seek', position: pos }).catch(() => {});
     });
     shelf.appendChild(el);
   });
@@ -167,6 +196,7 @@ function openAlbum(i: number, autoscroll = true): void {
   renderRooms(el);
   void renderTracks(el, i);
   (el.querySelector('.vol input') as HTMLInputElement).value = String(volume);
+  updateNowbar();
   el.classList.add('open');
   if (openMode === 'card') el.classList.add('expanded');
   el.style.width = openWidth(el) + 'px';
@@ -240,6 +270,10 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       row.className = 'track' + (isNow ? ' now' : '');
       const dur = t.duration ? fmtDur(t.duration) : '';
       row.innerHTML = `<span class="n">${isNow ? '♪' : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void play(i, ti);
+      });
       wrap.appendChild(row);
     });
   };
@@ -263,19 +297,25 @@ function fmtDur(seconds: number): string {
 }
 
 /* ---------- Playback ---------- */
-async function play(i: number): Promise<void> {
+async function play(i: number, trackIndex = 0): Promise<void> {
   const item = items[i]!;
   try {
-    await client.play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}) });
+    await client.play({
+      albumId: item.albumId,
+      ...(activePlayerId ? { playerId: activePlayerId } : {}),
+      ...(trackIndex > 0 ? { trackIndex } : {}),
+    });
   } catch (e) {
     console.error('play failed', e);
     showToast('Playback failed');
     return;
   }
+  // Optimistic now-state; the next WS state/progress corrects it.
+  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, playing: true, at: performance.now() };
+  playingIdx = i;
+  playingTrack = trackIndex;
   document.querySelectorAll('.spine').forEach((s) => s.classList.remove('playing'));
   (shelf.children[i] as HTMLElement).classList.add('playing');
-  playingIdx = i;
-  playingTrack = 0;
   closeAlbum();
   showToast(`Playing on ${roomName(activePlayerId)}`);
 }
@@ -463,16 +503,7 @@ window.addEventListener('pointerup', (e) => {
 
 /* ---------- Live state (WebSocket) ---------- */
 function handleState(states: PlayerState[]): void {
-  const playing = states.find((s) => s.state === 'playing' && s.nowPlaying?.albumId);
-  document.querySelectorAll('.spine.playing').forEach((s) => s.classList.remove('playing'));
-  if (playing?.nowPlaying?.albumId) {
-    const idx = items.findIndex((it) => it.albumId === playing.nowPlaying!.albumId);
-    if (idx >= 0) {
-      (shelf.children[idx] as HTMLElement | undefined)?.classList.add('playing');
-      playingIdx = idx;
-      playingTrack = playing.nowPlaying.trackIndex ?? 0;
-    }
-  }
+  // Volume of the active player → open slider.
   const active = states.find((s) => s.playerId === activePlayerId);
   if (active && active.volume !== null) {
     volume = active.volume;
@@ -481,6 +512,79 @@ function handleState(states: PlayerState[]): void {
       if (inp) inp.value = String(volume);
     }
   }
+  // Now-playing: a playing player mapped to a shelf album — includes playback
+  // started externally (phone / Sonos app), which MA reports over the same WS.
+  const np =
+    states.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
+    states.find((s) => s.state === 'playing' && s.nowPlaying);
+  if (np?.nowPlaying) {
+    now = {
+      playerId: np.playerId,
+      albumId: np.nowPlaying.albumId,
+      trackIndex: np.nowPlaying.trackIndex ?? 0,
+      elapsed: np.nowPlaying.elapsed ?? 0,
+      duration: np.nowPlaying.duration ?? 0,
+      playing: true,
+      at: performance.now(),
+    };
+  } else {
+    now = { ...now, playing: false };
+  }
+  applyNow();
+}
+
+function applyNow(): void {
+  document.querySelectorAll('.spine.playing').forEach((s) => s.classList.remove('playing'));
+  const idx = now.albumId ? items.findIndex((it) => it.albumId === now.albumId) : -1;
+  playingIdx = idx >= 0 ? idx : null;
+  playingTrack = now.trackIndex;
+  if (idx >= 0 && now.playing) (shelf.children[idx] as HTMLElement | undefined)?.classList.add('playing');
+  if (openIdx !== null) {
+    updateOpenTrackIndicator();
+    updateNowbar();
+  }
+}
+
+function updateOpenTrackIndicator(): void {
+  if (openIdx === null) return;
+  const panel = shelf.children[openIdx] as HTMLElement;
+  panel.querySelectorAll('.track').forEach((row, ti) => {
+    const isNow = playingIdx === openIdx && ti === playingTrack;
+    row.classList.toggle('now', isNow);
+    const n = row.querySelector('.n');
+    if (n) n.textContent = isNow ? '♪' : String(ti + 1);
+  });
+}
+
+function liveElapsed(): number {
+  const e = now.playing ? now.elapsed + (performance.now() - now.at) / 1000 : now.elapsed;
+  return now.duration > 0 ? Math.min(e, now.duration) : e;
+}
+
+function updateNowbar(): void {
+  if (openIdx === null) return;
+  const panel = shelf.children[openIdx] as HTMLElement;
+  const bar = panel.querySelector('.nowbar') as HTMLElement | null;
+  if (!bar) return;
+  const show = playingIdx === openIdx && now.duration > 0;
+  bar.hidden = !show;
+  if (!show) return;
+  const e = liveElapsed();
+  (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
+  (bar.querySelector('.cur') as HTMLElement).textContent = fmtDur(e);
+  (bar.querySelector('.dur') as HTMLElement).textContent = fmtDur(now.duration);
+}
+
+function handleProgress(playerId: string, elapsed: number): void {
+  if (playerId !== now.playerId) return;
+  now.elapsed = elapsed;
+  now.at = performance.now();
+  now.playing = true;
+}
+
+function tick(): void {
+  if (openIdx !== null && playingIdx === openIdx) updateNowbar();
+  requestAnimationFrame(tick);
 }
 
 function connectWs(): void {
@@ -494,6 +598,7 @@ function connectWs(): void {
       return;
     }
     if (msg.type === 'state') handleState(msg.state);
+    else if (msg.type === 'progress') handleProgress(msg.playerId, msg.elapsed);
     else if (msg.type === 'shelf') void reloadShelf();
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
@@ -547,6 +652,7 @@ async function boot(): Promise<void> {
   renderChoices();
   handleState(playersRes.state);
   connectWs();
+  requestAnimationFrame(tick);
 }
 
 void boot();

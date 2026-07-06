@@ -33,6 +33,9 @@ export class Service {
     this.ma.onState((states) => {
       this.hub.broadcast({ type: 'state', state: this.resolveStates(states) });
     });
+    this.ma.onProgress((playerId, elapsed) => {
+      this.hub.broadcast({ type: 'progress', playerId, elapsed });
+    });
     try {
       await this.ma.start();
       await this.refreshPlayers();
@@ -55,14 +58,17 @@ export class Service {
 
   private resolveStates(states: PlayerState[]): PlayerState[] {
     const shelf = this.db.listShelf();
+    const byUri = new Map(shelf.map((r) => [r.provider_uri, r.id]));
     const byTitle = new Map(shelf.map((r) => [r.title.toLowerCase(), r.id]));
     return states.map((s) => {
-      if (s.nowPlaying?.album) {
-        const id = byTitle.get(s.nowPlaying.album.toLowerCase()) ?? null;
-        const np: NowPlaying = { ...s.nowPlaying, albumId: id };
-        return { ...s, nowPlaying: np };
-      }
-      return s;
+      const np = s.nowPlaying;
+      if (!np) return s;
+      const id =
+        (np.albumUri ? byUri.get(np.albumUri) : undefined) ??
+        (np.album ? byTitle.get(np.album.toLowerCase()) : undefined) ??
+        null;
+      const resolved: NowPlaying = { ...np, albumId: id };
+      return { ...s, nowPlaying: resolved };
     });
   }
 

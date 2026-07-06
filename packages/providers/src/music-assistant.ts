@@ -240,6 +240,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
           nowPlaying: hasNow
             ? {
                 albumId: null,
+                albumUri: str(rec(media['album'])['uri']) ?? null,
                 title: str(media['name']) ?? str(current['name']) ?? null,
                 artist: firstArtistName(media),
                 album: str(rec(media['album'])['name']) ?? null,
@@ -251,6 +252,15 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         };
       })
       .filter((s): s is PlayerState => s !== null);
+  }
+
+  /** Subscribe to frequent elapsed-time ticks (MA `queue_time_updated`). */
+  onProgress(cb: (playerId: string, elapsed: number) => void): () => void {
+    return this.client.onEvent((e: MaEvent) => {
+      if (e.event !== 'queue_time_updated' || !e.object_id) return;
+      const elapsed = typeof e.data === 'number' ? e.data : num(rec(e.data)['elapsed_time']);
+      if (elapsed !== undefined) cb(e.object_id, elapsed);
+    });
   }
 
   onState(cb: (states: PlayerState[]) => void): () => void {

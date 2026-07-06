@@ -66,6 +66,7 @@ export interface PlayersResponse {
 /** Server → client push messages on `/ws`. */
 export type WsMessage =
   | { type: 'state'; state: PlayerState[] }
+  | { type: 'progress'; playerId: string; elapsed: number }
   | { type: 'shelf' }
   | { type: 'players' }
   | { type: 'sync'; progress: number; message: string }
