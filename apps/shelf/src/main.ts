@@ -148,6 +148,21 @@ function matchInk(a: ShelfItem): string {
 }
 
 /* ---------- Build the shelf ---------- */
+/** Ambient backlight rendered behind all spines — shows the opened album's
+    blurred art in the gaps/margins around it, never over neighbor art. */
+const shelfGlow = document.createElement('div');
+shelfGlow.className = 'shelf-glow';
+
+function positionGlow(i: number): void {
+  const a = items[i];
+  if (!a) return;
+  shelfGlow.style.left = `${settledLeft(i)}px`;
+  shelfGlow.style.width = `${coverW()}px`;
+  shelfGlow.style.backgroundImage = a.artworkUrl ? `url('${a.artworkUrl}')` : 'none';
+  if (!a.artworkUrl) shelfGlow.style.backgroundColor = a.primaryColor;
+  shelfGlow.classList.add('on');
+}
+
 function buildShelf(): void {
   shelf.innerHTML = '';
   items.forEach((a, i) => {
@@ -203,9 +218,7 @@ function buildShelf(): void {
           `<div class="spine-label title-label" style="${labelCss}">${titleSpan}</div>`
         : `<div class="spine-label" style="${labelCss}; color:${baseInk}">${artistSpan}&nbsp;&nbsp;${titleSpan}</div>`;
 
-    const glowBg = a.artworkUrl ? `background-image:url('${a.artworkUrl}')` : `background:${a.primaryColor}`;
     el.innerHTML = `
-      <div class="glow" style="${glowBg}"></div>
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
           ${labelHtml}
@@ -306,6 +319,9 @@ function buildShelf(): void {
     });
     shelf.appendChild(el);
   });
+  shelf.appendChild(shelfGlow); // last child, but z-index puts it behind the spines
+  if (openIdx !== null) positionGlow(openIdx);
+  else shelfGlow.classList.remove('on');
   renderChoices();
 }
 
@@ -344,6 +360,7 @@ function openAlbum(i: number, autoscroll = true): void {
   el.classList.add('open');
   if (openMode === 'card') el.classList.add('expanded');
   el.style.width = openWidth(el) + 'px';
+  positionGlow(i);
   if (!autoscroll) return;
   requestAnimationFrame(() => {
     smoothScrollTo(vp, settledLeft(i) - vp.clientWidth * 0.12);
@@ -360,6 +377,7 @@ function closeAlbum(): void {
   const el = shelf.children[openIdx] as HTMLElement;
   el.classList.remove('open', 'expanded');
   el.style.width = el.style.getPropertyValue('--spine-w');
+  shelfGlow.classList.remove('on');
   openIdx = null;
 }
 
