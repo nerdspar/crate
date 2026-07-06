@@ -1115,10 +1115,12 @@ window.addEventListener('pointerup', (e) => {
 });
 
 /* Live shelf search: non-matches are hidden (no rebuild → keeps the keyboard
-   focus and caret while typing). A query also reveals the "Search Apple Music"
-   escalation, which searches the provider so you can add albums not on the shelf. */
-const findAdd = document.getElementById('find-add') as HTMLButtonElement;
+   focus and caret while typing). The same query also auto-searches the provider
+   (Apple Music via MA), debounced, so you can add albums not on the shelf without
+   pressing Enter — there's no Enter key on the wall touchscreen. */
 const findResults = document.getElementById('find-results') as HTMLElement;
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchSeq = 0;
 
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
@@ -1126,32 +1128,41 @@ findSearch.addEventListener('input', () => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
   sizeFaces();
-  findAdd.hidden = filterQuery.length === 0;
-  if (!filterQuery) clearFindResults();
+  if (searchTimer) clearTimeout(searchTimer);
+  if (filterQuery.length >= 2) {
+    searchTimer = setTimeout(() => void searchProvider(), 450);
+  } else {
+    clearFindResults();
+  }
 });
-
-findAdd.addEventListener('click', () => void searchProvider());
+// Enter (hardware keyboards / the on-screen "Go" key) searches immediately.
 findSearch.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && filterQuery) void searchProvider();
+  if (e.key === 'Enter' && filterQuery) {
+    if (searchTimer) clearTimeout(searchTimer);
+    void searchProvider();
+  }
 });
 
 function clearFindResults(): void {
+  searchSeq++; // cancel any in-flight render
   findResults.hidden = true;
   findResults.innerHTML = '';
 }
 
-/** Escalate the shelf filter to a provider search (Apple Music via MA), so you
-    can add albums that aren't on the shelf yet. Quick add only — bulk curation
-    stays in admin. */
+/** Search the provider so you can add albums not on the shelf. Sequence-guarded
+    so a slower earlier response can't overwrite a newer one. Quick add only —
+    bulk curation stays in admin. */
 async function searchProvider(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
+  const seq = ++searchSeq;
   findResults.hidden = false;
-  findResults.innerHTML = '<div class="find-empty">Searching Apple Music…</div>';
+  if (!findResults.children.length) findResults.innerHTML = '<div class="find-empty">Searching Apple Music…</div>';
   try {
-    renderFindResults(await client.search(q));
+    const res = await client.search(q);
+    if (seq === searchSeq) renderFindResults(res);
   } catch {
-    findResults.innerHTML = '<div class="find-empty">Search failed.</div>';
+    if (seq === searchSeq) findResults.innerHTML = '<div class="find-empty">Search failed.</div>';
   }
 }
 
