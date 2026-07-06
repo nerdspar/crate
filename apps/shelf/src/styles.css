@@ -654,6 +654,30 @@ body.idle #find-grip::after { opacity: 0; }
 .find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
 .find-row .choices { flex: 1 1 auto; }
 
+/* Add-from-Apple-Music results: a horizontal strip of album cards above the input. */
+#find-results { display: flex; gap: 1.6vw; overflow-x: auto; padding-bottom: 0.6vh; }
+#find-results[hidden] { display: none; }
+#find-results::-webkit-scrollbar { display: none; }
+.find-card {
+  flex: 0 0 auto; width: 24vw; display: flex; align-items: center; gap: 1.4vw;
+  background: rgba(0,0,0,0.28); border: 1px solid rgba(236,231,221,0.12);
+  border-radius: 1.2vh; padding: 1vh 1.4vw;
+}
+.find-card-art {
+  width: 7vh; height: 7vh; flex-shrink: 0; border-radius: 0.8vh;
+  background: #26232a center/cover no-repeat;
+}
+.find-card-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3vh; }
+.find-card-meta .t { color: var(--ink); font-size: 2vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.find-card-meta .a { color: var(--ink-dim); font-size: 1.7vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.find-card-add {
+  flex-shrink: 0; background: transparent; color: var(--ink);
+  border: 1px solid var(--ink); border-radius: 999px;
+  font-size: 1.7vh; font-weight: 600; padding: 0.6vh 1.6vw; letter-spacing: 0.03em;
+}
+.find-card-add:disabled { color: var(--ink-dim); border-color: rgba(236,231,221,0.2); }
+.find-empty { color: var(--ink-dim); font-size: 2vh; padding: 0.6vh 0; }
+
 #toast {
   position: absolute; bottom: 9vh; left: 50%;
   transform: translate(-50%, 200%);
