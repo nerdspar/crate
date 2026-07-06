@@ -80,8 +80,12 @@ function renderShelf(): void {
         <div class="t">${esc(it.title)}</div>
         <div class="a">${esc(it.artist)}</div>
       </div>
-      <button class="ghost">Remove</button>`;
-    card.querySelector('button')!.addEventListener('click', () => void removeFromShelf(it.albumId));
+      <div class="card-actions">
+        <button class="ghost edit-btn">Edit</button>
+        <button class="ghost">Remove</button>
+      </div>`;
+    card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
+    card.querySelectorAll('button')[1]!.addEventListener('click', () => void removeFromShelf(it.albumId));
     shelfListEl.appendChild(card);
   });
 }
@@ -130,6 +134,85 @@ async function loadShelf(): Promise<void> {
     shelfListEl.innerHTML = `<div class="empty">Could not reach the device service.</div>`;
   }
 }
+
+/* ---------- Per-album spine override editor ---------- */
+const editorEl = document.getElementById('editor') as HTMLElement;
+const editorTitle = document.getElementById('editor-title') as HTMLElement;
+const ovCover = document.getElementById('ov-cover') as HTMLInputElement;
+const ovSpine = document.getElementById('ov-spine') as HTMLInputElement;
+const ovFont = document.getElementById('ov-font') as HTMLSelectElement;
+const ovTracking = document.getElementById('ov-tracking') as HTMLInputElement;
+const ovArtistOn = document.getElementById('ov-artist-on') as HTMLInputElement;
+const ovArtist = document.getElementById('ov-artist') as HTMLInputElement;
+const ovTitleOn = document.getElementById('ov-title-on') as HTMLInputElement;
+const ovTitle = document.getElementById('ov-title') as HTMLInputElement;
+const saveBtn = document.getElementById('editor-save') as HTMLButtonElement;
+let editingId: string | null = null;
+
+async function openEditor(it: ShelfItem): Promise<void> {
+  editingId = it.albumId;
+  editorTitle.textContent = `${it.artist} — ${it.title}`;
+  ovCover.value = '';
+  ovSpine.value = '';
+  ovFont.value = '';
+  ovTracking.value = '';
+  ovArtistOn.checked = false;
+  ovTitleOn.checked = false;
+  try {
+    const ov = (await client.getAlbum(it.albumId)).override;
+    ovFont.value = ov.font ?? '';
+    ovTracking.value = ov.tracking ?? '';
+    if (ov.artistColor) {
+      ovArtistOn.checked = true;
+      ovArtist.value = ov.artistColor;
+    }
+    if (ov.titleColor) {
+      ovTitleOn.checked = true;
+      ovTitle.value = ov.titleColor;
+    }
+  } catch {
+    /* no existing override */
+  }
+  editorEl.hidden = false;
+}
+
+function closeEditor(): void {
+  editorEl.hidden = true;
+  editingId = null;
+}
+
+async function saveEditor(): Promise<void> {
+  const id = editingId;
+  if (!id) return;
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+  try {
+    const cover = ovCover.files?.[0];
+    const spine = ovSpine.files?.[0];
+    if (cover) await client.uploadArt(id, 'cover', cover);
+    if (spine) await client.uploadArt(id, 'spine', spine);
+    await client.putOverride(id, {
+      font: ovFont.value || null,
+      tracking: ovTracking.value.trim() || null,
+      artistColor: ovArtistOn.checked ? ovArtist.value : null,
+      titleColor: ovTitleOn.checked ? ovTitle.value : null,
+    });
+    showToast('Saved');
+    closeEditor();
+    await loadShelf();
+  } catch (e) {
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save spine';
+  }
+}
+
+(document.getElementById('editor-close') as HTMLElement).onclick = closeEditor;
+saveBtn.onclick = () => void saveEditor();
+editorEl.addEventListener('click', (e) => {
+  if (e.target === editorEl) closeEditor();
+});
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();

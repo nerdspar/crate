@@ -95,6 +95,13 @@ export interface ShelfItem {
   spineStripUrl: string | null;
   /** Real spine scan (MusicBrainz CAA) for spineMode `scan`, else null. */
   spineScanUrl: string | null;
+  /** User-uploaded spine image (per-album override) — wins over everything. */
+  customSpineUrl: string | null;
+  /** Per-album label overrides (null = use the generated defaults). */
+  labelFont: string | null;
+  labelTracking: string | null;
+  artistColor: string | null;
+  titleColor: string | null;
   /** Cover artwork URL (local cached path preferred, else remote). */
   artworkUrl: string | null;
 }
@@ -114,6 +121,18 @@ export type SpineThickness = 'thin' | 'medium' | 'thick';
 export type SpineTextDir = 'ttb' | 'btt';
 /** What happens to the open album after you hit play. */
 export type AfterPlay = 'close' | 'linger' | 'stay';
+/** Label ink strategy: guaranteed-contrast (white/black) vs match the album accent. */
+export type InkMode = 'contrast' | 'match';
+
+/** Per-album manual overrides (admin), all optional. */
+export interface AlbumOverride {
+  spinePath?: string | null;
+  coverPath?: string | null;
+  font?: string | null;
+  tracking?: string | null;
+  artistColor?: string | null;
+  titleColor?: string | null;
+}
 
 export interface Settings {
   labelStyle: LabelStyle;
@@ -121,6 +140,7 @@ export interface Settings {
   spineMode: SpineMode;
   spineThickness: SpineThickness;
   spineTextDir: SpineTextDir;
+  inkMode: InkMode;
   sortBy: SortBy;
   defaultPlayerId: string | null;
   longPressMs: number;
@@ -137,6 +157,7 @@ export const DEFAULT_SETTINGS: Settings = {
   spineMode: 'art',
   spineThickness: 'medium',
   spineTextDir: 'ttb',
+  inkMode: 'contrast',
   sortBy: 'artist',
   defaultPlayerId: null,
   longPressMs: 420,

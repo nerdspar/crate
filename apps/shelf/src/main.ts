@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type LabelStyle, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelStyle, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -116,48 +116,61 @@ function spineWidthPx(): number {
   return Math.round(Math.max(26, Math.min(coverW() * THICKNESS_RATIO[settings.spineThickness], 92)));
 }
 
+/** Ink-match test (inkMode 'match'): color the title with the album's accent,
+    biased to the readable side of the spine. May not contrast on every album —
+    that's the point of it being a test / per-album override territory. */
+function matchInk(a: ShelfItem): string {
+  return a.inkColor === 'light' ? a.primaryColor : a.darkColor;
+}
+
 /* ---------- Build the shelf ---------- */
 function buildShelf(): void {
   shelf.innerHTML = '';
   items.forEach((a, i) => {
     const spineW = spineWidthPx(); // uniform — every CD is the same thickness
-    // 'scan' mode: real spine image when we have one, else fall back to generated.
-    const useScan = settings.spineMode === 'scan' && !!a.spineScanUrl;
+    // Spine source precedence: uploaded custom spine → real scan → cover
+    // edge-slice → flat gradient. A custom spine keeps the label (with overrides);
+    // only a real scan (its own text baked in) suppresses the generated label.
+    const useCustom = !!a.customSpineUrl;
+    const useScan = !useCustom && settings.spineMode === 'scan' && !!a.spineScanUrl;
+    const useStrip = !useCustom && !useScan && settings.spineMode !== 'palette' && !!a.spineStripUrl;
     const el = document.createElement('div');
     el.className = 'spine' + (useScan ? ' scan' : '');
     el.dataset['idx'] = String(i);
     el.style.width = spineW + 'px';
     el.style.setProperty('--spine-w', spineW + 'px');
-    // Typography variation is governed by the label setting: 'uniform' = one
-    // identical style for every spine; otherwise a per-artist identity (font +
-    // tracking), with per-album position/flip added by LABEL_STYLES.
+
+    // Typography variation is governed by the label setting; per-album overrides
+    // (font, tracking, artist/title color) win over the generated defaults.
     const ts = labelStyle === 'uniform' ? TYPE_STYLES[0]! : TYPE_STYLES[hashStr(a.artist) % TYPE_STYLES.length]!;
     const baseW = spineW / 2;
-    const fontSize = Math.min(baseW * (ts.font.includes('Newsreader') ? 0.66 : 0.6), 19);
-    const ink = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
+    const font = a.labelFont ?? ts.font;
+    const tracking = a.labelTracking ?? ts.tracking;
+    const fontSize = Math.min(baseW * (font.includes('Newsreader') ? 0.66 : 0.6), 19);
+    const baseInk = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
+    const artistCol = a.artistColor ?? baseInk;
+    const titleCol = a.titleColor ?? (settings.inkMode === 'match' ? matchInk(a) : baseInk);
 
-    // Fallback chain: real scan → cover edge-slice strip → flat palette gradient.
-    const useStrip = !useScan && settings.spineMode !== 'palette' && !!a.spineStripUrl;
-    const spineBg = useScan
-      ? `background-image:url('${a.spineScanUrl}')`
-      : useStrip
-        ? `background-image:url('${a.spineStripUrl}')`
-        : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
+    const spineBg = useCustom
+      ? `background-image:url('${a.customSpineUrl}')`
+      : useScan
+        ? `background-image:url('${a.spineScanUrl}')`
+        : useStrip
+          ? `background-image:url('${a.spineStripUrl}')`
+          : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
-    // Catalog imprint (release year) at the foot (SPINE_RENDERING §1). Suppressed
-    // for scans — the scan carries its own label/imprint.
-    const cat = !useScan && a.year ? `<div class="cat" style="color:${ink}">${a.year}</div>` : '';
+    const cat = !useScan && a.year ? `<div class="cat" style="color:${baseInk}">${a.year}</div>` : '';
 
     el.innerHTML = `
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
-          <div class="spine-label" style="font-size:${fontSize}px; color:${ink}; font-family:${ts.font}; font-weight:${ts.weight}; text-transform:${ts.transform}; letter-spacing:${ts.tracking}">
-            <span class="artist">${escapeHtml(a.artist)}</span>&nbsp;&nbsp;<span class="title">${escapeHtml(a.title)}</span>
+          <div class="spine-label" style="font-size:${fontSize}px; color:${baseInk}; font-family:${font}; font-weight:${ts.weight}; text-transform:${ts.transform}; letter-spacing:${tracking}">
+            <span class="artist" style="color:${artistCol}">${escapeHtml(a.artist)}</span>&nbsp;&nbsp;<span class="title" style="color:${titleCol}">${escapeHtml(a.title)}</span>
           </div>
           ${cat}
         </div>
         <div class="face face-cover${coverArt || `" style="background:linear-gradient(145deg, ${a.primaryColor}, ${a.darkColor} 85%)`}">
-          <div class="cover-type" style="color:${ink}">${escapeHtml(a.title)}</div>
+          <div class="cover-type" style="color:${baseInk}">${escapeHtml(a.title)}</div>
         </div>
       </div>
       <button class="cover-btn cover-play" aria-label="Play">▶</button>
@@ -492,6 +505,21 @@ function renderChoices(): void {
       applyTextDir();
       renderChoices();
       void client.putSettings({ spineTextDir: settings.spineTextDir }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'ink-choices',
+    [
+      ['contrast', 'Contrast', 'White or black — always readable'],
+      ['match', 'Match accent', 'Title in the album color (test)'],
+    ],
+    (k) => settings.inkMode === k,
+    (k) => {
+      settings.inkMode = k as InkMode;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ inkMode: settings.inkMode }).catch(() => {});
     },
   );
 
@@ -836,7 +864,12 @@ function applySettings(s: Settings): void {
   labelStyle = s.labelStyle;
   openMode = s.openMode;
   applyTextDir();
-  if (s.spineMode !== prev.spineMode || s.spineThickness !== prev.spineThickness || s.labelStyle !== prev.labelStyle) {
+  if (
+    s.spineMode !== prev.spineMode ||
+    s.spineThickness !== prev.spineThickness ||
+    s.labelStyle !== prev.labelStyle ||
+    s.inkMode !== prev.inkMode
+  ) {
     buildShelf();
     sizeFaces();
   }

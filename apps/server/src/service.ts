@@ -9,7 +9,8 @@ import type {
   TransportCmd,
 } from '@crate/shared';
 import type { MusicAssistantProvider } from '@crate/providers';
-import { buildArtwork, buildSpineScan } from './artwork.js';
+import type { AlbumOverride } from '@crate/shared';
+import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
 import type { Config } from './config.js';
 import type { AlbumRow, Db } from './db.js';
@@ -113,6 +114,7 @@ export class Service {
       spine_width: existing?.spine_width ?? spineWidthFor(id),
       added_at: existing?.added_at ?? new Date().toISOString(),
       play_count: existing?.play_count ?? 0,
+      overrides: existing?.overrides ?? null,
     };
     this.db.upsertAlbum(row);
     this.db.addToShelf(id);
@@ -170,7 +172,22 @@ export class Service {
     const row = this.db.getAlbum(id);
     if (!row) return null;
     const tracks = await this.ma.getTracks(row.provider_uri).catch(() => []);
-    return { album: rowToAlbum(row), tracks };
+    return { album: rowToAlbum(row), tracks, override: this.db.getOverride(id) };
+  }
+
+  async uploadArt(id: string, kind: 'spine' | 'cover', buf: Buffer): Promise<void> {
+    const name = await processUploadedArt(id, kind, buf, {
+      artDir: this.cfg.artDir,
+      coverHeightPx: this.cfg.coverHeightPx,
+    });
+    this.db.setOverride(id, kind === 'spine' ? { spinePath: name } : { coverPath: name });
+    this.hub.broadcast({ type: 'shelf' });
+  }
+
+  setOverride(id: string, patch: Partial<AlbumOverride>): AlbumOverride {
+    const next = this.db.setOverride(id, patch);
+    this.hub.broadcast({ type: 'shelf' });
+    return next;
   }
 
   async play(albumId: string, trackIndex?: number, playerId?: string): Promise<void> {

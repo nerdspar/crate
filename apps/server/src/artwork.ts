@@ -92,6 +92,26 @@ async function extractPalette(buf: Buffer): Promise<Palette> {
   return paletteFrom(rgbToHex(stats.dominant));
 }
 
+/** Process a user-uploaded custom cover or spine image (per-album override). */
+export async function processUploadedArt(
+  id: string,
+  kind: 'spine' | 'cover',
+  buf: Buffer,
+  opts: { artDir: string; coverHeightPx: number },
+): Promise<string> {
+  if (kind === 'cover') {
+    const name = `${id}-ov-cover.jpg`;
+    await sharp(buf).resize({ height: opts.coverHeightPx }).jpeg({ quality: 85 }).toFile(join(opts.artDir, name));
+    return name;
+  }
+  const name = `${id}-ov-spine.png`;
+  const meta = await sharp(buf).metadata();
+  let pipeline = sharp(buf);
+  if ((meta.width ?? 0) > (meta.height ?? 0)) pipeline = pipeline.rotate(90); // normalize to vertical
+  await pipeline.resize({ height: 1800, withoutEnlargement: true }).png().toFile(join(opts.artDir, name));
+  return name;
+}
+
 export async function buildArtwork(
   id: string,
   sourceUrl: string,

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DEFAULT_SETTINGS, type Album, type Palette, type Player, type Settings, type Stack } from '@crate/shared';
+import { DEFAULT_SETTINGS, type Album, type AlbumOverride, type Palette, type Player, type Settings, type Stack } from '@crate/shared';
 
 export interface AlbumRow {
   id: string;
@@ -16,6 +16,7 @@ export interface AlbumRow {
   spine_width: number;
   added_at: string;
   play_count: number;
+  overrides: string | null;
 }
 
 export interface ShelfRow extends AlbumRow {
@@ -39,7 +40,8 @@ CREATE TABLE IF NOT EXISTS albums (
   spine_scan_path TEXT,
   spine_width INTEGER NOT NULL DEFAULT 60,
   added_at TEXT NOT NULL,
-  play_count INTEGER NOT NULL DEFAULT 0
+  play_count INTEGER NOT NULL DEFAULT 0,
+  overrides TEXT
 );
 CREATE TABLE IF NOT EXISTS shelf_items (
   album_id TEXT PRIMARY KEY REFERENCES albums(id) ON DELETE CASCADE,
@@ -99,6 +101,27 @@ export class Db {
     if (!cols.some((c) => c.name === 'spine_scan_path')) {
       this.db.exec('ALTER TABLE albums ADD COLUMN spine_scan_path TEXT');
     }
+    if (!cols.some((c) => c.name === 'overrides')) {
+      this.db.exec('ALTER TABLE albums ADD COLUMN overrides TEXT');
+    }
+  }
+
+  getOverride(id: string): AlbumOverride {
+    const row = this.db.prepare('SELECT overrides FROM albums WHERE id = ?').get(id) as
+      | { overrides: string | null }
+      | undefined;
+    if (!row?.overrides) return {};
+    try {
+      return JSON.parse(row.overrides) as AlbumOverride;
+    } catch {
+      return {};
+    }
+  }
+
+  setOverride(id: string, patch: Partial<AlbumOverride>): AlbumOverride {
+    const next: AlbumOverride = { ...this.getOverride(id), ...patch };
+    this.db.prepare('UPDATE albums SET overrides = ? WHERE id = ?').run(JSON.stringify(next), id);
+    return next;
   }
 
   // --- Albums -------------------------------------------------------------

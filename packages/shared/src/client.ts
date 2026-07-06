@@ -4,6 +4,7 @@ import type {
   AddToShelfRequest,
   AlbumDetail,
   GroupRequest,
+  OverrideRequest,
   PlayRequest,
   PlayersResponse,
   SearchAlbum,
@@ -70,6 +71,22 @@ export class CrateClient {
 
   removeFromShelf(albumId: string): Promise<{ ok: true }> {
     return this.req(`/api/shelf/${encodeURIComponent(albumId)}`, { method: 'DELETE' });
+  }
+
+  putOverride(albumId: string, body: OverrideRequest): Promise<{ ok: true }> {
+    return this.post(`/api/albums/${encodeURIComponent(albumId)}/override`, body);
+  }
+
+  /** Upload a custom spine or cover image (multipart). */
+  async uploadArt(albumId: string, kind: 'spine' | 'cover', file: File): Promise<{ ok: true }> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${this.baseUrl}/api/albums/${encodeURIComponent(albumId)}/art/${kind}`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) throw new Error(`upload ${kind} → ${res.status} ${res.statusText}`);
+    return (await res.json()) as { ok: true };
   }
 
   getSettings(): Promise<Settings> {

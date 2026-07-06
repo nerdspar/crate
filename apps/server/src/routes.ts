@@ -2,12 +2,17 @@ import type { FastifyInstance } from 'fastify';
 import type {
   AddToShelfRequest,
   GroupRequest,
+  OverrideRequest,
   PlayRequest,
   Settings,
   TransportRequest,
   VolumeRequest,
 } from '@crate/shared';
 import type { Service } from './service.js';
+
+interface MultipartRequest {
+  file(): Promise<{ toBuffer(): Promise<Buffer> } | undefined>;
+}
 
 export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.get('/api/shelf', () => service.getShelf());
@@ -59,6 +64,22 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.delete('/api/shelf/:id', (req) => {
     const { id } = req.params as { id: string };
     service.removeFromShelf(id);
+    return { ok: true };
+  });
+
+  // Per-album overrides: upload custom spine/cover, or set label font/color/spacing.
+  app.post('/api/albums/:id/art/:kind', async (req, reply) => {
+    const { id, kind } = req.params as { id: string; kind: string };
+    if (kind !== 'spine' && kind !== 'cover') return reply.code(400).send({ error: 'kind must be spine|cover' });
+    const part = await (req as unknown as MultipartRequest).file();
+    if (!part) return reply.code(400).send({ error: 'no file' });
+    await service.uploadArt(id, kind, await part.toBuffer());
+    return { ok: true };
+  });
+
+  app.post('/api/albums/:id/override', (req) => {
+    const { id } = req.params as { id: string };
+    service.setOverride(id, req.body as OverrideRequest);
     return { ok: true };
   });
 

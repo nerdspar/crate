@@ -29,6 +29,47 @@
 
 <div id="toast"></div>
 
+<div id="editor" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="editor-title">Edit spine</h2>
+      <button class="ghost" id="editor-close">Close</button>
+    </div>
+    <div class="field">
+      <label>Custom cover image</label>
+      <input type="file" id="ov-cover" accept="image/*">
+    </div>
+    <div class="field">
+      <label>Custom spine image</label>
+      <input type="file" id="ov-spine" accept="image/*">
+    </div>
+    <div class="field">
+      <label>Label font</label>
+      <select id="ov-font">
+        <option value="">Default (generated)</option>
+        <option value="'Archivo Narrow', sans-serif">Archivo Narrow</option>
+        <option value="'Oswald', sans-serif">Oswald</option>
+        <option value="'Newsreader Variable', serif">Newsreader</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Letter spacing</label>
+      <input type="text" id="ov-tracking" placeholder="e.g. 0.08em (blank = default)">
+    </div>
+    <div class="field2">
+      <div class="field">
+        <label><input type="checkbox" id="ov-artist-on"> Artist color</label>
+        <input type="color" id="ov-artist" value="#ece7dd">
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="ov-title-on"> Title color</label>
+        <input type="color" id="ov-title" value="#c83a3a">
+      </div>
+    </div>
+    <button id="editor-save">Save spine</button>
+  </div>
+</div>
+
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

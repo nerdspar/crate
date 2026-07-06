@@ -2,6 +2,7 @@
 
 import type {
   Album,
+  AlbumOverride,
   Player,
   PlayerState,
   Settings,
@@ -13,6 +14,15 @@ import type {
 export interface AlbumDetail {
   album: Album;
   tracks: Track[];
+  override: AlbumOverride;
+}
+
+/** Per-album label override (uploads go through a separate multipart endpoint). */
+export interface OverrideRequest {
+  font?: string | null;
+  tracking?: string | null;
+  artistColor?: string | null;
+  titleColor?: string | null;
 }
 
 export interface ShelfResponse {

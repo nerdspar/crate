@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
@@ -22,6 +23,7 @@ const service = new Service(cfg, db, ma, hub);
 const app = Fastify({ logger: false });
 
 await app.register(websocket);
+await app.register(fastifyMultipart, { limits: { fileSize: 15 * 1024 * 1024, files: 1 } });
 await app.register(fastifyStatic, { root: cfg.artDir, prefix: '/art/' });
 if (existsSync(cfg.shelfDist)) {
   await app.register(fastifyStatic, { root: cfg.shelfDist, prefix: '/', decorateReply: false });

@@ -51,6 +51,35 @@ button:disabled { opacity: 0.5; cursor: default; }
 .card button { padding: 0.5rem 1rem; font-size: 0.9rem; }
 .empty { color: var(--ink-dim); font-style: italic; }
 
+.card-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+
+/* per-album override editor */
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(10, 9, 11, 0.74);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 1.6rem; width: min(460px, 92vw);
+  display: flex; flex-direction: column; gap: 1rem;
+  max-height: 90vh; overflow-y: auto;
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.modal-head h2 { margin: 0; font-size: 1.3rem; }
+.field { display: flex; flex-direction: column; gap: 0.35rem; }
+.field label { color: var(--ink-dim); font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
+.field input[type='text'], .field select {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); font: inherit; padding: 0.55rem 0.75rem; outline: none;
+}
+.field input[type='text']:focus, .field select:focus { border-color: var(--brass); }
+.field input[type='color'] { width: 3rem; height: 2rem; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.field input[type='file'] { color: var(--ink-dim); font-size: 0.85rem; }
+.field2 { display: flex; gap: 1.4rem; }
+
 #toast {
   position: fixed; bottom: 4vh; left: 50%; transform: translate(-50%, 200%);
   background: var(--ink); color: #131114; font-weight: 700; padding: 0.9rem 1.8rem;
