@@ -159,16 +159,18 @@ body {
 
 /* Blurred cover glow behind an opened album — bleeds its colors out around the
    cover to accentuate the artwork. Invisible until the album opens. */
+/* Spans the opened album (cover + panel); the opaque cover and card sit on top,
+   so the blur only bleeds sideways onto the neighboring spines. */
 .glow {
   position: absolute; top: 0; left: 0;
-  width: var(--cover-w); height: 100%;
+  width: 100%; height: 100%;
   background-size: cover; background-position: center;
-  filter: blur(7vh) saturate(1.6);
-  transform: scale(1.25);
+  filter: blur(6vh) saturate(1.6);
+  transform: scale(1.12);
   opacity: 0; z-index: 0; pointer-events: none;
   transition: opacity 0.5s ease 0.2s;
 }
-.spine.open .glow { opacity: 0.75; }
+.spine.open .glow { opacity: 0.7; }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 
@@ -219,6 +221,8 @@ body {
   position: absolute; top: 0; bottom: 0;
   left: var(--cover-w);
   width: var(--panel-w);
+  /* Own opaque backdrop so the glow doesn't wash over the card content. */
+  background: linear-gradient(90deg, rgba(19,17,20,0.9), rgba(19,17,20,0.97));
   display: flex; flex-direction: column; justify-content: center;
   gap: 1.4vh;
   padding: 0 2.4vh 0 3.2vh;
@@ -310,13 +314,26 @@ button {
   border-top: 1px solid rgba(236,231,221,0.12);
 }
 .tracks::-webkit-scrollbar { display: none; }
-.panel-remove {
-  align-self: flex-start; margin-top: 1.6vh;
+/* Card ⋯ menu (top-right of the panel) and its popover. */
+.panel-menu {
+  position: absolute; top: 2vh; right: 2.4vh; z-index: 2;
   background: transparent; color: var(--ink-dim);
-  border: 1px solid rgba(236,231,221,0.2);
-  font-size: 1.7vh; font-weight: 600; padding: 0.8vh 2vh; letter-spacing: 0.03em;
+  font-size: 3vh; line-height: 1; padding: 0.2vh 1vh;
 }
-.panel-remove.armed { color: #e5686a; border-color: #e5686a; }
+.panel-menu:active { color: var(--ink); }
+.panel-pop {
+  position: absolute; top: 6vh; right: 2.4vh; z-index: 3;
+  background: rgba(30,27,32,0.98); border: 1px solid rgba(236,231,221,0.14);
+  border-radius: 1.2vh; padding: 0.8vh; box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 0.4vh;
+}
+.panel-pop[hidden] { display: none; }
+.panel-remove {
+  background: transparent; color: var(--ink-dim); border: none;
+  border-radius: 0.8vh; text-align: left; white-space: nowrap;
+  font-size: 1.9vh; font-weight: 600; padding: 1vh 2vh; letter-spacing: 0.02em;
+}
+.panel-remove.armed { color: #e5686a; }
 .track {
   display: flex; align-items: baseline; gap: 1.2vh;
   padding: 1.1vh 0.4vh;

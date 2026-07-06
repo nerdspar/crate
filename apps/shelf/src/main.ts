@@ -218,6 +218,10 @@ function buildShelf(): void {
       <button class="cover-btn cover-play" aria-label="Play">▶</button>
       <button class="cover-btn cover-menu" aria-label="More">⋯</button>
       <div class="panel">
+        <button class="panel-menu" aria-label="More">⋯</button>
+        <div class="panel-pop" hidden>
+          <button class="panel-remove">Remove from shelf</button>
+        </div>
         <div class="eyebrow">From your library</div>
         <h1>${escapeHtml(a.title)}</h1>
         <h2>${escapeHtml(a.artist)}</h2>
@@ -235,7 +239,6 @@ function buildShelf(): void {
           <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
         </div>
         <div class="tracks"></div>
-        <button class="panel-remove">Remove from shelf</button>
       </div>
       <div class="eq"><i></i><i></i><i></i></div>`;
 
@@ -254,6 +257,12 @@ function buildShelf(): void {
     el.querySelector('.play')!.addEventListener('click', (e) => {
       stop(e);
       void onPlayButton(i);
+    });
+    // ⋯ menu on the card (will also hold "Add to shelf…"). Toggles the popover.
+    const panelPop = el.querySelector('.panel-pop') as HTMLElement;
+    el.querySelector('.panel-menu')!.addEventListener('click', (e) => {
+      stop(e);
+      panelPop.hidden = !panelPop.hidden;
     });
     // Remove from shelf — two-tap to arm, so it can't fire by accident on a wall.
     const removeBtn = el.querySelector('.panel-remove') as HTMLButtonElement;
@@ -858,7 +867,7 @@ function ccIsOpen(): boolean {
   return cc.classList.contains('open');
 }
 function openCC(): void {
-  groupSet = new Set(activePlayerId ? [activePlayerId] : []);
+  // Grouping persists across open/close — don't reset it here.
   cc.classList.add('open');
   renderCCNow();
   renderCCRooms();
@@ -1036,11 +1045,12 @@ function roomCell(r: Player): HTMLElement {
     reveal each room's individual volume. */
 function groupCell(grouped: Player[]): HTMLElement {
   const avg = Math.round(grouped.reduce((s, r) => s + roomVol(r.id), 0) / grouped.length);
+  const leaderName = rooms.find((r) => r.id === activePlayerId)?.name ?? 'Group';
   const cell = document.createElement('div');
   cell.className = 'cc-room grouped cc-group';
   cell.innerHTML =
     `<div class="cc-room-top">` +
-    `<span class="cc-room-name">Group · ${grouped.length} rooms</span>` +
+    `<span class="cc-room-name">${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${grouped.length - 1}</span>` +
     `<button class="cc-group-toggle">${groupExpanded ? 'Hide' : 'Rooms'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +
