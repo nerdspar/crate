@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 *.log
 dist/
+
+# runtime state (SQLite + cached artwork)
+apps/*/data/
