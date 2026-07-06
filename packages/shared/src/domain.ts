@@ -113,7 +113,10 @@ export interface Stack {
 }
 
 export type SpineMode = 'palette' | 'art' | 'scan';
-export type LabelStyle = 'uniform' | 'collected' | 'eclectic';
+/** How the artist + title sit along the spine. 'varied' = random per album. */
+export type LabelLayout = 'split' | 'center' | 'top' | 'bottom' | 'varied';
+/** Whether every spine shares one type style or varies per artist. */
+export type LabelVary = 'uniform' | 'varied';
 export type OpenMode = 'cover' | 'card';
 export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color';
 export type SpineThickness = 'thin' | 'medium' | 'thick';
@@ -135,7 +138,8 @@ export interface AlbumOverride {
 }
 
 export interface Settings {
-  labelStyle: LabelStyle;
+  labelLayout: LabelLayout;
+  labelVary: LabelVary;
   openMode: OpenMode;
   spineMode: SpineMode;
   spineThickness: SpineThickness;
@@ -152,7 +156,8 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  labelStyle: 'uniform',
+  labelLayout: 'center',
+  labelVary: 'uniform',
   openMode: 'cover',
   spineMode: 'art',
   spineThickness: 'medium',

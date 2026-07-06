@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelStyle, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -29,11 +29,13 @@ let players: Player[] = [];
 let rooms: Player[] = [];
 let settings: Settings = { ...DEFAULT_SETTINGS };
 
-const LABEL_STYLES: Record<LabelStyle, string[]> = {
-  uniform: [''],
-  collected: ['', 'v-top', 'v-bottom', '', 'v-bottom', 'v-top'],
-  eclectic: ['', 'v-top', 'v-bottom', '', 'v-flip', ''],
-};
+type ResolvedLayout = 'split' | 'center' | 'top' | 'bottom';
+/** Resolve the artist/title layout for an album; 'varied' picks one deterministically. */
+function resolveLayout(a: ShelfItem): ResolvedLayout {
+  if (settings.labelLayout !== 'varied') return settings.labelLayout;
+  const opts: ResolvedLayout[] = ['split', 'center', 'top', 'bottom'];
+  return opts[hashStr(a.artist + a.title) % opts.length]!;
+}
 
 /* Per-album typography (SPINE_RENDERING §3): six label identities across Archivo
    Narrow / Oswald / Newsreader. Assignment is deterministic per artist so an
@@ -65,7 +67,6 @@ const VOL_LOW_SVG =
 const VOL_HIGH_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" fill="currentColor" stroke="none"/><path d="M15.4 9.3a3.2 3.2 0 0 1 0 5.4"/><path d="M18.4 6.8a6.5 6.5 0 0 1 0 10.4"/></svg>';
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
-let labelStyle: LabelStyle = 'uniform';
 let openMode: OpenMode = 'cover';
 
 const shelf = document.getElementById('shelf') as HTMLDivElement;
@@ -134,15 +135,16 @@ function buildShelf(): void {
     const useCustom = !!a.customSpineUrl;
     const useScan = !useCustom && settings.spineMode === 'scan' && !!a.spineScanUrl;
     const useStrip = !useCustom && !useScan && settings.spineMode !== 'palette' && !!a.spineStripUrl;
+    const layout = resolveLayout(a);
     const el = document.createElement('div');
-    el.className = 'spine' + (useScan ? ' scan' : '');
+    el.className = `spine layout-${layout}` + (useScan ? ' scan' : '');
     el.dataset['idx'] = String(i);
     el.style.width = spineW + 'px';
     el.style.setProperty('--spine-w', spineW + 'px');
 
-    // Typography variation is governed by the label setting; per-album overrides
-    // (font, tracking, artist/title color) win over the generated defaults.
-    const ts = labelStyle === 'uniform' ? TYPE_STYLES[0]! : TYPE_STYLES[hashStr(a.artist) % TYPE_STYLES.length]!;
+    // Typography: 'uniform' = one shared style, 'varied' = per-artist identity.
+    // Per-album overrides (font, tracking, colors) win over the generated defaults.
+    const ts = settings.labelVary === 'uniform' ? TYPE_STYLES[0]! : TYPE_STYLES[hashStr(a.artist) % TYPE_STYLES.length]!;
     const baseW = spineW / 2;
     const font = a.labelFont ?? ts.font;
     const tracking = a.labelTracking ?? ts.tracking;
@@ -161,12 +163,21 @@ function buildShelf(): void {
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
     const cat = !useScan && a.year ? `<div class="cat" style="color:${baseInk}">${a.year}</div>` : '';
 
+    // Split layout puts the artist and title at opposite ends of the spine;
+    // the others render them together (positioned by the layout-* class).
+    const labelCss = `font-size:${fontSize}px; font-family:${font}; font-weight:${ts.weight}; text-transform:${ts.transform}; letter-spacing:${tracking}`;
+    const artistSpan = `<span class="artist" style="color:${artistCol}">${escapeHtml(a.artist)}</span>`;
+    const titleSpan = `<span class="title" style="color:${titleCol}">${escapeHtml(a.title)}</span>`;
+    const labelHtml =
+      layout === 'split'
+        ? `<div class="spine-label artist-label" style="${labelCss}">${artistSpan}</div>` +
+          `<div class="spine-label title-label" style="${labelCss}">${titleSpan}</div>`
+        : `<div class="spine-label" style="${labelCss}; color:${baseInk}">${artistSpan}&nbsp;&nbsp;${titleSpan}</div>`;
+
     el.innerHTML = `
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
-          <div class="spine-label" style="font-size:${fontSize}px; color:${baseInk}; font-family:${font}; font-weight:${ts.weight}; text-transform:${ts.transform}; letter-spacing:${tracking}">
-            <span class="artist" style="color:${artistCol}">${escapeHtml(a.artist)}</span>&nbsp;&nbsp;<span class="title" style="color:${titleCol}">${escapeHtml(a.title)}</span>
-          </div>
+          ${labelHtml}
           ${cat}
         </div>
         <div class="face face-cover${coverArt || `" style="background:linear-gradient(145deg, ${a.primaryColor}, ${a.darkColor} 85%)`}">
@@ -231,7 +242,7 @@ function buildShelf(): void {
     });
     shelf.appendChild(el);
   });
-  applyLabelStyle(labelStyle);
+  renderChoices();
 }
 
 function escapeHtml(s: string): string {
@@ -428,17 +439,6 @@ function showToast(msg: string): void {
 }
 
 /* ---------- Settings ---------- */
-function applyLabelStyle(style: LabelStyle): void {
-  labelStyle = style;
-  const variants = LABEL_STYLES[style];
-  [...shelf.children].forEach((el, i) => {
-    el.classList.remove('v-top', 'v-bottom', 'v-flip');
-    const v = variants[i % variants.length];
-    if (v) el.classList.add(v);
-  });
-  renderChoices();
-}
-
 const settingsEl = document.getElementById('settings') as HTMLElement;
 (document.getElementById('gear') as HTMLElement).onclick = () => settingsEl.classList.add('open');
 (document.getElementById('settings-close') as HTMLElement).onclick = () => settingsEl.classList.remove('open');
@@ -524,18 +524,35 @@ function renderChoices(): void {
   );
 
   choiceRow(
-    'label-choices',
+    'layout-choices',
     [
-      ['uniform', 'Uniform', 'Centered, top to bottom'],
-      ['collected', 'Collected', 'Mixed placement, all readable'],
-      ['eclectic', 'Eclectic', 'Full variation, some flipped'],
+      ['split', 'Split', 'Artist top · title bottom'],
+      ['center', 'Centered', 'Together, middle'],
+      ['top', 'Top', 'Together, at the top'],
+      ['bottom', 'Bottom', 'Together, at the base'],
+      ['varied', 'Varied', 'Random per album'],
     ],
-    (k) => labelStyle === k,
+    (k) => settings.labelLayout === k,
     (k) => {
-      labelStyle = k as LabelStyle;
-      buildShelf(); // rebuild: font variation (uniform vs per-artist) is baked at build
+      settings.labelLayout = k as LabelLayout;
+      buildShelf();
       sizeFaces();
-      void client.putSettings({ labelStyle: k as LabelStyle }).catch(() => {});
+      void client.putSettings({ labelLayout: settings.labelLayout }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'vary-choices',
+    [
+      ['uniform', 'Uniform', 'One font for every spine'],
+      ['varied', 'Varied', 'A different type style per artist'],
+    ],
+    (k) => settings.labelVary === k,
+    (k) => {
+      settings.labelVary = k as LabelVary;
+      buildShelf(); // font variation is baked at build
+      sizeFaces();
+      void client.putSettings({ labelVary: settings.labelVary }).catch(() => {});
     },
   );
 
@@ -861,13 +878,13 @@ async function reloadPlayers(): Promise<void> {
 function applySettings(s: Settings): void {
   const prev = settings;
   settings = s;
-  labelStyle = s.labelStyle;
   openMode = s.openMode;
   applyTextDir();
   if (
     s.spineMode !== prev.spineMode ||
     s.spineThickness !== prev.spineThickness ||
-    s.labelStyle !== prev.labelStyle ||
+    s.labelLayout !== prev.labelLayout ||
+    s.labelVary !== prev.labelVary ||
     s.inkMode !== prev.inkMode
   ) {
     buildShelf();
@@ -888,7 +905,6 @@ async function boot(): Promise<void> {
   rooms = players.filter((p) => p.type === 'sonos' && p.available);
   if (rooms.length === 0) rooms = players.filter((p) => p.available);
   settings = settingsRes;
-  labelStyle = settings.labelStyle;
   openMode = settings.openMode;
   activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
 

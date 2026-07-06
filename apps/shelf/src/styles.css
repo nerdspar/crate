@@ -62,7 +62,7 @@ body {
 
 .face-spine {
   width: var(--spine-w);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
   background-size: cover; background-position: center;
   box-shadow: inset -3px 0 6px rgba(0,0,0,0.45),
               inset 2px 0 3px rgba(255,255,255,0.07);
@@ -334,15 +334,18 @@ button {
 .spine.scan .spine-label,
 .spine.scan .cat { display: none; }
 
-.spine.v-top .face-spine { justify-content: flex-start; }
-.spine.v-top .spine-label { margin-top: 16px; }
-.spine.v-bottom .face-spine { justify-content: flex-end; }
-.spine.v-bottom .spine-label { margin-bottom: 16px; }
-.spine.v-flip .spine-label { transform: rotate(180deg); }
-.spine.v-top .face-spine, .spine.v-bottom .face-spine { flex-direction: column; }
+/* label layout: where the artist + title sit along the spine */
+.spine.layout-center .face-spine { justify-content: center; }
+.spine.layout-top .face-spine { justify-content: flex-start; }
+.spine.layout-bottom .face-spine { justify-content: flex-end; }
+.spine.layout-split .face-spine { justify-content: space-between; }
+/* keep text clear of the plastic edges */
+.spine.layout-top .spine-label:first-of-type { margin-top: 16px; }
+.spine.layout-bottom .spine-label:last-of-type { margin-bottom: 16px; }
+.spine.layout-split .artist-label { margin-top: 16px; }
+.spine.layout-split .title-label { margin-bottom: 16px; }
 /* spine text direction: bottom → top (classic US CD spine) rotates the label 180° */
 #shelf.text-btt .spine-label { transform: rotate(180deg); }
-#shelf.text-btt .spine.v-flip .spine-label { transform: none; }
 
 .eq {
   position: absolute; bottom: 5px; left: 50%;
