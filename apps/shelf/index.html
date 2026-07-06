@@ -43,9 +43,32 @@
       <div class="cc-block-label">Sort by</div>
       <div class="choices" id="sort-choices"></div>
     </div>
-    <div class="cc-note">Brightness, display &amp; system controls arrive with the appliance layer.</div>
+    <div class="cc-block">
+      <div class="cc-block-label" id="cc-bright-label">Brightness</div>
+      <input id="cc-brightness" type="range" min="8" max="100" value="100">
+    </div>
+    <div class="cc-block cc-block-row">
+      <div>
+        <div class="cc-block-label">Display</div>
+        <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
+      </div>
+      <div class="cc-sysinfo">
+        <div class="cc-block-label">System</div>
+        <div class="cc-sysline"><span id="cc-ip">—</span><span id="cc-ver" class="cc-ver"></span></div>
+        <div class="cc-sys-actions">
+          <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
+          <button id="cc-restart" class="cc-sysbtn">Restart app</button>
+          <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Software brightness dim (used when no hardware backlight control exists) -->
+<div id="dim"></div>
+<!-- Display sleep: full black, tap anywhere to wake -->
+<div id="sleep"></div>
 
 <button id="gear" aria-label="Settings">⚙</button>
 

@@ -528,7 +528,36 @@ button {
 }
 #cc-search::placeholder { color: var(--ink-dim); }
 
-.cc-note { font-size: 1.7vh; color: var(--ink-dim); font-style: italic; text-align: center; opacity: 0.7; }
+#cc-brightness { width: 100%; accent-color: var(--ink); }
+.cc-block-row { flex-direction: row; gap: 6vw; align-items: flex-start; justify-content: space-between; }
+.cc-sysinfo { display: flex; flex-direction: column; gap: 1.4vh; flex: 1; }
+.cc-sysline { font-size: 2vh; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.cc-ver { margin-left: 2vw; opacity: 0.6; }
+.cc-sys-actions { display: flex; gap: 1.4vh; flex-wrap: wrap; }
+.cc-sysbtn {
+  background: transparent; color: var(--ink-dim);
+  border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
+  font-size: 1.9vh; font-weight: 600; padding: 1vh 3vw; letter-spacing: 0.04em;
+}
+.cc-sysbtn:active { color: var(--ink); border-color: var(--ink); }
+.cc-sysbtn:disabled { opacity: 0.35; }
+
+/* Software brightness dim — a black veil whose opacity tracks 100−brightness.
+   Above the shelf/settings, below the control center so you can still adjust it. */
+#dim {
+  position: absolute; inset: 0; background: #000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s linear;
+  z-index: 16;
+}
+/* Display sleep — full black, tap anywhere to wake. Above everything. */
+#sleep {
+  position: absolute; inset: 0; background: #000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s ease;
+  z-index: 40;
+}
+#sleep.on { opacity: 1; pointer-events: auto; }
 
 /* Search slivers: non-matching spines collapse to a thin blank plate */
 .spine.sliver .spine-label, .spine.sliver .cat, .spine.sliver .cover-btn { display: none; }

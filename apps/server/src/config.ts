@@ -16,6 +16,10 @@ export interface Config {
   /** Directory of the built shelf app to serve, if present. */
   shelfDist: string;
   adminDist: string;
+  /** True on the kiosk appliance — enables restart/reboot and real display power. */
+  appliance: boolean;
+  /** App version string, surfaced in the control-center system row. */
+  version: string;
 }
 
 export function loadConfig(): Config {
@@ -43,5 +47,7 @@ export function loadConfig(): Config {
     mbUserAgent: process.env.CRATE_MB_UA ?? 'Crate/0.1 ( https://github.com/crate-shelf )',
     shelfDist: resolve('../shelf/dist'),
     adminDist: resolve('../admin/dist'),
+    appliance: process.env.CRATE_APPLIANCE === '1',
+    version: process.env.CRATE_VERSION ?? '0.1.0',
   };
 }

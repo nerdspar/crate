@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -720,6 +720,7 @@ function openCC(): void {
   renderCCNow();
   renderCCRooms();
   renderCCSort();
+  refreshSystem();
 }
 function closeCC(): void {
   cc.classList.remove('open');
@@ -941,6 +942,78 @@ ccSearch.addEventListener('input', () => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
   sizeFaces();
+});
+
+/* ---- System rows: brightness, display sleep, IP + restart/reboot (§6/§7) ---- */
+const dimEl = document.getElementById('dim') as HTMLElement;
+const sleepEl = document.getElementById('sleep') as HTMLElement;
+const ccBrightness = document.getElementById('cc-brightness') as HTMLInputElement;
+const ccIp = document.getElementById('cc-ip') as HTMLElement;
+const ccVer = document.getElementById('cc-ver') as HTMLElement;
+const ccRestart = document.getElementById('cc-restart') as HTMLButtonElement;
+const ccReboot = document.getElementById('cc-reboot') as HTMLButtonElement;
+let system: SystemStatus | null = null;
+
+/** Software-dim veil opacity from the current brightness (hardware methods dim
+    the real panel instead, so the veil stays clear). */
+function applyDim(): void {
+  const level = system?.brightness ?? 100;
+  const soft = system?.brightnessMethod === 'software';
+  dimEl.style.opacity = soft ? String(((100 - level) / 100) * 0.85) : '0';
+}
+function applySystemStatus(s: SystemStatus): void {
+  system = s;
+  applyDim();
+  ccBrightness.value = String(s.brightness);
+  sleepEl.classList.toggle('on', s.displayAsleep);
+  ccIp.textContent = s.ip ?? 'offline';
+  ccVer.textContent = `v${s.version}`;
+  ccRestart.disabled = !s.appliance;
+  ccReboot.disabled = !s.appliance;
+  const onlyOnDevice = s.appliance ? '' : 'Only on the device';
+  ccRestart.title = onlyOnDevice;
+  ccReboot.title = onlyOnDevice;
+}
+function refreshSystem(): void {
+  void client.getSystemStatus().then(applySystemStatus).catch(() => {});
+}
+
+// Brightness: dim live while dragging, persist (and drive hardware) on release.
+ccBrightness.addEventListener('input', () => {
+  if (system) {
+    system.brightness = +ccBrightness.value;
+    applyDim();
+  }
+});
+ccBrightness.addEventListener('change', () => {
+  void client.setBrightness(+ccBrightness.value).then(applySystemStatus).catch(() => {});
+});
+
+// Display sleep: black veil, tap anywhere to wake.
+(document.getElementById('cc-sleep') as HTMLElement).addEventListener('click', () => {
+  sleepEl.classList.add('on');
+  closeCC();
+  void client.setDisplaySleep(true).catch(() => {});
+});
+sleepEl.addEventListener('click', () => {
+  sleepEl.classList.remove('on');
+  void client.setDisplaySleep(false).catch(() => {});
+});
+
+// System actions.
+(document.getElementById('cc-refresh') as HTMLElement).addEventListener('click', () => {
+  void client.refreshArtwork().catch(() => {});
+  showToast('Refreshing artwork…');
+});
+ccRestart.addEventListener('click', () => {
+  if (ccRestart.disabled) return;
+  void client.restartApp().catch(() => {});
+  showToast('Restarting…');
+});
+ccReboot.addEventListener('click', () => {
+  if (ccReboot.disabled) return;
+  void client.reboot().catch(() => {});
+  showToast('Rebooting…');
 });
 
 /* =====================================================================
@@ -1210,6 +1283,7 @@ function connectWs(): void {
     else if (msg.type === 'shelf') void reloadShelf();
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
+    else if (msg.type === 'system') applySystemStatus(msg.status);
   };
   ws.onclose = () => setTimeout(connectWs, 2000);
 }
@@ -1287,6 +1361,7 @@ async function boot(): Promise<void> {
   sizeFaces();
   renderChoices();
   handleState(playersRes.state);
+  refreshSystem();
   connectWs();
   requestAnimationFrame(tick);
 }

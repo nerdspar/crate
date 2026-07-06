@@ -6,6 +6,7 @@ import type {
   SearchAlbum,
   Settings,
   ShelfResponse,
+  SystemStatus,
   TransportCmd,
 } from '@crate/shared';
 import type { MusicAssistantProvider } from '@crate/providers';
@@ -17,6 +18,7 @@ import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, buildShelfItem, spineWidthFor } from './shelf.js';
+import { applyBrightness, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower } from './system.js';
 import type { Track } from '@crate/shared';
 
 const ART_BASE = '/art';
@@ -44,6 +46,8 @@ export class Service {
   ) {}
 
   async init(): Promise<void> {
+    // Restore the panel to the last-set brightness (no-op under 'software').
+    void applyBrightness(this.db.getRaw<number>('system.brightness', 100));
     this.ma.onConnect(() => {
       void this.refreshPlayers();
     });
@@ -267,5 +271,49 @@ export class Service {
     if (explicit) return explicit;
     const sonos = this.db.listPlayers().find((p) => p.type === 'sonos' && p.available);
     return sonos?.id ?? this.db.listPlayers()[0]?.id ?? null;
+  }
+
+  // --- System / appliance (control center §6) -----------------------------
+
+  systemStatus(): SystemStatus {
+    return {
+      brightness: this.db.getRaw<number>('system.brightness', 100),
+      brightnessMethod: detectBrightnessMethod(),
+      displayAsleep: this.db.getRaw<boolean>('system.displayAsleep', false),
+      ip: getLocalIp(),
+      appliance: this.cfg.appliance,
+      version: this.cfg.version,
+    };
+  }
+
+  async setBrightness(level: number): Promise<SystemStatus> {
+    const pct = Math.max(0, Math.min(100, Math.round(level)));
+    this.db.setRaw('system.brightness', pct);
+    await applyBrightness(pct);
+    const status = this.systemStatus();
+    this.hub.broadcast({ type: 'system', status });
+    return status;
+  }
+
+  async setDisplaySleep(asleep: boolean): Promise<SystemStatus> {
+    this.db.setRaw('system.displayAsleep', asleep);
+    await setDisplayPower(!asleep);
+    const status = this.systemStatus();
+    this.hub.broadcast({ type: 'system', status });
+    return status;
+  }
+
+  /** Restart the app process. Only on the appliance, where systemd relaunches
+      it (Restart=always); a no-op elsewhere so dev previews aren't killed. */
+  restart(): { ok: boolean } {
+    if (!this.cfg.appliance) return { ok: false };
+    setTimeout(() => process.exit(0), 150);
+    return { ok: true };
+  }
+
+  async reboot(): Promise<{ ok: boolean }> {
+    if (!this.cfg.appliance) return { ok: false };
+    await rebootSystem().catch(() => {});
+    return { ok: true };
   }
 }

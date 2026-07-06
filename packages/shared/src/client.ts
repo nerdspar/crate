@@ -9,6 +9,7 @@ import type {
   PlayersResponse,
   SearchAlbum,
   ShelfResponse,
+  SystemStatus,
   TransportRequest,
   VolumeRequest,
 } from './api.js';
@@ -95,5 +96,30 @@ export class CrateClient {
 
   putSettings(settings: Partial<Settings>): Promise<Settings> {
     return this.req('/api/settings', { method: 'PUT', body: JSON.stringify(settings) });
+  }
+
+  // --- System / appliance (control center §6) ---
+  getSystemStatus(): Promise<SystemStatus> {
+    return this.req('/api/system/status');
+  }
+
+  setBrightness(level: number): Promise<SystemStatus> {
+    return this.post('/api/system/brightness', { level });
+  }
+
+  setDisplaySleep(asleep: boolean): Promise<SystemStatus> {
+    return this.post(`/api/system/display/${asleep ? 'sleep' : 'wake'}`, {});
+  }
+
+  refreshArtwork(): Promise<{ ok: true }> {
+    return this.post('/api/system/artwork-refresh', {});
+  }
+
+  restartApp(): Promise<{ ok: boolean }> {
+    return this.post('/api/system/restart', {});
+  }
+
+  reboot(): Promise<{ ok: boolean }> {
+    return this.post('/api/system/reboot', {});
   }
 }

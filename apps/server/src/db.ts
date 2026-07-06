@@ -268,6 +268,7 @@ export class Db {
     const rows = this.db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
     const stored: Record<string, unknown> = {};
     for (const r of rows) {
+      if (r.key.includes('.')) continue; // dotted keys are namespaced runtime state (e.g. system.*)
       try {
         stored[r.key] = JSON.parse(r.value);
       } catch {
@@ -289,5 +290,23 @@ export class Db {
     tx(Object.entries(partial));
     if (partial.defaultPlayerId) this.setDefaultPlayer(partial.defaultPlayerId);
     return this.getSettings();
+  }
+
+  /** Namespaced runtime state (dotted keys, e.g. `system.brightness`), kept out
+      of the typed Settings object. */
+  getRaw<T>(key: string, fallback: T): T {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    if (!row) return fallback;
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  setRaw(key: string, value: unknown): void {
+    this.db
+      .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run(key, JSON.stringify(value));
   }
 }

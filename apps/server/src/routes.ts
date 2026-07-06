@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type {
   AddToShelfRequest,
+  BrightnessRequest,
   GroupRequest,
   OverrideRequest,
   PlayRequest,
@@ -93,4 +94,18 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     void service.refreshArtwork();
     return { ok: true };
   });
+
+  // Control center system rows (§6).
+  app.get('/api/system/status', () => service.systemStatus());
+
+  app.post('/api/system/brightness', (req) => {
+    const b = req.body as BrightnessRequest;
+    return service.setBrightness(b.level);
+  });
+
+  app.post('/api/system/display/sleep', () => service.setDisplaySleep(true));
+  app.post('/api/system/display/wake', () => service.setDisplaySleep(false));
+
+  app.post('/api/system/restart', () => service.restart());
+  app.post('/api/system/reboot', () => service.reboot());
 }

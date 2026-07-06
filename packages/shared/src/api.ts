@@ -36,6 +36,27 @@ export interface ShelfResponse {
   stacks: Stack[];
 }
 
+/** How the panel backlight is driven, in the plan's fallback order (§7). */
+export type BrightnessMethod = 'ddcutil' | 'sysfs' | 'software';
+
+/** Appliance/display state for the control center's system rows. */
+export interface SystemStatus {
+  /** 0–100. When method is 'software' the client applies a dim overlay. */
+  brightness: number;
+  brightnessMethod: BrightnessMethod;
+  displayAsleep: boolean;
+  /** LAN IPv4 of the device, or null if it can't be determined. */
+  ip: string | null;
+  /** True on the kiosk appliance, where restart/reboot actually work. */
+  appliance: boolean;
+  version: string;
+}
+
+export interface BrightnessRequest {
+  /** 0–100. */
+  level: number;
+}
+
 export interface PlayRequest {
   albumId: string;
   trackIndex?: number;
@@ -86,4 +107,5 @@ export type WsMessage =
   | { type: 'shelf' }
   | { type: 'players' }
   | { type: 'sync'; progress: number; message: string }
-  | { type: 'settings'; settings: Settings };
+  | { type: 'settings'; settings: Settings }
+  | { type: 'system'; status: SystemStatus };
