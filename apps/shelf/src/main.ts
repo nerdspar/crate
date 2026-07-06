@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage, type YearDisplay, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -135,7 +135,7 @@ function buildShelf(): void {
     const useCustom = !!a.customSpineUrl;
     const useScan = !useCustom && settings.spineMode === 'scan' && !!a.spineScanUrl;
     const useStrip = !useCustom && !useScan && settings.spineMode !== 'palette' && !!a.spineStripUrl;
-    const layout = resolveLayout(a);
+    const layout = a.overrideLayout ?? resolveLayout(a); // per-album override wins
     const el = document.createElement('div');
     el.className = `spine layout-${layout}` + (useScan ? ' scan' : '');
     el.dataset['idx'] = String(i);
@@ -161,7 +161,12 @@ function buildShelf(): void {
           ? `background-image:url('${a.spineStripUrl}')`
           : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
-    const cat = !useScan && a.year ? `<div class="cat" style="color:${baseInk}">${a.year}</div>` : '';
+    const yearDisplay = a.overrideYearDisplay ?? settings.yearDisplay; // per-album wins
+    const yearPos = a.overrideYearPos ?? settings.yearPos;
+    const yearOn = yearDisplay !== 'off' && !useScan && a.year;
+    const cat = yearOn
+      ? `<div class="cat cat-${yearPos}${yearDisplay === 'horizontal' ? ' horizontal' : ''}" style="color:${baseInk}">${a.year}</div>`
+      : '';
 
     // Split layout puts the artist and title at opposite ends of the spine;
     // the others render them together (positioned by the layout-* class).
@@ -520,6 +525,30 @@ function renderChoices(): void {
       buildShelf();
       sizeFaces();
       void client.putSettings({ inkMode: settings.inkMode }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'year-choices',
+    [['off', 'Off', ''], ['vertical', 'Vertical', ''], ['horizontal', 'Horizontal', '']],
+    (k) => settings.yearDisplay === k,
+    (k) => {
+      settings.yearDisplay = k as YearDisplay;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ yearDisplay: settings.yearDisplay }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'yearpos-choices',
+    [['top', 'Top', ''], ['bottom', 'Bottom', '']],
+    (k) => settings.yearPos === k,
+    (k) => {
+      settings.yearPos = k as YearPos;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ yearPos: settings.yearPos }).catch(() => {});
     },
   );
 
@@ -885,7 +914,9 @@ function applySettings(s: Settings): void {
     s.spineThickness !== prev.spineThickness ||
     s.labelLayout !== prev.labelLayout ||
     s.labelVary !== prev.labelVary ||
-    s.inkMode !== prev.inkMode
+    s.inkMode !== prev.inkMode ||
+    s.yearDisplay !== prev.yearDisplay ||
+    s.yearPos !== prev.yearPos
   ) {
     buildShelf();
     sizeFaces();

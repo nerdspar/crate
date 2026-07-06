@@ -102,6 +102,10 @@ export interface ShelfItem {
   labelTracking: string | null;
   artistColor: string | null;
   titleColor: string | null;
+  /** Per-album overrides for layout/year (null = inherit the global setting). */
+  overrideLayout: LabelLayoutFixed | null;
+  overrideYearDisplay: YearDisplay | null;
+  overrideYearPos: YearPos | null;
   /** Cover artwork URL (local cached path preferred, else remote). */
   artworkUrl: string | null;
 }
@@ -126,8 +130,15 @@ export type SpineTextDir = 'ttb' | 'btt';
 export type AfterPlay = 'close' | 'linger' | 'stay';
 /** Label ink strategy: guaranteed-contrast (white/black) vs match the album accent. */
 export type InkMode = 'contrast' | 'match';
+/** Album-year catalog imprint: hidden, or shown vertical/horizontal. */
+export type YearDisplay = 'off' | 'vertical' | 'horizontal';
+/** Which end of the spine the year imprint sits at. */
+export type YearPos = 'top' | 'bottom';
 
-/** Per-album manual overrides (admin), all optional. */
+/** A concrete label layout (per-album; no 'varied'). */
+export type LabelLayoutFixed = 'split' | 'center' | 'top' | 'bottom';
+
+/** Per-album manual overrides (admin), all optional; null/absent = inherit global. */
 export interface AlbumOverride {
   spinePath?: string | null;
   coverPath?: string | null;
@@ -135,6 +146,9 @@ export interface AlbumOverride {
   tracking?: string | null;
   artistColor?: string | null;
   titleColor?: string | null;
+  layout?: LabelLayoutFixed | null;
+  yearDisplay?: YearDisplay | null;
+  yearPos?: YearPos | null;
 }
 
 export interface Settings {
@@ -145,6 +159,8 @@ export interface Settings {
   spineThickness: SpineThickness;
   spineTextDir: SpineTextDir;
   inkMode: InkMode;
+  yearDisplay: YearDisplay;
+  yearPos: YearPos;
   sortBy: SortBy;
   defaultPlayerId: string | null;
   longPressMs: number;
@@ -163,6 +179,8 @@ export const DEFAULT_SETTINGS: Settings = {
   spineThickness: 'medium',
   spineTextDir: 'ttb',
   inkMode: 'contrast',
+  yearDisplay: 'vertical',
+  yearPos: 'bottom',
   sortBy: 'artist',
   defaultPlayerId: null,
   longPressMs: 420,

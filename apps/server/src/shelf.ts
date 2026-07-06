@@ -67,5 +67,8 @@ export function buildShelfItem(row: ShelfRow, artBase: string, artDir: string): 
     labelTracking: ov.tracking ?? null,
     artistColor: ov.artistColor ?? null,
     titleColor: ov.titleColor ?? null,
+    overrideLayout: ov.layout ?? null,
+    overrideYearDisplay: ov.yearDisplay ?? null,
+    overrideYearPos: ov.yearPos ?? null,
   };
 }

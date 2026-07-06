@@ -3,12 +3,15 @@
 import type {
   Album,
   AlbumOverride,
+  LabelLayoutFixed,
   Player,
   PlayerState,
   Settings,
   ShelfItem,
   Stack,
   Track,
+  YearDisplay,
+  YearPos,
 } from './domain.js';
 
 export interface AlbumDetail {
@@ -23,6 +26,9 @@ export interface OverrideRequest {
   tracking?: string | null;
   artistColor?: string | null;
   titleColor?: string | null;
+  layout?: LabelLayoutFixed | null;
+  yearDisplay?: YearDisplay | null;
+  yearPos?: YearPos | null;
 }
 
 export interface ShelfResponse {

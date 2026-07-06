@@ -89,7 +89,7 @@ body {
 }
 /* tiny catalog line at the foot of wider spines, like a label imprint */
 .cat {
-  position: absolute; bottom: 14px; left: 50%;
+  position: absolute; left: 50%;
   transform: translateX(-50%);
   writing-mode: vertical-rl;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -97,6 +97,9 @@ body {
   opacity: 0.5;
   pointer-events: none;
 }
+.cat-bottom { bottom: 8px; }
+.cat-top { top: 8px; }
+.cat.horizontal { writing-mode: horizontal-tb; letter-spacing: 0.1em; }
 
 .face-cover {
   width: var(--cover-w);
