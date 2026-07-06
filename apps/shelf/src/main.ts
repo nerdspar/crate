@@ -248,8 +248,7 @@ function openAlbum(i: number, autoscroll = true): void {
   renderRooms(el);
   void renderTracks(el, i);
   (el.querySelector('.vol input') as HTMLInputElement).value = String(volume);
-  updateNowbar();
-  updatePlayButton();
+  handleState(lastStates); // refocus now-playing on the newly-opened album
   el.classList.add('open');
   if (openMode === 'card') el.classList.add('expanded');
   el.style.width = openWidth(el) + 'px';
@@ -653,7 +652,10 @@ window.addEventListener('pointerup', (e) => {
 });
 
 /* ---------- Live state (WebSocket) ---------- */
+let lastStates: PlayerState[] = [];
+
 function handleState(states: PlayerState[]): void {
+  lastStates = states;
   // Volume of the active player → open slider.
   const active = states.find((s) => s.playerId === activePlayerId);
   if (active && active.volume !== null) {
@@ -663,15 +665,11 @@ function handleState(states: PlayerState[]): void {
       if (inp) inp.value = String(volume);
     }
   }
-  // Now-playing: a playing player mapped to a shelf album — includes playback
-  // started externally (phone / Sonos app), which MA reports over the same WS.
-  // A playing player wins (also picks up externally-started playback); otherwise
-  // an explicitly paused one. Album identity is sticky per player so a frame that
-  // loses resolution doesn't wipe it. If nothing is playing/paused but the user
-  // just paused (MA may report the queue as idle), hold it paused in place.
-  // Guard windows drop this player's not-yet-propagated frames after a user
-  // pause/resume: pauseGuard drops stale 'playing' frames, resumeGuard drops
-  // stale non-playing frames.
+  // `now` is the FOCUSED now-playing that drives the open card: prefer the player
+  // playing/paused the OPEN album (so its card shows real controls even when other
+  // rooms play other albums), else any playing/paused player. Guards drop this
+  // player's not-yet-propagated frames after a user pause/resume; album identity
+  // is sticky; a user pause is held even if MA reports the queue as idle.
   const t = performance.now();
   const pauseGuard = t < pauseGuardUntil;
   const resumeGuard = t < resumeGuardUntil;
@@ -679,13 +677,17 @@ function handleState(states: PlayerState[]): void {
   if (pauseGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state === 'playing'));
   if (resumeGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state !== 'playing'));
 
+  const openAlbumId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
+  const forOpen = openAlbumId
+    ? pool.find((s) => (s.state === 'playing' || s.state === 'paused') && s.nowPlaying?.albumId === openAlbumId)
+    : undefined;
   const playingS =
     pool.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'playing' && s.nowPlaying);
   const pausedS =
     pool.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'paused' && s.nowPlaying);
-  const cand = playingS ?? pausedS;
+  const cand = forOpen ?? playingS ?? pausedS;
   if (cand?.nowPlaying) {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
     if (st === 'playing') userPaused = false;
@@ -709,13 +711,23 @@ function handleState(states: PlayerState[]): void {
   applyNow();
 }
 
+/** EQ every album that's playing on any player (multi-room), plus an optimistic
+    just-played album. Independent of the open card's focused `now`. */
+function markPlayingSpines(): void {
+  const playing = new Set<string>();
+  for (const s of lastStates) if (s.state === 'playing' && s.nowPlaying?.albumId) playing.add(s.nowPlaying.albumId);
+  if (now.state === 'playing' && now.albumId) playing.add(now.albumId);
+  items.forEach((it, i) => {
+    (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('playing', playing.has(it.albumId));
+  });
+}
+
 function applyNow(): void {
-  document.querySelectorAll('.spine.playing').forEach((s) => s.classList.remove('playing'));
   const idx = now.albumId ? items.findIndex((it) => it.albumId === now.albumId) : -1;
   const loaded = idx >= 0 && now.state !== 'idle';
   playingIdx = loaded ? idx : null;
   playingTrack = now.trackIndex;
-  if (loaded && now.state === 'playing') (shelf.children[idx] as HTMLElement | undefined)?.classList.add('playing');
+  markPlayingSpines();
   if (openIdx !== null) {
     updateOpenTrackIndicator();
     updateNowbar();
@@ -802,6 +814,7 @@ async function reloadShelf(): Promise<void> {
   buildShelf();
   sizeFaces();
   if (wasOpen !== null && wasOpen < items.length) openAlbum(wasOpen, false);
+  applyNow(); // restore EQ on playing spines after the rebuild
 }
 
 async function reloadPlayers(): Promise<void> {
