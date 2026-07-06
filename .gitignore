@@ -5,3 +5,9 @@ dist/
 
 # runtime state (SQLite + cached artwork)
 apps/*/data/
+
+# secrets — MA token etc. Never commit.
+.env
+.env.*
+*.secret
+.claude/launch.json
