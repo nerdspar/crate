@@ -113,9 +113,9 @@ function panelW(): number {
 /** Uniform spine width, proportional to a real CD jewel case (~10mm spine on a
     ~117mm case ≈ 9% of the case height). Every CD is the same size. Per-album
     variation (a fatter double album, SPINE_RENDERING §4) is a separate opt-in. */
-const CD_SPINE_RATIO = 0.09;
+const CD_SPINE_RATIO = 0.062;
 function spineWidthPx(): number {
-  return Math.round(Math.max(34, Math.min(coverW() * CD_SPINE_RATIO, 90)));
+  return Math.round(Math.max(28, Math.min(coverW() * CD_SPINE_RATIO, 72)));
 }
 
 /* ---------- Build the shelf ---------- */

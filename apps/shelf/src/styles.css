@@ -82,7 +82,9 @@ body {
     linear-gradient(90deg,
       rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.04) 14%,
       transparent 32%, transparent 58%,
-      rgba(0,0,0,0.18) 82%, rgba(0,0,0,0.34) 100%);
+      rgba(0,0,0,0.18) 82%, rgba(0,0,0,0.34) 100%),
+    /* dim scrim (bottom layer): mutes the cover art so the label reads */
+    linear-gradient(rgba(0,0,0,0.36), rgba(0,0,0,0.36));
 }
 /* tiny catalog line at the foot of wider spines, like a label imprint */
 .cat {
