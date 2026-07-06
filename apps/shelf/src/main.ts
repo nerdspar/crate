@@ -1114,13 +1114,15 @@ window.addEventListener('pointerup', (e) => {
   closeFind();
 });
 
-/* Live shelf search: non-matches are hidden (no rebuild → keeps the keyboard
-   focus and caret while typing). The same query also auto-searches the provider
-   (Apple Music via MA), debounced, so you can add albums not on the shelf without
-   pressing Enter — there's no Enter key on the wall touchscreen. */
+/* Search-to-pick: typing filters the shelf spines (non-matches hidden) AND builds
+   a pick-list in the bar — your shelf matches first (tap to open), then Apple Music
+   matches (tap to Add), debounced so you never need Enter. Provider results are
+   sequence-guarded so a slow earlier response can't overwrite a newer one. */
 const findResults = document.getElementById('find-results') as HTMLElement;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
+let providerResults: SearchAlbum[] = [];
+let providerSearching = false;
 
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
@@ -1128,12 +1130,12 @@ findSearch.addEventListener('input', () => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
   sizeFaces();
+  providerResults = [];
+  providerSearching = filterQuery.length >= 2;
+  renderResults();
   if (searchTimer) clearTimeout(searchTimer);
-  if (filterQuery.length >= 2) {
-    searchTimer = setTimeout(() => void searchProvider(), 450);
-  } else {
-    clearFindResults();
-  }
+  if (filterQuery.length >= 2) searchTimer = setTimeout(() => void searchProvider(), 450);
+  else clearFindResults();
 });
 // Enter (hardware keyboards / the on-screen "Go" key) searches immediately.
 findSearch.addEventListener('keydown', (e) => {
@@ -1145,60 +1147,98 @@ findSearch.addEventListener('keydown', (e) => {
 
 function clearFindResults(): void {
   searchSeq++; // cancel any in-flight render
+  providerResults = [];
+  providerSearching = false;
   findResults.hidden = true;
   findResults.innerHTML = '';
 }
 
-/** Search the provider so you can add albums not on the shelf. Sequence-guarded
-    so a slower earlier response can't overwrite a newer one. Quick add only —
-    bulk curation stays in admin. */
+/** Search the provider (Apple Music via MA) for albums to add. */
 async function searchProvider(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
   const seq = ++searchSeq;
-  findResults.hidden = false;
-  if (!findResults.children.length) findResults.innerHTML = '<div class="find-empty">Searching Apple Music…</div>';
   try {
     const res = await client.search(q);
-    if (seq === searchSeq) renderFindResults(res);
+    if (seq !== searchSeq) return;
+    providerResults = res;
+    providerSearching = false;
+    renderResults();
   } catch {
-    if (seq === searchSeq) findResults.innerHTML = '<div class="find-empty">Search failed.</div>';
+    if (seq !== searchSeq) return;
+    providerResults = [];
+    providerSearching = false;
+    renderResults();
   }
 }
 
-function renderFindResults(albums: SearchAlbum[]): void {
-  findResults.innerHTML = '';
-  if (!albums.length) {
-    findResults.innerHTML = '<div class="find-empty">Nothing found on Apple Music.</div>';
+/** Render the pick-list: shelf matches (open) + provider matches not on the shelf (add). */
+function renderResults(): void {
+  if (!filterQuery) {
+    clearFindResults();
     return;
   }
-  for (const al of albums) {
-    const card = document.createElement('div');
-    card.className = 'find-card';
-    const art = al.artworkUrl ? ` style="background-image:url('${al.artworkUrl}')"` : '';
-    card.innerHTML =
-      `<div class="find-card-art"${art}></div>` +
-      `<div class="find-card-meta"><span class="t">${escapeHtml(al.title)}</span><span class="a">${escapeHtml(al.artist)}</span></div>` +
-      `<button class="find-card-add">${al.onShelf ? 'On shelf' : 'Add'}</button>`;
-    const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
-    if (al.onShelf) {
-      btn.disabled = true;
-    } else {
-      btn.onclick = async () => {
-        btn.disabled = true;
-        btn.textContent = 'Adding…';
-        try {
-          await client.addToShelf({ providerUri: al.providerUri });
-          btn.textContent = 'Added';
-        } catch {
-          btn.disabled = false;
-          btn.textContent = 'Add';
-          showToast('Add failed');
-        }
-      };
-    }
-    findResults.appendChild(card);
+  const locals = items.filter(matchesFilter);
+  const adds = providerResults.filter((a) => !a.onShelf);
+  findResults.hidden = false;
+  findResults.innerHTML = '';
+  for (const it of locals) findResults.appendChild(shelfCard(it));
+  for (const al of adds) findResults.appendChild(addCard(al));
+  if (!locals.length && !adds.length) {
+    findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching Apple Music…' : 'Nothing found.'}</div>`;
   }
+}
+
+function cardShell(title: string, artist: string, artUrl: string | null, action: string): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'find-card';
+  const art = artUrl ? ` style="background-image:url('${artUrl}')"` : '';
+  card.innerHTML =
+    `<div class="find-card-art"${art}></div>` +
+    `<div class="find-card-meta"><span class="t">${escapeHtml(title)}</span><span class="a">${escapeHtml(artist)}</span></div>` +
+    `<button class="find-card-add">${action}</button>`;
+  return card;
+}
+
+/** A shelf match — tap anywhere to clear the search and open that album. */
+function shelfCard(it: ShelfItem): HTMLElement {
+  const card = cardShell(it.title, it.artist, it.artworkUrl, 'Open');
+  const open = (): void => {
+    const idx = items.findIndex((x) => x.albumId === it.albumId);
+    clearSearch();
+    closeFind();
+    if (idx >= 0) openAlbum(idx);
+  };
+  card.addEventListener('click', open);
+  return card;
+}
+
+/** A provider match not on the shelf — Add it. */
+function addCard(al: SearchAlbum): HTMLElement {
+  const card = cardShell(al.title, al.artist, al.artworkUrl, 'Add');
+  const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    try {
+      await client.addToShelf({ providerUri: al.providerUri });
+      btn.textContent = 'Added';
+    } catch {
+      btn.disabled = false;
+      btn.textContent = 'Add';
+      showToast('Add failed');
+    }
+  };
+  return card;
+}
+
+/** Clear the search query and un-hide every spine. */
+function clearSearch(): void {
+  filterQuery = '';
+  findSearch.value = '';
+  items.forEach((_, i) => (shelf.children[i] as HTMLElement | undefined)?.classList.remove('sliver'));
+  sizeFaces();
+  clearFindResults();
 }
 
 /* ---- System rows: brightness, display sleep, IP + restart/reboot (§6/§7) ---- */
