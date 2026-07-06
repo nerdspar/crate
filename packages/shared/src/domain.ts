@@ -1,0 +1,127 @@
+/** Core domain types shared across the device service, shelf, and admin. */
+
+export type MediaKind = 'album' | 'playlist';
+
+/** Extracted artwork palette (§4). Colors are `#rrggbb`. */
+export interface Palette {
+  dominant: string;
+  muted: string;
+  dark: string;
+  light: string;
+  /** Label ink color chosen from dominant luminance (prototype `pickInk`). */
+  ink: InkColor;
+}
+
+export type InkColor = 'light' | 'dark';
+
+export interface Album {
+  /** Stable internal id (Crate's own, not the provider's). */
+  id: string;
+  /** Provider playback ref, e.g. `apple_music://album/594061854`. */
+  providerUri: string;
+  provider: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  /** Remote artwork URL (from the provider / MA). */
+  artworkUrl: string | null;
+  /** Locally cached rendition path served by the device service, if built. */
+  artworkPath: string | null;
+  palette: Palette | null;
+  addedAt: string;
+  playCount: number;
+}
+
+export interface Track {
+  index: number;
+  title: string;
+  artist: string;
+  duration: number | null;
+  uri: string | null;
+}
+
+export type PlayerType = 'sonos' | 'homepod' | 'airplay' | 'cast' | 'web' | 'other';
+
+export interface Player {
+  /** Provider player id (the Sonos RINCON uuid for Sonos players). */
+  id: string;
+  name: string;
+  type: PlayerType;
+  isDefault: boolean;
+  displayOrder: number;
+  available: boolean;
+}
+
+export type PlaybackState = 'playing' | 'paused' | 'idle' | 'unknown';
+
+export interface NowPlaying {
+  /** Resolved Crate album id if this maps to a shelf album, else null. */
+  albumId: string | null;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  trackIndex: number | null;
+  duration: number | null;
+  elapsed: number | null;
+}
+
+export interface PlayerState {
+  playerId: string;
+  state: PlaybackState;
+  volume: number | null;
+  muted: boolean;
+  nowPlaying: NowPlaying | null;
+}
+
+/** Everything the shelf needs to render one spine (derived from Album + palette). */
+export interface ShelfItem {
+  albumId: string;
+  kind: MediaKind;
+  title: string;
+  artist: string;
+  order: number;
+  stackId: string | null;
+  /** Spine gradient endpoints (`#rrggbb`). */
+  primaryColor: string;
+  darkColor: string;
+  inkColor: InkColor;
+  /** Base spine width in px (UI scales it); mirrors the prototype's per-album width. */
+  spineWidth: number;
+  /** Pre-rendered blurred art strip for spineMode `art`, else null. */
+  spineStripUrl: string | null;
+  /** Cover artwork URL (local cached path preferred, else remote). */
+  artworkUrl: string | null;
+}
+
+export interface Stack {
+  id: string;
+  name: string;
+  order: number;
+}
+
+export type SpineMode = 'palette' | 'art';
+export type LabelStyle = 'uniform' | 'collected' | 'eclectic';
+export type OpenMode = 'cover' | 'card';
+export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color';
+
+export interface Settings {
+  labelStyle: LabelStyle;
+  openMode: OpenMode;
+  spineMode: SpineMode;
+  sortBy: SortBy;
+  defaultPlayerId: string | null;
+  longPressMs: number;
+  idleAutoOpen: boolean;
+  idleMinutes: number;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  labelStyle: 'uniform',
+  openMode: 'cover',
+  spineMode: 'palette',
+  sortBy: 'artist',
+  defaultPlayerId: null,
+  longPressMs: 420,
+  idleAutoOpen: true,
+  idleMinutes: 5,
+};

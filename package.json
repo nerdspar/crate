@@ -1,13 +1,21 @@
 {
-  "name": "crate-phase0",
+  "name": "crate",
   "version": "0.0.0",
   "private": true,
-  "description": "Crate — Phase 0 risk spike. Standalone; replaced by the monorepo in Phase 1.",
+  "description": "Crate — a wall-mounted touchscreen music shelf. Streaming library as album spines.",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "phase0": "tsx scripts/phase0.ts",
     "phase0:ma": "tsx scripts/phase0-ma.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:server": "npm run dev --workspace @crate/server",
+    "dev:shelf": "npm run dev --workspace @crate/shelf",
+    "dev:admin": "npm run dev --workspace @crate/admin"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
