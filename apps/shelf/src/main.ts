@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, type LabelStyle, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type Track, type WsMessage } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type LabelStyle, type OpenMode, type Player, type PlayerState, type Settings, type ShelfItem, type SpineMode, type SpineTextDir, type SpineThickness, type Track, type WsMessage } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -27,16 +27,7 @@ const client = new CrateClient('');
 let items: ShelfItem[] = [];
 let players: Player[] = [];
 let rooms: Player[] = [];
-let settings: Settings = {
-  labelStyle: 'uniform',
-  openMode: 'cover',
-  spineMode: 'palette',
-  sortBy: 'artist',
-  defaultPlayerId: null,
-  longPressMs: 420,
-  idleAutoOpen: true,
-  idleMinutes: 5,
-};
+let settings: Settings = { ...DEFAULT_SETTINGS };
 
 const LABEL_STYLES: Record<LabelStyle, string[]> = {
   uniform: [''],
@@ -67,6 +58,13 @@ function hashStr(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return Math.abs(h);
 }
+
+// Polished volume icons (speaker + 1/2 sound waves) and a mini now-playing EQ.
+const VOL_LOW_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" fill="currentColor" stroke="none"/><path d="M15.4 9.3a3.2 3.2 0 0 1 0 5.4"/></svg>';
+const VOL_HIGH_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" fill="currentColor" stroke="none"/><path d="M15.4 9.3a3.2 3.2 0 0 1 0 5.4"/><path d="M18.4 6.8a6.5 6.5 0 0 1 0 10.4"/></svg>';
+const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
 let labelStyle: LabelStyle = 'uniform';
 let openMode: OpenMode = 'cover';
 
@@ -113,9 +111,9 @@ function panelW(): number {
 /** Uniform spine width, proportional to a real CD jewel case (~10mm spine on a
     ~117mm case ≈ 9% of the case height). Every CD is the same size. Per-album
     variation (a fatter double album, SPINE_RENDERING §4) is a separate opt-in. */
-const CD_SPINE_RATIO = 0.062;
+const THICKNESS_RATIO: Record<SpineThickness, number> = { thin: 0.05, medium: 0.062, thick: 0.082 };
 function spineWidthPx(): number {
-  return Math.round(Math.max(28, Math.min(coverW() * CD_SPINE_RATIO, 72)));
+  return Math.round(Math.max(26, Math.min(coverW() * THICKNESS_RATIO[settings.spineThickness], 92)));
 }
 
 /* ---------- Build the shelf ---------- */
@@ -170,9 +168,9 @@ function buildShelf(): void {
           <button class="play">Play</button>
           <div class="rooms"></div>
           <div class="vol">
-            <span class="vol-ico">🔉</span>
+            <span class="vol-ico">${VOL_LOW_SVG}</span>
             <input type="range" min="0" max="100" value="42">
-            <span class="vol-ico">🔊</span>
+            <span class="vol-ico">${VOL_HIGH_SVG}</span>
           </div>
         </div>
         <div class="nowbar" hidden>
@@ -324,7 +322,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       const isNow = playingIdx === i && playingTrack === ti;
       row.className = 'track' + (isNow ? ' now' : '');
       const dur = t.duration ? fmtDur(t.duration) : '';
-      row.innerHTML = `<span class="n">${isNow ? '♪' : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
+      row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
       row.addEventListener('click', (e) => {
         e.stopPropagation();
         void play(i, ti);
@@ -390,12 +388,21 @@ async function play(i: number, trackIndex = 0): Promise<void> {
   pauseGuardUntil = 0;
   resumeGuardUntil = 0;
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
-  playingIdx = i;
-  playingTrack = trackIndex;
-  document.querySelectorAll('.spine').forEach((s) => s.classList.remove('playing'));
-  (shelf.children[i] as HTMLElement).classList.add('playing');
-  closeAlbum();
+  applyNow();
+  scheduleAfterPlayClose();
   showToast(`Playing on ${roomName(activePlayerId)}`);
+}
+
+let afterPlayTimer: ReturnType<typeof setTimeout> | undefined;
+/** After play, close the card immediately, after a linger, or leave it open
+    (setting). 'stay' will later also auto-close on the proximity sensor (§7). */
+function scheduleAfterPlayClose(): void {
+  if (afterPlayTimer) clearTimeout(afterPlayTimer);
+  if (settings.afterPlay === 'close') {
+    closeAlbum();
+  } else if (settings.afterPlay === 'linger') {
+    afterPlayTimer = setTimeout(() => closeAlbum(), Math.max(1, settings.afterPlayLingerSec) * 1000);
+  }
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -425,65 +432,110 @@ settingsEl.addEventListener('click', (e) => {
   if (e.target === settingsEl) settingsEl.classList.remove('open');
 });
 
+function applyTextDir(): void {
+  shelf.classList.toggle('text-btt', settings.spineTextDir === 'btt');
+}
+
+function choiceRow(
+  wrapId: string,
+  opts: ReadonlyArray<readonly [string, string, string]>,
+  isOn: (key: string) => boolean,
+  onPick: (key: string) => void,
+): void {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  for (const [key, name, hint] of opts) {
+    const b = document.createElement('button');
+    b.className = 'choice' + (isOn(key) ? ' on' : '');
+    b.innerHTML = `${escapeHtml(name)}${hint ? `<span class="hint">${escapeHtml(hint)}</span>` : ''}`;
+    b.onclick = () => onPick(key);
+    wrap.appendChild(b);
+  }
+}
+
 function renderChoices(): void {
-  const spineWrap = document.getElementById('spine-choices') as HTMLElement;
-  spineWrap.innerHTML = '';
-  (
+  choiceRow(
+    'spine-choices',
     [
       ['scan', 'Real when available', 'Scanned spines, generated fallback'],
       ['art', 'Generated', 'Spine from the album cover edge'],
-    ] as const
-  ).forEach(([key, name, hint]) => {
-    const isOn = key === 'scan' ? settings.spineMode === 'scan' : settings.spineMode !== 'scan';
-    const b = document.createElement('button');
-    b.className = 'choice' + (isOn ? ' on' : '');
-    b.innerHTML = `${name}<span class="hint">${hint}</span>`;
-    b.onclick = () => {
-      settings.spineMode = key;
+    ],
+    (k) => (k === 'scan' ? settings.spineMode === 'scan' : settings.spineMode !== 'scan'),
+    (k) => {
+      settings.spineMode = k as SpineMode;
       buildShelf();
       sizeFaces();
-      void client.putSettings({ spineMode: key }).catch(() => {});
-    };
-    spineWrap.appendChild(b);
-  });
+      void client.putSettings({ spineMode: settings.spineMode }).catch(() => {});
+    },
+  );
 
-  const labelWrap = document.getElementById('label-choices') as HTMLElement;
-  labelWrap.innerHTML = '';
-  (
+  choiceRow(
+    'thickness-choices',
+    [['thin', 'Thin', ''], ['medium', 'Medium', ''], ['thick', 'Thick', '']],
+    (k) => settings.spineThickness === k,
+    (k) => {
+      settings.spineThickness = k as SpineThickness;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ spineThickness: settings.spineThickness }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'dir-choices',
+    [['ttb', 'Top → bottom', ''], ['btt', 'Bottom → top', '']],
+    (k) => settings.spineTextDir === k,
+    (k) => {
+      settings.spineTextDir = k as SpineTextDir;
+      applyTextDir();
+      renderChoices();
+      void client.putSettings({ spineTextDir: settings.spineTextDir }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'label-choices',
     [
       ['uniform', 'Uniform', 'Centered, top to bottom'],
       ['collected', 'Collected', 'Mixed placement, all readable'],
       ['eclectic', 'Eclectic', 'Full variation, some flipped'],
-    ] as const
-  ).forEach(([key, name, hint]) => {
-    const b = document.createElement('button');
-    b.className = 'choice' + (key === labelStyle ? ' on' : '');
-    b.innerHTML = `${name}<span class="hint">${hint}</span>`;
-    b.onclick = () => {
-      applyLabelStyle(key);
-      void client.putSettings({ labelStyle: key }).catch(() => {});
-    };
-    labelWrap.appendChild(b);
-  });
+    ],
+    (k) => labelStyle === k,
+    (k) => {
+      applyLabelStyle(k as LabelStyle);
+      void client.putSettings({ labelStyle: k as LabelStyle }).catch(() => {});
+    },
+  );
 
-  const openWrap = document.getElementById('open-choices') as HTMLElement;
-  openWrap.innerHTML = '';
-  (
+  choiceRow(
+    'open-choices',
     [
       ['cover', 'Cover only', 'Art with play + menu buttons'],
       ['card', 'Full card', 'Cover plus details panel'],
-    ] as const
-  ).forEach(([key, name, hint]) => {
-    const b = document.createElement('button');
-    b.className = 'choice' + (key === openMode ? ' on' : '');
-    b.innerHTML = `${name}<span class="hint">${hint}</span>`;
-    b.onclick = () => {
-      openMode = key;
+    ],
+    (k) => openMode === k,
+    (k) => {
+      openMode = k as OpenMode;
       renderChoices();
-      void client.putSettings({ openMode: key }).catch(() => {});
-    };
-    openWrap.appendChild(b);
-  });
+      void client.putSettings({ openMode }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'afterplay-choices',
+    [
+      ['close', 'Close', 'Card closes right away'],
+      ['linger', 'Linger', `Stays ~${settings.afterPlayLingerSec}s`],
+      ['stay', 'Stay open', 'Until you close it'],
+    ],
+    (k) => settings.afterPlay === k,
+    (k) => {
+      settings.afterPlay = k as AfterPlay;
+      renderChoices();
+      void client.putSettings({ afterPlay: settings.afterPlay }).catch(() => {});
+    },
+  );
 }
 
 /* =====================================================================
@@ -688,7 +740,7 @@ function updateOpenTrackIndicator(): void {
     const isNow = playingIdx === openIdx && ti === playingTrack;
     row.classList.toggle('now', isNow);
     const n = row.querySelector('.n');
-    if (n) n.textContent = isNow ? '♪' : String(ti + 1);
+    if (n) n.innerHTML = isNow ? TRACK_EQ : String(ti + 1);
   });
 }
 
@@ -762,14 +814,16 @@ async function reloadPlayers(): Promise<void> {
 }
 
 function applySettings(s: Settings): void {
-  const prevSpine = settings.spineMode;
+  const prev = settings;
   settings = s;
   if (s.labelStyle !== labelStyle) applyLabelStyle(s.labelStyle);
   openMode = s.openMode;
-  if (s.spineMode !== prevSpine) {
+  applyTextDir();
+  if (s.spineMode !== prev.spineMode || s.spineThickness !== prev.spineThickness) {
     buildShelf();
     sizeFaces();
   }
+  renderChoices();
 }
 
 /* ---------- Boot ---------- */
@@ -789,6 +843,7 @@ async function boot(): Promise<void> {
   activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
 
   buildShelf();
+  applyTextDir();
   sizeFaces();
   renderChoices();
   handleState(playersRes.state);

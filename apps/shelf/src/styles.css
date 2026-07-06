@@ -189,7 +189,10 @@ body {
   letter-spacing: 0.1em;
 }
 .cover-menu:active { transform: scale(0.92); }
-.spine.expanded .cover-menu { opacity: 0; pointer-events: none; }
+/* when the details panel is out, hide both corner buttons — the panel has its
+   own Play, so the round cover play would be a duplicate */
+.spine.expanded .cover-menu,
+.spine.expanded .cover-play { opacity: 0; pointer-events: none; }
 
 /* meta panel: shown when expanded */
 .panel {
@@ -252,7 +255,8 @@ button {
 .room.on { color: var(--ink); border-color: var(--ink); }
 
 .vol { display: flex; align-items: center; gap: 1.4vh; }
-.vol .vol-ico { font-size: 2vh; color: var(--ink-dim); }
+.vol .vol-ico { display: flex; align-items: center; color: var(--ink-dim); }
+.vol .vol-ico svg { width: 2.6vh; height: 2.6vh; display: block; }
 .vol input[type="range"] {
   flex: 1; -webkit-appearance: none; appearance: none;
   height: 4px; border-radius: 2px;
@@ -298,6 +302,12 @@ button {
 .track .n { font-size: 1.6vh; width: 2.4vh; color: var(--brass); }
 .track.now { color: var(--ink); }
 .track.now .n { color: var(--ink); }
+/* mini now-playing EQ shown in the track number slot (replaces the ♪ glyph) */
+.track-eq { display: inline-flex; gap: 1.5px; align-items: flex-end; height: 1.8vh; }
+.track-eq i { width: 2px; background: currentColor; border-radius: 1px; animation: track-eq 0.9s ease-in-out infinite; }
+.track-eq i:nth-child(2) { animation-delay: 0.25s; }
+.track-eq i:nth-child(3) { animation-delay: 0.5s; }
+@keyframes track-eq { 0%, 100% { height: 0.5vh; } 50% { height: 1.8vh; } }
 .track .dur { margin-left: auto; font-size: 1.7vh; }
 
 .spine-label {
@@ -330,6 +340,9 @@ button {
 .spine.v-bottom .spine-label { margin-bottom: 16px; }
 .spine.v-flip .spine-label { transform: rotate(180deg); }
 .spine.v-top .face-spine, .spine.v-bottom .face-spine { flex-direction: column; }
+/* spine text direction: bottom → top (classic US CD spine) rotates the label 180° */
+#shelf.text-btt .spine-label { transform: rotate(180deg); }
+#shelf.text-btt .spine.v-flip .spine-label { transform: none; }
 
 .eq {
   position: absolute; bottom: 5px; left: 50%;

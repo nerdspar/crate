@@ -109,14 +109,24 @@ export type SpineMode = 'palette' | 'art' | 'scan';
 export type LabelStyle = 'uniform' | 'collected' | 'eclectic';
 export type OpenMode = 'cover' | 'card';
 export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color';
+export type SpineThickness = 'thin' | 'medium' | 'thick';
+/** Spine text reading direction: top→bottom or bottom→top (classic US CD spine). */
+export type SpineTextDir = 'ttb' | 'btt';
+/** What happens to the open album after you hit play. */
+export type AfterPlay = 'close' | 'linger' | 'stay';
 
 export interface Settings {
   labelStyle: LabelStyle;
   openMode: OpenMode;
   spineMode: SpineMode;
+  spineThickness: SpineThickness;
+  spineTextDir: SpineTextDir;
   sortBy: SortBy;
   defaultPlayerId: string | null;
   longPressMs: number;
+  afterPlay: AfterPlay;
+  /** Seconds the card lingers before closing when afterPlay is 'linger'. */
+  afterPlayLingerSec: number;
   idleAutoOpen: boolean;
   idleMinutes: number;
 }
@@ -125,9 +135,13 @@ export const DEFAULT_SETTINGS: Settings = {
   labelStyle: 'uniform',
   openMode: 'cover',
   spineMode: 'art',
+  spineThickness: 'medium',
+  spineTextDir: 'ttb',
   sortBy: 'artist',
   defaultPlayerId: null,
   longPressMs: 420,
+  afterPlay: 'linger',
+  afterPlayLingerSec: 8,
   idleAutoOpen: true,
   idleMinutes: 5,
 };
