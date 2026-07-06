@@ -128,8 +128,10 @@ function buildShelf(): void {
     el.dataset['idx'] = String(i);
     el.style.width = spineW + 'px';
     el.style.setProperty('--spine-w', spineW + 'px');
-    // Per-artist type identity; base width (prototype's `w`) is half the rendered spine width.
-    const ts = TYPE_STYLES[hashStr(a.artist) % TYPE_STYLES.length]!;
+    // Typography variation is governed by the label setting: 'uniform' = one
+    // identical style for every spine; otherwise a per-artist identity (font +
+    // tracking), with per-album position/flip added by LABEL_STYLES.
+    const ts = labelStyle === 'uniform' ? TYPE_STYLES[0]! : TYPE_STYLES[hashStr(a.artist) % TYPE_STYLES.length]!;
     const baseW = spineW / 2;
     const fontSize = Math.min(baseW * (ts.font.includes('Newsreader') ? 0.66 : 0.6), 19);
     const ink = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
@@ -502,7 +504,9 @@ function renderChoices(): void {
     ],
     (k) => labelStyle === k,
     (k) => {
-      applyLabelStyle(k as LabelStyle);
+      labelStyle = k as LabelStyle;
+      buildShelf(); // rebuild: font variation (uniform vs per-artist) is baked at build
+      sizeFaces();
       void client.putSettings({ labelStyle: k as LabelStyle }).catch(() => {});
     },
   );
@@ -829,10 +833,10 @@ async function reloadPlayers(): Promise<void> {
 function applySettings(s: Settings): void {
   const prev = settings;
   settings = s;
-  if (s.labelStyle !== labelStyle) applyLabelStyle(s.labelStyle);
+  labelStyle = s.labelStyle;
   openMode = s.openMode;
   applyTextDir();
-  if (s.spineMode !== prev.spineMode || s.spineThickness !== prev.spineThickness) {
+  if (s.spineMode !== prev.spineMode || s.spineThickness !== prev.spineThickness || s.labelStyle !== prev.labelStyle) {
     buildShelf();
     sizeFaces();
   }
