@@ -279,6 +279,8 @@ button {
 .room.on { color: var(--ink); border-color: var(--ink); }
 .room.room-group { border-color: var(--brass); color: var(--brass); }
 .room.room-group.on { color: #131114; background: var(--brass); border-color: var(--brass); }
+/* Members of the targeted group: outlined (not filled) so the group is visible. */
+.room.in-group { color: var(--ink); border-color: var(--ink); }
 
 .vol { display: flex; align-items: center; gap: 1.4vh; }
 .vol .vol-ico { display: flex; align-items: center; color: var(--ink-dim); }
@@ -591,8 +593,10 @@ body.idle #find-grip::after { opacity: 0; }
 /* Room/volume grid under the now-playing hero. Column count is set in JS
    (2 by default, 3 when there are too many to fit vertically).
    Each cell stacks name+join over a full-width volume slider. */
-#cc-rooms { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.8vh 5vw; }
-.cc-room { display: flex; flex-direction: column; gap: 0.8vh; }
+/* CSS columns (not grid) so an expanded group only lengthens its own column
+   and never gaps the others. Column count is set in JS. */
+#cc-rooms { column-gap: 5vw; }
+.cc-room { display: flex; flex-direction: column; gap: 0.8vh; break-inside: avoid; margin-bottom: 1.8vh; }
 .cc-room-top { display: flex; align-items: center; justify-content: space-between; gap: 1vw; }
 .cc-room-name {
   font-size: 2.1vh; color: var(--ink-dim); cursor: pointer;

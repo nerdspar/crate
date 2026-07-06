@@ -442,10 +442,13 @@ function renderRooms(el: HTMLElement): void {
     };
     wrap.appendChild(b);
   }
+  // Members of the currently-targeted group get outlined so you can see the group.
+  const activeGroup = groupMembers(leaderOf(activePlayerId ?? ''));
+  const inActiveGroup = new Set(activeGroup.length >= 2 ? activeGroup.map((r) => r.id) : []);
   // Then every individual speaker — picking a grouped one pulls it out to play solo.
   rooms.forEach((r) => {
     const b = document.createElement('button');
-    b.className = 'room' + (r.id === activePlayerId ? ' on' : '');
+    b.className = 'room' + (r.id === activePlayerId ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
     b.textContent = r.name;
     b.onclick = (e) => {
       e.stopPropagation();
@@ -1049,29 +1052,54 @@ function groupMembers(leader: string): Player[] {
   return rooms.filter((r) => leaderOf(r.id) === leader);
 }
 
+/** A fingerprint of the current grouping (each room → its leader), so we only
+    re-render the room UIs when grouping actually changes. */
+function groupSig(): string {
+  return rooms.map((r) => leaderOf(r.id)).join(',');
+}
+let lastGroupSig = '';
+/** Optimistically set a player's leader locally (before MA confirms). */
+function setLeaderLocal(playerId: string, leader: string): void {
+  const s = lastStates.find((x) => x.playerId === playerId);
+  if (s) s.groupLeader = leader;
+}
+/** Re-render both room UIs (control center + open album card) after a grouping
+    change; records the new signature so the confirming state frame is a no-op. */
+function renderRoomUIs(): void {
+  lastGroupSig = groupSig();
+  if (ccIsOpen()) renderCCRooms();
+  if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+}
+
 /** Tap a room to control it: the now-playing hero follows its playback and new
     plays / grouping target it. */
 function focusRoom(id: string): void {
   focusedPlayerId = id;
   activePlayerId = id;
-  renderCCRooms();
+  renderRoomUIs();
   handleState(lastStates);
 }
-/** Add a room to the focused room's group (forms/extends a group). */
+/** Add a room to the focused room's group (forms/extends a group). Optimistic:
+    reflect it immediately, then a slow/failed MA write self-corrects on the next
+    real state frame. */
 function groupRoom(id: string): void {
   const target = activePlayerId;
   if (!target || target === id) return;
-  const ids = new Set([target, ...groupMembers(leaderOf(target)).map((r) => r.id), id]);
-  void client.group({ playerIds: [target, ...[...ids].filter((x) => x !== target)] }).catch(() => {});
+  const leader = leaderOf(target);
+  const ids = [...new Set([leader, target, ...groupMembers(leader).map((r) => r.id), id])];
+  ids.forEach((m) => setLeaderLocal(m, leader));
+  renderRoomUIs();
+  void client.group({ playerIds: [leader, ...ids.filter((x) => x !== leader)] }).catch(() => {});
 }
-/** Remove a room from its group (works whether it's a member or the leader) and
-    focus it so it plays on its own. */
+/** Remove a room from its group (member or leader) and focus it to play on its
+    own. Optimistic, same as groupRoom. */
 function ungroupRoom(id: string): void {
   const members = groupMembers(leaderOf(id)).map((r) => r.id);
   if (members.length >= 2) {
-    // Everyone except the one leaving stays grouped (remaining[0] leads); the
-    // removed one drops out to solo.
-    void client.group({ playerIds: members.filter((x) => x !== id) }).catch(() => {});
+    const remaining = members.filter((x) => x !== id);
+    setLeaderLocal(id, id); // this room becomes solo
+    remaining.forEach((m) => setLeaderLocal(m, remaining[0] ?? id)); // rest keep a leader
+    void client.group({ playerIds: remaining }).catch(() => {});
   }
   focusRoom(id);
 }
@@ -1089,7 +1117,7 @@ function renderCCRooms(): void {
   for (const r of rooms) if (groupMembers(leaderOf(r.id)).length < 2) cells.push(roomCell(r));
 
   const cols = Math.min(3, Math.max(2, Math.ceil(cells.length / 6)));
-  wrap.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  wrap.style.columnCount = String(cols);
   for (const c of cells) wrap.appendChild(c);
 }
 
@@ -1748,6 +1776,14 @@ function handleState(states: PlayerState[]): void {
     now = { ...now, state: 'idle' };
   }
   applyNow();
+  // Reflect real grouping changes live (confirms optimistic updates, or reverts
+  // if a group/ungroup didn't take) — without re-rendering on volume/progress frames.
+  const sig = groupSig();
+  if (sig !== lastGroupSig) {
+    lastGroupSig = sig;
+    if (ccIsOpen()) renderCCRooms();
+    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+  }
 }
 
 /** EQ every album that's playing on any player (multi-room), plus an optimistic
