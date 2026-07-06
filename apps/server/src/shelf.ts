@@ -26,6 +26,7 @@ export function buildShelfItem(row: ShelfRow, artBase: string): ShelfItem {
     kind: row.kind as MediaKind,
     title: row.title,
     artist: row.artist,
+    year: row.year,
     order: row.sort_order,
     stackId: row.stack_id,
     primaryColor: primary,

@@ -66,6 +66,34 @@ body {
   box-shadow: inset -3px 0 6px rgba(0,0,0,0.45),
               inset 2px 0 3px rgba(255,255,255,0.07);
 }
+/* jewel case: thin plastic edge top + bottom, vertical gloss, edge shading.
+   Fixed px, never % — a 1–2mm plastic lip looks the same on thin/fat spines. */
+.face-spine::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg,
+      rgba(210,215,225,0.35) 0px, rgba(10,10,14,0.65) 1px,
+      rgba(120,125,135,0.30) 3px, rgba(0,0,0,0.4) 6px, transparent 8px),
+    linear-gradient(0deg,
+      rgba(0,0,0,0.7) 0px, rgba(180,185,195,0.25) 1px,
+      rgba(15,15,20,0.5) 3px, rgba(0,0,0,0.38) 6px, transparent 8px),
+    linear-gradient(90deg,
+      rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.04) 14%,
+      transparent 32%, transparent 58%,
+      rgba(0,0,0,0.18) 82%, rgba(0,0,0,0.34) 100%);
+}
+/* tiny catalog line at the foot of wider spines, like a label imprint */
+.cat {
+  position: absolute; bottom: 14px; left: 50%;
+  transform: translateX(-50%);
+  writing-mode: vertical-rl;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 8px; letter-spacing: 0.14em;
+  opacity: 0.5;
+  pointer-events: none;
+}
 
 .face-cover {
   width: var(--cover-w);
@@ -74,6 +102,35 @@ body {
   display: flex; align-items: flex-end;
   background-size: cover; background-position: center;
   box-shadow: 0 14px 40px rgba(0,0,0,0.55);
+}
+/* jewel case front: clear plastic over the art — heavier hinge on the spine
+   (left) edge, thin frame elsewhere, diagonal gloss. Lives on the cover face so
+   the gloss rotates with the 3D flip (SPINE_RENDERING §1). */
+.face-cover::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    /* hinge strip along the left (spine) edge */
+    linear-gradient(90deg,
+      rgba(0,0,0,0.45) 0px, rgba(200,205,215,0.30) 1px,
+      rgba(10,10,14,0.4) 3px, rgba(0,0,0,0.22) 10px,
+      rgba(255,255,255,0.08) 12px, transparent 15px),
+    /* thin plastic edges: top, bottom, right */
+    linear-gradient(180deg,
+      rgba(215,220,230,0.32) 0px, rgba(10,10,14,0.5) 1px,
+      rgba(0,0,0,0.28) 4px, transparent 6px),
+    linear-gradient(0deg,
+      rgba(0,0,0,0.6) 0px, rgba(190,195,205,0.22) 1px,
+      rgba(0,0,0,0.30) 4px, transparent 6px),
+    linear-gradient(270deg,
+      rgba(225,230,240,0.28) 0px, rgba(10,10,14,0.45) 1px,
+      rgba(0,0,0,0.25) 4px, transparent 6px),
+    /* diagonal gloss sweep across the plastic */
+    linear-gradient(112deg,
+      rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 18%,
+      transparent 34%, transparent 72%,
+      rgba(255,255,255,0.04) 86%, rgba(255,255,255,0.10) 100%);
 }
 .face-cover .cover-type {
   padding: 5%;
@@ -247,17 +304,18 @@ button {
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   pointer-events: none;
-  max-height: 92%;
+  max-height: 86%;
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 1;
 }
 .spine-label .artist { opacity: 0.72; font-weight: 500; }
 .spine-label .title { font-weight: 700; }
 
 .spine.v-top .face-spine { justify-content: flex-start; }
-.spine.v-top .spine-label { margin-top: 4%; }
+.spine.v-top .spine-label { margin-top: 16px; }
 .spine.v-bottom .face-spine { justify-content: flex-end; }
-.spine.v-bottom .spine-label { margin-bottom: 4%; }
+.spine.v-bottom .spine-label { margin-bottom: 16px; }
 .spine.v-flip .spine-label { transform: rotate(180deg); }
 .spine.v-top .face-spine, .spine.v-bottom .face-spine { flex-direction: column; }
 

@@ -14,6 +14,9 @@ import { CrateClient, type LabelStyle, type OpenMode, type Player, type PlayerSt
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
+import '@fontsource/oswald/400.css';
+import '@fontsource/oswald/500.css';
+import '@fontsource/oswald/600.css';
 import '@fontsource-variable/newsreader/standard.css';
 import '@fontsource-variable/newsreader/standard-italic.css';
 import './styles.css';
@@ -40,6 +43,30 @@ const LABEL_STYLES: Record<LabelStyle, string[]> = {
   collected: ['', 'v-top', 'v-bottom', '', 'v-bottom', 'v-top'],
   eclectic: ['', 'v-top', 'v-bottom', '', 'v-flip', ''],
 };
+
+/* Per-album typography (SPINE_RENDERING §3): six label identities across Archivo
+   Narrow / Oswald / Newsreader. Assignment is deterministic per artist so an
+   artist's albums share a "label identity" and the shelf always renders the same.
+   'Newsreader Variable' matches the locally-bundled font family. */
+interface TypeStyle {
+  font: string;
+  weight: number;
+  transform: string;
+  tracking: string;
+}
+const TYPE_STYLES: TypeStyle[] = [
+  { font: "'Archivo Narrow', sans-serif", weight: 600, transform: 'uppercase', tracking: '0.08em' },
+  { font: "'Oswald', sans-serif", weight: 500, transform: 'uppercase', tracking: '0.12em' },
+  { font: "'Oswald', sans-serif", weight: 400, transform: 'none', tracking: '0.05em' },
+  { font: "'Newsreader Variable', serif", weight: 500, transform: 'none', tracking: '0.03em' },
+  { font: "'Archivo Narrow', sans-serif", weight: 700, transform: 'none', tracking: '0.04em' },
+  { font: "'Newsreader Variable', serif", weight: 400, transform: 'uppercase', tracking: '0.16em' },
+];
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 let labelStyle: LabelStyle = 'uniform';
 let openMode: OpenMode = 'cover';
 
@@ -94,7 +121,10 @@ function buildShelf(): void {
     el.dataset['idx'] = String(i);
     el.style.width = spineW + 'px';
     el.style.setProperty('--spine-w', spineW + 'px');
-    const fontSize = Math.min(spineW * 0.31, 19);
+    // Per-artist type identity; base width (prototype's `w`) is half the rendered spine width.
+    const ts = TYPE_STYLES[hashStr(a.artist) % TYPE_STYLES.length]!;
+    const baseW = spineW / 2;
+    const fontSize = Math.min(baseW * (ts.font.includes('Newsreader') ? 0.66 : 0.6), 19);
     const ink = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
 
     const spineBg =
@@ -102,13 +132,16 @@ function buildShelf(): void {
         ? `background-image:url('${a.spineStripUrl}')`
         : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
+    // Catalog imprint on wider spines with a known year (SPINE_RENDERING §1).
+    const cat = spineW >= 56 && a.year ? `<div class="cat" style="color:${ink}">${a.year}</div>` : '';
 
     el.innerHTML = `
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
-          <div class="spine-label" style="font-size:${fontSize}px; color:${ink}">
+          <div class="spine-label" style="font-size:${fontSize}px; color:${ink}; font-family:${ts.font}; font-weight:${ts.weight}; text-transform:${ts.transform}; letter-spacing:${ts.tracking}">
             <span class="artist">${escapeHtml(a.artist)}</span>&nbsp;&nbsp;<span class="title">${escapeHtml(a.title)}</span>
           </div>
+          ${cat}
         </div>
         <div class="face face-cover${coverArt || `" style="background:linear-gradient(145deg, ${a.primaryColor}, ${a.darkColor} 85%)`}">
           <div class="cover-type" style="color:${ink}">${escapeHtml(a.title)}</div>

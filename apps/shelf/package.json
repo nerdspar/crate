@@ -12,7 +12,8 @@
   "dependencies": {
     "@crate/shared": "*",
     "@fontsource-variable/newsreader": "^5.2.10",
-    "@fontsource/archivo-narrow": "^5.2.8"
+    "@fontsource/archivo-narrow": "^5.2.8",
+    "@fontsource/oswald": "^5.2.8"
   },
   "devDependencies": {
     "vite": "^6.0.7"

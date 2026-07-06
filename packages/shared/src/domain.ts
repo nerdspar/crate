@@ -81,6 +81,8 @@ export interface ShelfItem {
   kind: MediaKind;
   title: string;
   artist: string;
+  /** Release year, for the spine catalog imprint. Null when unknown. */
+  year: number | null;
   order: number;
   stackId: string | null;
   /** Spine gradient endpoints (`#rrggbb`). */
