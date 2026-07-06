@@ -75,7 +75,7 @@ export class Service {
 
   getShelf(): ShelfResponse {
     return {
-      items: this.db.listShelf().map((r) => buildShelfItem(r, ART_BASE)),
+      items: this.db.listShelf().map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
       stacks: this.db.listStacks(),
     };
   }

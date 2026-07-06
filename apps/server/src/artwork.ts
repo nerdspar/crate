@@ -124,5 +124,20 @@ export async function buildArtwork(
     .toFile(join(opts.artDir, spineName));
 
   const palette = await extractPalette(buf);
+
+  // Spine label ink from the edge-slice's own brightness (the label sits on the
+  // slice, not the whole cover) so contrast holds when the edge differs from the
+  // dominant color. Mirror the strip's slight darken (×0.92).
+  try {
+    const stats = await sharp(buf).extract({ left: 0, top: 0, width: sliceW, height: srcH }).removeAlpha().stats();
+    const [r, g, b] = stats.channels;
+    if (r && g && b) {
+      const lum = (0.299 * r.mean + 0.587 * g.mean + 0.114 * b.mean) * 0.92;
+      palette.ink = lum > 150 ? 'dark' : 'light';
+    }
+  } catch {
+    /* keep palette-derived ink */
+  }
+
   return { artworkPath: coverName, spineStripPath: spineName, palette };
 }

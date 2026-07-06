@@ -1,6 +1,17 @@
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
 import type { MediaKind, Palette, ShelfItem } from '@crate/shared';
 import { darken, pickInk } from './color.js';
 import type { ShelfRow } from './db.js';
+
+/** Cache-bust cached art with its mtime so a regenerated strip gets a fresh URL. */
+function artUrl(artBase: string, artDir: string, file: string): string {
+  try {
+    return `${artBase}/${file}?v=${Math.round(statSync(join(artDir, file)).mtimeMs)}`;
+  } catch {
+    return `${artBase}/${file}`;
+  }
+}
 
 /** Stable Crate album id derived from the provider uri (e.g. apple-music-album-594061854). */
 export function albumIdFromUri(uri: string): string {
@@ -17,7 +28,7 @@ export function spineWidthFor(seed: string): number {
   return 44 + (h % 36); // 44..79
 }
 
-export function buildShelfItem(row: ShelfRow, artBase: string): ShelfItem {
+export function buildShelfItem(row: ShelfRow, artBase: string, artDir: string): ShelfItem {
   const palette = row.palette ? (JSON.parse(row.palette) as Palette) : null;
   const primary = palette?.dominant ?? '#6a6a72';
   const dark = palette?.dark ?? darken(primary, 0.5);
@@ -33,8 +44,8 @@ export function buildShelfItem(row: ShelfRow, artBase: string): ShelfItem {
     darkColor: dark,
     inkColor: palette?.ink ?? pickInk(primary),
     spineWidth: row.spine_width,
-    spineStripUrl: row.spine_strip_path ? `${artBase}/${row.spine_strip_path}` : null,
-    spineScanUrl: row.spine_scan_path ? `${artBase}/${row.spine_scan_path}` : null,
-    artworkUrl: row.artwork_path ? `${artBase}/${row.artwork_path}` : row.artwork_url,
+    spineStripUrl: row.spine_strip_path ? artUrl(artBase, artDir, row.spine_strip_path) : null,
+    spineScanUrl: row.spine_scan_path ? artUrl(artBase, artDir, row.spine_scan_path) : null,
+    artworkUrl: row.artwork_path ? artUrl(artBase, artDir, row.artwork_path) : row.artwork_url,
   };
 }
