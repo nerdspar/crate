@@ -842,9 +842,11 @@ function renderCCRooms(): void {
     const row = document.createElement('div');
     row.className = 'cc-room' + (joined ? ' grouped' : '');
     row.innerHTML =
-      `<div class="cc-room-name">${escapeHtml(r.name)}</div>` +
-      `<input type="range" min="0" max="100" value="${vol}">` +
-      `<button class="cc-room-join">${isLeader ? 'Leader' : joined ? 'Leave' : 'Join'}</button>`;
+      `<div class="cc-room-top">` +
+      `<span class="cc-room-name">${escapeHtml(r.name)}</span>` +
+      `<button class="cc-room-join">${isLeader ? 'Leader' : joined ? 'Leave' : 'Join'}</button>` +
+      `</div>` +
+      `<input type="range" min="0" max="100" value="${vol}">`;
     (row.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
       const level = +(e.target as HTMLInputElement).value;
       void client.setVolume({ playerId: r.id, level }).catch(() => {});

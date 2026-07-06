@@ -476,6 +476,12 @@ button {
 }
 #cc.open #cc-sheet { transform: translateY(0); }
 
+/* Horizontal reflow: now-playing/transport on the left, room grid on the right,
+   to use the wide-but-short kiosk. Wraps to stacked columns on narrow screens. */
+.cc-cols { display: flex; flex-wrap: wrap; gap: 2.4vh 5vw; align-items: flex-start; }
+.cc-col-play { flex: 1 1 30vw; display: flex; flex-direction: column; gap: 2.4vh; }
+.cc-col-rooms { flex: 3 1 42vw; min-width: 0; display: flex; flex-direction: column; gap: 1.4vh; }
+
 .cc-handle {
   align-self: center; width: 12vw; height: 0.6vh; border-radius: 999px;
   background: rgba(236,231,221,0.28); margin-bottom: 0.6vh; cursor: grab;
@@ -515,20 +521,23 @@ button {
   font-size: 1.8vh; letter-spacing: 0.28em; text-transform: uppercase;
   color: var(--brass); font-weight: 600;
 }
-#cc-rooms { display: flex; flex-direction: column; gap: 1.4vh; }
-.cc-room { display: flex; align-items: center; gap: 2vw; }
+/* Room/volume grid: multiple columns so many players fit without scrolling.
+   Each cell stacks name+join over a full-width volume slider. */
+#cc-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(17vw, 1fr)); gap: 1.8vh 2.5vw; }
+.cc-room { display: flex; flex-direction: column; gap: 0.8vh; }
+.cc-room-top { display: flex; align-items: center; justify-content: space-between; gap: 1vw; }
 .cc-room-name {
-  flex-shrink: 0; min-width: 22vw; font-size: 2.4vh; color: var(--ink-dim);
-  display: flex; align-items: center; gap: 1.4vw;
+  font-size: 2.1vh; color: var(--ink-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cc-room.grouped .cc-room-name { color: var(--ink); }
 .cc-room-join {
   flex-shrink: 0; background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
-  font-size: 1.8vh; font-weight: 600; padding: 0.8vh 2.4vw; letter-spacing: 0.04em;
+  font-size: 1.5vh; font-weight: 600; padding: 0.5vh 1.6vw; letter-spacing: 0.04em;
 }
 .cc-room.grouped .cc-room-join { color: var(--ink); border-color: var(--ink); }
-.cc-room input[type=range] { flex: 1; accent-color: var(--ink); }
+.cc-room input[type=range] { width: 100%; accent-color: var(--ink); }
 
 #cc-search {
   background: rgba(0,0,0,0.28); color: var(--ink);
