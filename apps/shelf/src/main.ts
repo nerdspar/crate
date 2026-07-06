@@ -153,11 +153,20 @@ function matchInk(a: ShelfItem): string {
 const shelfGlow = document.createElement('div');
 shelfGlow.className = 'shelf-glow';
 
+/** Size the glow to a uniform square halo of width `d` (the gap the open album
+    opens up around itself) so it fills the blank space and stops at the neighbors. */
 function positionGlow(i: number): void {
   const a = items[i];
-  if (!a) return;
+  const el = shelf.children[i] as HTMLElement | undefined;
+  if (!a || !el) return;
+  const d = 0.015 * window.innerWidth; // the 1.5vw margin .spine.open adds on each side
+  const cw = coverW();
+  // x from settledLeft (stable; the open album's own left margin == d), y from the
+  // element (top/height don't animate, unlike the margin/width).
   shelfGlow.style.left = `${settledLeft(i)}px`;
-  shelfGlow.style.width = `${coverW()}px`;
+  shelfGlow.style.width = `${cw + 2 * d}px`;
+  shelfGlow.style.top = `${el.offsetTop - d}px`;
+  shelfGlow.style.height = `${el.offsetHeight + 2 * d}px`;
   shelfGlow.style.backgroundImage = a.artworkUrl ? `url('${a.artworkUrl}')` : 'none';
   if (!a.artworkUrl) shelfGlow.style.backgroundColor = a.primaryColor;
   shelfGlow.classList.add('on');

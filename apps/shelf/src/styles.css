@@ -29,6 +29,7 @@ body {
 #shelf-viewport::-webkit-scrollbar { display: none; }
 
 #shelf {
+  position: relative; /* containing block for the ambient .shelf-glow */
   display: flex;
   align-items: flex-end;
   height: 100%;
@@ -159,18 +160,17 @@ body {
 
 /* Blurred cover glow behind an opened album — bleeds its colors out around the
    cover to accentuate the artwork. Invisible until the album opens. */
-/* Ambient backlight BEHIND every spine (z-index below them), positioned behind
-   the opened album. Shows only in the gaps/margins around it — never over the
-   opaque spine art of the album or its neighbors. */
+/* Ambient backlight behind the spines (z-index below them), sized in JS to a
+   uniform square halo that fills exactly the blank gap the opened album opens
+   up — so it bleeds into the surrounding space but never over neighbor art. */
 .shelf-glow {
-  position: absolute; top: 0; height: 100%;
+  position: absolute;
   z-index: -1; pointer-events: none;
   background-size: cover; background-position: center;
-  filter: blur(9vh) saturate(1.6);
-  transform: scale(1.18);
+  filter: blur(1.6vh) saturate(1.6);
   opacity: 0; transition: opacity 0.5s ease;
 }
-.shelf-glow.on { opacity: 0.65; }
+.shelf-glow.on { opacity: 0.9; }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 
