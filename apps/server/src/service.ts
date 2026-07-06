@@ -9,7 +9,8 @@ import type {
   TransportCmd,
 } from '@crate/shared';
 import type { MusicAssistantProvider } from '@crate/providers';
-import { buildArtwork } from './artwork.js';
+import { buildArtwork, buildSpineScan } from './artwork.js';
+import { findSpineScans } from './musicbrainz.js';
 import type { Config } from './config.js';
 import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum } from './db.js';
@@ -108,6 +109,7 @@ export class Service {
       artwork_path: existing?.artwork_path ?? null,
       palette: existing?.palette ?? null,
       spine_strip_path: existing?.spine_strip_path ?? null,
+      spine_scan_path: existing?.spine_scan_path ?? null,
       spine_width: existing?.spine_width ?? spineWidthFor(id),
       added_at: existing?.added_at ?? new Date().toISOString(),
       play_count: existing?.play_count ?? 0,
@@ -129,6 +131,33 @@ export class Service {
       this.hub.broadcast({ type: 'shelf' });
     } catch (err) {
       process.stderr.write(`[crate] artwork failed for ${id}: ${(err as Error).message}\n`);
+    }
+    // Real spine scan (best-effort, slow: MusicBrainz is rate-limited) — after
+    // the fast artwork so the spine appears immediately, upgraded if a scan lands.
+    void this.processSpineScan(id);
+  }
+
+  private async processSpineScan(id: string): Promise<void> {
+    const row = this.db.getAlbum(id);
+    if (!row) return;
+    try {
+      const urls = await findSpineScans(row.artist, row.title, row.year, this.cfg.mbUserAgent);
+      if (urls.length === 0) return;
+      const name = await buildSpineScan(id, urls, { artDir: this.cfg.artDir, userAgent: this.cfg.mbUserAgent });
+      if (name) {
+        this.db.setSpineScan(id, name);
+        this.hub.broadcast({ type: 'shelf' });
+      }
+    } catch (err) {
+      process.stderr.write(`[crate] spine scan failed for ${id}: ${(err as Error).message}\n`);
+    }
+  }
+
+  /** Re-run the artwork + spine-scan pipeline for every shelved album (admin refresh). */
+  async refreshArtwork(): Promise<void> {
+    for (const row of this.db.listShelf()) {
+      if (row.artwork_url) await this.processArtwork(row.id, row.artwork_url);
+      else void this.processSpineScan(row.id);
     }
   }
 

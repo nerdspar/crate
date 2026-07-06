@@ -11,6 +11,8 @@ export interface Config {
   port: number;
   /** Target cover rendition height in px (display height ×2 per §4). */
   coverHeightPx: number;
+  /** MusicBrainz requires a descriptive User-Agent with contact info. */
+  mbUserAgent: string;
   /** Directory of the built shelf app to serve, if present. */
   shelfDist: string;
   adminDist: string;
@@ -38,6 +40,7 @@ export function loadConfig(): Config {
     host: process.env.CRATE_HOST ?? '0.0.0.0',
     port: Number.parseInt(process.env.CRATE_PORT ?? '8080', 10),
     coverHeightPx: Number.parseInt(process.env.CRATE_COVER_HEIGHT ?? '1440', 10),
+    mbUserAgent: process.env.CRATE_MB_UA ?? 'Crate/0.1 ( https://github.com/crate-shelf )',
     shelfDist: resolve('../shelf/dist'),
     adminDist: resolve('../admin/dist'),
   };

@@ -312,6 +312,11 @@ button {
 .spine-label .artist { opacity: 0.72; font-weight: 500; }
 .spine-label .title { font-weight: 700; }
 
+/* scan mode: the real spine image carries its own label — hide the generated
+   label + imprint, but keep the plastic materials layer (SPINE_RENDERING §2). */
+.spine.scan .spine-label,
+.spine.scan .cat { display: none; }
+
 .spine.v-top .face-spine { justify-content: flex-start; }
 .spine.v-top .spine-label { margin-top: 16px; }
 .spine.v-bottom .face-spine { justify-content: flex-end; }

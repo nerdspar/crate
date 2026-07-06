@@ -12,6 +12,7 @@ export interface AlbumRow {
   artwork_path: string | null;
   palette: string | null;
   spine_strip_path: string | null;
+  spine_scan_path: string | null;
   spine_width: number;
   added_at: string;
   play_count: number;
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS albums (
   artwork_path TEXT,
   palette TEXT,
   spine_strip_path TEXT,
+  spine_scan_path TEXT,
   spine_width INTEGER NOT NULL DEFAULT 60,
   added_at TEXT NOT NULL,
   play_count INTEGER NOT NULL DEFAULT 0
@@ -88,6 +90,15 @@ export class Db {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /** Additive migrations for DBs created before a column existed. */
+  private migrate(): void {
+    const cols = this.db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === 'spine_scan_path')) {
+      this.db.exec('ALTER TABLE albums ADD COLUMN spine_scan_path TEXT');
+    }
   }
 
   // --- Albums -------------------------------------------------------------
@@ -122,6 +133,10 @@ export class Db {
     this.db
       .prepare('UPDATE albums SET artwork_path = ?, spine_strip_path = ?, palette = ? WHERE id = ?')
       .run(artworkPath, spineStripPath, palette ? JSON.stringify(palette) : null, id);
+  }
+
+  setSpineScan(id: string, spineScanPath: string | null): void {
+    this.db.prepare('UPDATE albums SET spine_scan_path = ? WHERE id = ?').run(spineScanPath, id);
   }
 
   // --- Shelf --------------------------------------------------------------

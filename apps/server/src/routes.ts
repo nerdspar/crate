@@ -65,4 +65,11 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.get('/api/settings', () => service.getSettings());
 
   app.put('/api/settings', (req) => service.putSettings(req.body as Partial<Settings>));
+
+  // Re-run artwork + spine-scan for all shelved albums (backfills scans for
+  // albums added before scan mode existed). Runs in the background.
+  app.post('/api/system/artwork-refresh', () => {
+    void service.refreshArtwork();
+    return { ok: true };
+  });
 }

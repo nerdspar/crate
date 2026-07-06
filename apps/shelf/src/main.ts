@@ -116,8 +116,10 @@ function buildShelf(): void {
   shelf.innerHTML = '';
   items.forEach((a, i) => {
     const spineW = a.spineWidth;
+    // 'scan' mode: real spine image when we have one, else fall back to generated.
+    const useScan = settings.spineMode === 'scan' && !!a.spineScanUrl;
     const el = document.createElement('div');
-    el.className = 'spine';
+    el.className = 'spine' + (useScan ? ' scan' : '');
     el.dataset['idx'] = String(i);
     el.style.width = spineW + 'px';
     el.style.setProperty('--spine-w', spineW + 'px');
@@ -127,13 +129,15 @@ function buildShelf(): void {
     const fontSize = Math.min(baseW * (ts.font.includes('Newsreader') ? 0.66 : 0.6), 19);
     const ink = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
 
-    const spineBg =
-      settings.spineMode === 'art' && a.spineStripUrl
+    const spineBg = useScan
+      ? `background-image:url('${a.spineScanUrl}')`
+      : settings.spineMode === 'art' && a.spineStripUrl
         ? `background-image:url('${a.spineStripUrl}')`
         : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
     // Catalog imprint on wider spines with a known year (SPINE_RENDERING §1).
-    const cat = spineW >= 56 && a.year ? `<div class="cat" style="color:${ink}">${a.year}</div>` : '';
+    // Suppressed for scans — the scan carries its own label/imprint.
+    const cat = !useScan && spineW >= 56 && a.year ? `<div class="cat" style="color:${ink}">${a.year}</div>` : '';
 
     el.innerHTML = `
       <div class="flap">
@@ -413,6 +417,26 @@ settingsEl.addEventListener('click', (e) => {
 });
 
 function renderChoices(): void {
+  const spineWrap = document.getElementById('spine-choices') as HTMLElement;
+  spineWrap.innerHTML = '';
+  (
+    [
+      ['scan', 'Real when available', 'Scanned spines, generated fallback'],
+      ['palette', 'Generated', 'Color spines from album art'],
+    ] as const
+  ).forEach(([key, name, hint]) => {
+    const b = document.createElement('button');
+    b.className = 'choice' + (key === settings.spineMode ? ' on' : '');
+    b.innerHTML = `${name}<span class="hint">${hint}</span>`;
+    b.onclick = () => {
+      settings.spineMode = key;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ spineMode: key }).catch(() => {});
+    };
+    spineWrap.appendChild(b);
+  });
+
   const labelWrap = document.getElementById('label-choices') as HTMLElement;
   labelWrap.innerHTML = '';
   (
@@ -728,9 +752,14 @@ async function reloadPlayers(): Promise<void> {
 }
 
 function applySettings(s: Settings): void {
+  const prevSpine = settings.spineMode;
   settings = s;
   if (s.labelStyle !== labelStyle) applyLabelStyle(s.labelStyle);
   openMode = s.openMode;
+  if (s.spineMode !== prevSpine) {
+    buildShelf();
+    sizeFaces();
+  }
 }
 
 /* ---------- Boot ---------- */

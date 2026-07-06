@@ -93,6 +93,8 @@ export interface ShelfItem {
   spineWidth: number;
   /** Pre-rendered blurred art strip for spineMode `art`, else null. */
   spineStripUrl: string | null;
+  /** Real spine scan (MusicBrainz CAA) for spineMode `scan`, else null. */
+  spineScanUrl: string | null;
   /** Cover artwork URL (local cached path preferred, else remote). */
   artworkUrl: string | null;
 }
@@ -103,7 +105,7 @@ export interface Stack {
   order: number;
 }
 
-export type SpineMode = 'palette' | 'art';
+export type SpineMode = 'palette' | 'art' | 'scan';
 export type LabelStyle = 'uniform' | 'collected' | 'eclectic';
 export type OpenMode = 'cover' | 'card';
 export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color';

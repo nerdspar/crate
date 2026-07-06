@@ -14,10 +14,47 @@ export interface ArtworkResult {
   palette: Palette;
 }
 
-async function fetchBuffer(url: string): Promise<Buffer> {
-  const res = await fetch(url);
+async function fetchBuffer(url: string, ua?: string): Promise<Buffer> {
+  const res = await fetch(url, ua ? { headers: { 'User-Agent': ua } } : undefined);
   if (!res.ok) throw new Error(`artwork fetch ${url} → HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Turn a Cover Art Archive spine image into a clean vertical spine strip, or
+ * return null if it isn't genuinely spine-shaped (SPINE_RENDERING §2). CAA
+ * "Spine" images are a mix of clean strips and junk; we only accept long/thin
+ * ones (≥3:1) and rotate horizontal scans to vertical.
+ */
+export async function buildSpineScan(
+  id: string,
+  candidateUrls: string[],
+  opts: { artDir: string; userAgent: string },
+): Promise<string | null> {
+  for (const url of candidateUrls) {
+    let buf: Buffer;
+    try {
+      buf = await fetchBuffer(url, opts.userAgent);
+    } catch {
+      continue;
+    }
+    const meta = await sharp(buf).metadata().catch(() => null);
+    const w = meta?.width ?? 0;
+    const h = meta?.height ?? 0;
+    if (!w || !h) continue;
+    const long = Math.max(w, h);
+    const short = Math.min(w, h);
+    // Quality gate: a genuine spine strip is long & thin at a usable resolution.
+    // Aspect ratio is the discriminator (a hi-res spine can be short-side large).
+    if (long / short < 4.5 || long < 800 || short < 30) continue;
+
+    const name = `${id}-scan.jpg`;
+    let pipeline = sharp(buf);
+    if (w > h) pipeline = pipeline.rotate(90); // horizontal scan → vertical spine
+    await pipeline.resize({ height: 1800, withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(join(opts.artDir, name));
+    return name;
+  }
+  return null;
 }
 
 function paletteFrom(dominant: string, muted?: string, dark?: string, light?: string): Palette {

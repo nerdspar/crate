@@ -34,6 +34,7 @@ export function buildShelfItem(row: ShelfRow, artBase: string): ShelfItem {
     inkColor: palette?.ink ?? pickInk(primary),
     spineWidth: row.spine_width,
     spineStripUrl: row.spine_strip_path ? `${artBase}/${row.spine_strip_path}` : null,
+    spineScanUrl: row.spine_scan_path ? `${artBase}/${row.spine_scan_path}` : null,
     artworkUrl: row.artwork_path ? `${artBase}/${row.artwork_path}` : row.artwork_url,
   };
 }
