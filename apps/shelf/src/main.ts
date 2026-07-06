@@ -1064,14 +1064,14 @@ function groupRoom(id: string): void {
   const ids = new Set([target, ...groupMembers(leaderOf(target)).map((r) => r.id), id]);
   void client.group({ playerIds: [target, ...[...ids].filter((x) => x !== target)] }).catch(() => {});
 }
-/** Remove a room from its group and focus it so it plays on its own. */
+/** Remove a room from its group (works whether it's a member or the leader) and
+    focus it so it plays on its own. */
 function ungroupRoom(id: string): void {
-  const leader = leaderOf(id);
-  if (leader !== id) {
-    const remaining = groupMembers(leader)
-      .map((r) => r.id)
-      .filter((x) => x !== id && x !== leader);
-    void client.group({ playerIds: [leader, ...remaining] }).catch(() => {});
+  const members = groupMembers(leaderOf(id)).map((r) => r.id);
+  if (members.length >= 2) {
+    // Everyone except the one leaving stays grouped (remaining[0] leads); the
+    // removed one drops out to solo.
+    void client.group({ playerIds: members.filter((x) => x !== id) }).catch(() => {});
   }
   focusRoom(id);
 }
@@ -1080,12 +1080,13 @@ function renderCCRooms(): void {
   const wrap = document.getElementById('cc-rooms') as HTMLElement;
   wrap.innerHTML = '';
   const cells: HTMLElement[] = [];
-  // Real groups (≥2 rooms sharing a leader) first, then every speaker on its own.
+  // Real groups (≥2 rooms sharing a leader) first, then only the SOLO speakers —
+  // grouped ones live inside their group's dropdown, so they're not repeated here.
   for (const leader of [...new Set(rooms.map((r) => leaderOf(r.id)))]) {
     const members = groupMembers(leader);
     if (members.length >= 2) cells.push(groupCell(leader, members));
   }
-  for (const r of rooms) cells.push(roomCell(r));
+  for (const r of rooms) if (groupMembers(leaderOf(r.id)).length < 2) cells.push(roomCell(r));
 
   const cols = Math.min(3, Math.max(2, Math.ceil(cells.length / 6)));
   wrap.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
@@ -1141,10 +1142,14 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     const m = document.createElement('div');
     m.className = 'cc-group-member' + (r.id === focusedPlayerId ? ' focused' : '');
     m.innerHTML =
+      `<div class="cc-room-top">` +
       `<span class="cc-room-name">${escapeHtml(r.name)}${r.id === leader ? ' <span class="cc-room-tag">leader</span>' : ''}</span>` +
+      `<button class="cc-room-join">Leave</button>` +
+      `</div>` +
       `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
     wireVolume(m.querySelector('input') as HTMLInputElement, r.id);
     (m.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
+    (m.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', () => ungroupRoom(r.id));
     memWrap.appendChild(m);
   }
   return cell;
