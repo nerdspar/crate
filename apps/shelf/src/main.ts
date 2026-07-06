@@ -62,6 +62,9 @@ interface NowState {
   at: number; // performance.now() at last elapsed sample
 }
 let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, duration: 0, state: 'idle', at: performance.now() };
+/** Latch: the user paused. Some MA player providers report a paused queue as
+    'idle', so we hold the now-playing paused until resume / a new play. */
+let userPaused = false;
 
 const trackCache = new Map<string, Track[]>();
 
@@ -305,6 +308,7 @@ async function onPlayButton(i: number): Promise<void> {
     const playerId = now.playerId;
     const pausing = now.state === 'playing';
     now.state = pausing ? 'paused' : 'playing';
+    userPaused = pausing;
     if (!pausing) now.at = performance.now();
     applyNow();
     await client.transport({ playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
@@ -327,6 +331,7 @@ async function play(i: number, trackIndex = 0): Promise<void> {
     return;
   }
   // Optimistic now-state; the next WS state/progress corrects it.
+  userPaused = false;
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   playingIdx = i;
   playingTrack = trackIndex;
@@ -530,24 +535,32 @@ function handleState(states: PlayerState[]): void {
   }
   // Now-playing: a playing player mapped to a shelf album — includes playback
   // started externally (phone / Sonos app), which MA reports over the same WS.
-  // Any player that's playing or paused holds a now-playing album. Prefer one
-  // whose album resolved to a shelf item; fall back to any such player. Album
-  // identity is sticky per player so a transient frame that loses resolution (or
-  // a paused frame) doesn't wipe the now-playing — we only clear on true idle.
-  const pp = states.filter((s) => s.state === 'playing' || s.state === 'paused');
-  const cand = pp.find((s) => s.nowPlaying?.albumId) ?? pp.find((s) => s.nowPlaying) ?? pp[0];
-  if (cand) {
-    const npd = cand.nowPlaying;
+  // A playing player wins (also picks up externally-started playback); otherwise
+  // an explicitly paused one. Album identity is sticky per player so a frame that
+  // loses resolution doesn't wipe it. If nothing is playing/paused but the user
+  // just paused (MA may report the queue as idle), hold it paused in place.
+  const playingS =
+    states.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
+    states.find((s) => s.state === 'playing' && s.nowPlaying);
+  const pausedS =
+    states.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
+    states.find((s) => s.state === 'paused' && s.nowPlaying);
+  const cand = playingS ?? pausedS;
+  if (cand?.nowPlaying) {
+    const st = cand.state === 'playing' ? 'playing' : 'paused';
+    if (st === 'playing') userPaused = false;
     const samePlayer = cand.playerId === now.playerId;
     now = {
       playerId: cand.playerId,
-      albumId: npd?.albumId ?? (samePlayer ? now.albumId : null),
-      trackIndex: npd?.trackIndex ?? (samePlayer ? now.trackIndex : 0),
-      elapsed: npd?.elapsed ?? 0,
-      duration: npd?.duration ?? (samePlayer ? now.duration : 0),
-      state: cand.state === 'playing' ? 'playing' : 'paused',
+      albumId: cand.nowPlaying.albumId ?? (samePlayer ? now.albumId : null),
+      trackIndex: cand.nowPlaying.trackIndex ?? (samePlayer ? now.trackIndex : 0),
+      elapsed: cand.nowPlaying.elapsed ?? 0,
+      duration: cand.nowPlaying.duration ?? (samePlayer ? now.duration : 0),
+      state: st,
       at: performance.now(),
     };
+  } else if (userPaused && now.albumId) {
+    now = { ...now, state: 'paused' };
   } else {
     now = { ...now, state: 'idle' };
   }

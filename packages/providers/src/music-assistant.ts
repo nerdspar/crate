@@ -184,7 +184,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   async transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void> {
     const map: Record<TransportCommand, string> = {
-      play: 'player_queues/play',
+      // `resume` continues from the last position whether the queue was paused or
+      // stopped; `play` alone can restart. In Crate, transport 'play' always means
+      // "continue" (a fresh start goes through play_media).
+      play: 'player_queues/resume',
       pause: 'player_queues/pause',
       next: 'player_queues/next',
       previous: 'player_queues/previous',
