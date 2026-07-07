@@ -119,7 +119,7 @@ function renderShelf(): void {
         <div class="y">${it.year ?? ''}</div>
       </div>
       <div class="card-actions">
-        <button class="ghost crate-btn">Crates</button>
+        <button class="ghost crate-btn">Shelves</button>
         <button class="ghost edit-btn">Edit</button>
         <button class="ghost rm-btn">Remove</button>
       </div>`;
@@ -303,7 +303,7 @@ function renderCrates(): void {
   const crates = albumCrates();
   cratesListEl.innerHTML = '';
   if (!crates.length) {
-    cratesListEl.innerHTML = `<div class="empty">No crates yet — create one below.</div>`;
+    cratesListEl.innerHTML = `<div class="empty">No shelves yet — create one below.</div>`;
     return;
   }
   for (const c of crates) {
@@ -319,10 +319,10 @@ function renderCrates(): void {
 }
 
 async function deleteCrate(id: string, name: string): Promise<void> {
-  if (!confirm(`Delete crate "${name}"? Its albums stay in your library.`)) return;
+  if (!confirm(`Delete shelf "${name}"? Its albums stay in your library.`)) return;
   await client.deleteShelf(id).catch(() => {});
   await loadCrates();
-  showToast('Crate deleted');
+  showToast('Shelf deleted');
 }
 
 crateForm.addEventListener('submit', async (e) => {
@@ -332,7 +332,7 @@ crateForm.addEventListener('submit', async (e) => {
   await client.createShelf({ name, kind: 'album' }).catch(() => {});
   crateNameInput.value = '';
   await loadCrates();
-  showToast('Crate created');
+  showToast('Shelf created');
 });
 
 /* Per-album crate assignment — a floating checklist. */
@@ -352,7 +352,7 @@ function openCratePicker(anchor: HTMLElement, it: ShelfItem): void {
   const menu = document.createElement('div');
   menu.className = 'crate-menu';
   if (!crates.length) {
-    menu.innerHTML = `<div class="empty">No crates yet — create one below.</div>`;
+    menu.innerHTML = `<div class="empty">No shelves yet — create one below.</div>`;
   }
   for (const c of crates) {
     const on = crateMembers.get(c.id)?.has(it.albumId) ?? false;
