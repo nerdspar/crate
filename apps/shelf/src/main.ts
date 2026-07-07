@@ -35,6 +35,7 @@ let shelfTab: ShelfKind = 'album';
 let shelfAdding = false; // showing the inline "name this shelf" box
 let shelfDeleteArmed: string | null = null; // shelf id whose ✕ is armed for confirm
 let shelfRenaming: string | null = null; // shelf id whose name is being edited
+let shelfLoadToken = 0; // guards against concurrent shelf loads clobbering each other
 
 type ResolvedLayout = 'split' | 'center' | 'top' | 'bottom';
 /** Resolve the artist/title layout for an album; 'varied' picks one deterministically. */
@@ -194,6 +195,9 @@ function buildShelf(): void {
     const useCustom = !!a.customSpineUrl;
     const useScan = !useCustom && spineMode === 'scan' && !!a.spineScanUrl;
     const useStrip = !useCustom && !useScan && spineMode !== 'palette' && !!a.spineStripUrl;
+    // A playlist song: render a dimmed LEFT slice of its album cover (like album
+    // 'art' spines) instead of the whole busy cover.
+    const isSong = a.kind === 'playlist' && !!a.albumUri && !!a.spineStripUrl;
     const layout = a.overrideLayout ?? resolveLayout(a); // per-album override wins
     const el = document.createElement('div');
     el.className = `spine layout-${layout}` + (useScan ? ' scan' : '') + (matchesFilter(a) ? '' : ' sliver');
@@ -212,13 +216,15 @@ function buildShelf(): void {
     const artistCol = a.artistColor ?? baseInk;
     const titleCol = a.titleColor ?? (settings.inkMode === 'match' ? matchInk(a) : baseInk);
 
-    const spineBg = useCustom
-      ? `background-image:url('${a.customSpineUrl}')`
-      : useScan
-        ? `background-image:url('${a.spineScanUrl}')`
-        : useStrip
-          ? `background-image:url('${a.spineStripUrl}')`
-          : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
+    const spineBg = isSong
+      ? `background:linear-gradient(90deg, rgba(16,15,18,0.62), rgba(16,15,18,0.42)), url('${a.spineStripUrl}') left center / auto 100% no-repeat`
+      : useCustom
+        ? `background-image:url('${a.customSpineUrl}')`
+        : useScan
+          ? `background-image:url('${a.spineScanUrl}')`
+          : useStrip
+            ? `background-image:url('${a.spineStripUrl}')`
+            : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
     // Year display/orientation is per-album; position is global (drives the shared gutter).
     const yearDisplay = a.overrideYearDisplay ?? settings.yearDisplay;
@@ -1744,12 +1750,30 @@ function addCard(al: SearchAlbum): HTMLElement {
     openAddMenu(caret, [
       { label: 'Library (All)', on: defaultDest === 'all', fn: () => void doAdd('all') },
       ...albumShelves().map((s) => ({ label: s.name, on: s.id === defaultDest, fn: () => void doAdd(s.id) })),
+      { label: '+ New shelf', fn: () => void addToNewShelf(al.providerUri) },
     ]);
   };
 
   ctrl.append(mainBtn, caret);
   card.appendChild(ctrl);
   return card;
+}
+
+/** Create a new album shelf, add the album to it, switch to it (auto-select),
+    and drop its chip into rename mode so you can name it. */
+async function addToNewShelf(providerUri: string): Promise<void> {
+  const sh = await client.createShelf({ name: 'New shelf', kind: 'album' }).catch(() => null);
+  if (!sh) {
+    showToast('Could not create shelf');
+    return;
+  }
+  shelves.push(sh);
+  clearSearch();
+  await switchShelf(sh.id, false); // auto-select the new (empty) shelf, keep Find open
+  shelfRenaming = sh.id;
+  renderShelfList();
+  // Add after switching so the resulting broadcast reloads THIS shelf, not the old one.
+  await client.addToShelf({ providerUri, shelfId: sh.id }).catch(() => {});
 }
 
 /** Clear the search query and un-hide every spine. */
@@ -1924,7 +1948,9 @@ async function switchShelf(id: string, close = true): Promise<void> {
   shelfAdding = false;
   shelfDeleteArmed = null;
   shelfRenaming = null;
+  const tok = ++shelfLoadToken;
   const res = await client.getShelf(id === 'all' ? undefined : id);
+  if (tok !== shelfLoadToken) return; // a newer load superseded this one
   activeShelf = id;
   items = res.items;
   shelves = res.shelves;
@@ -2388,7 +2414,9 @@ function connectWs(): void {
 }
 
 async function reloadShelf(): Promise<void> {
+  const tok = ++shelfLoadToken;
   const res = await client.getShelf(activeShelf === 'all' ? undefined : activeShelf);
+  if (tok !== shelfLoadToken) return; // a newer load (e.g. a shelf switch) superseded this
   const openId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
   items = res.items;
   shelves = res.shelves;

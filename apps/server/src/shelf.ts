@@ -51,11 +51,11 @@ export function songShelfItem(
     playCount: 0,
     primaryColor: primary,
     darkColor: dark,
-    inkColor: 'light',
+    inkColor: pickInk(primary), // follow the normal auto-ink (global), like albums
     spineWidth: 56,
     durationSec: null,
-    // Real album cover on the spine edge (rendered as 'art'); falls back to the
-    // seeded gradient until the track is enriched.
+    // Real album cover; the shelf renders a dimmed LEFT slice of it (like album
+    // 'art' spines) rather than the whole busy cover.
     spineStripUrl: cover,
     spineScanUrl: null,
     customSpineUrl: null,
@@ -64,8 +64,8 @@ export function songShelfItem(
     labelTracking: null,
     artistColor: null,
     titleColor: null,
-    overrideSpineMode: cover ? 'art' : null,
-    overrideLayout: 'split', // artist | title at opposite ends of the spine
+    overrideSpineMode: null, // song spines get their own cover-slice rendering
+    overrideLayout: null, // follow the global label layout/positioning
     overrideYearDisplay: null,
     albumUri: track.uri ?? null,
     trackIndex: track.index ?? i + 1,
