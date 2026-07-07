@@ -4,9 +4,11 @@ import type {
   NowPlaying,
   PlayerState,
   PlayersResponse,
+  ProviderAlbumDetail,
   SearchAlbum,
   Settings,
   Shelf,
+  ShelfItem,
   ShelfKind,
   ShelfResponse,
   SystemStatus,
@@ -20,7 +22,7 @@ import type { Config } from './config.js';
 import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
-import { albumIdFromUri, buildShelfItem, spineWidthFor } from './shelf.js';
+import { albumIdFromUri, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
 import { applyBrightness, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower } from './system.js';
 import type { Track } from '@crate/shared';
 
@@ -96,7 +98,13 @@ export class Service {
     });
   }
 
-  getShelf(shelfId?: string): ShelfResponse {
+  async getShelf(shelfId?: string): Promise<ShelfResponse> {
+    const shelves = this.db.listShelves();
+    const shelf = shelfId ? shelves.find((s) => s.id === shelfId) : undefined;
+    // A named playlist shelf holds ONE playlist, shown as its songs (spines).
+    if (shelf && shelf.kind === 'playlist' && shelf.id !== 'playlists') {
+      return { items: await this.songItems(shelf.id), stacks: this.db.listStacks(), shelves };
+    }
     const rows =
       !shelfId || shelfId === 'all'
         ? this.db.listShelf('album')
@@ -106,8 +114,35 @@ export class Service {
     return {
       items: rows.map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
       stacks: this.db.listStacks(),
-      shelves: this.db.listShelves(),
+      shelves,
     };
+  }
+
+  /** The songs of a single-playlist shelf, as spines (song→album via albumUri). */
+  private async songItems(shelfId: string): Promise<ShelfItem[]> {
+    const playlist = this.db.listShelfMembers(shelfId)[0]; // holds exactly one playlist
+    if (!playlist) return [];
+    const tracks = await this.ma.getTracks(playlist.provider_uri).catch((): Track[] => []);
+    return tracks.map((t, i) => songShelfItem(t, i, playlist.id));
+  }
+
+  /** Album detail for an off-shelf provider album (song→album card). Not ingested.
+      A track uri is first resolved to its real album (+ the track's album position). */
+  async providerAlbum(uri: string): Promise<ProviderAlbumDetail | null> {
+    let albumUri = uri;
+    let cueIndex = -1;
+    if (uri.includes('://track/')) {
+      const res = await this.ma.getTrackAlbum(uri).catch(() => null);
+      if (!res) return null;
+      albumUri = res.albumUri;
+      cueIndex = res.trackIndex;
+    }
+    const [album, tracks] = await Promise.all([
+      this.ma.getAlbum(albumUri),
+      this.ma.getTracks(albumUri).catch((): Track[] => []),
+    ]);
+    if (!album) return null;
+    return { providerUri: albumUri, title: album.title, artist: album.artist, artworkUrl: album.artworkUrl, tracks, cueIndex };
   }
 
   // --- Shelves (named curated collections) --------------------------------
@@ -312,11 +347,16 @@ export class Service {
     return next;
   }
 
-  async play(albumId: string, trackIndex?: number, playerId?: string): Promise<void> {
-    const row = this.db.getAlbum(albumId);
-    if (!row) throw new Error(`unknown album: ${albumId}`);
+  async play(albumId: string, trackIndex?: number, playerId?: string, providerUri?: string): Promise<void> {
     const player = playerId ?? this.defaultPlayerId();
     if (!player) throw new Error('no player available');
+    // Off-shelf album (e.g. a song tapped in a playlist's song view) — play by uri.
+    if (providerUri) {
+      await this.ma.play(player, providerUri, trackIndex !== undefined ? { trackIndex } : undefined);
+      return;
+    }
+    const row = this.db.getAlbum(albumId);
+    if (!row) throw new Error(`unknown album: ${albumId}`);
     await this.ma.play(player, row.provider_uri, trackIndex !== undefined ? { trackIndex } : undefined);
     this.db.incrementPlayCount(albumId);
   }

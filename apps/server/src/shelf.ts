@@ -1,8 +1,66 @@
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AlbumOverride, MediaKind, Palette, ShelfItem } from '@crate/shared';
+import type { AlbumOverride, MediaKind, Palette, ShelfItem, Track } from '@crate/shared';
 import { darken, pickInk } from './color.js';
 import type { ShelfRow } from './db.js';
+
+function hashOf(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** Deterministic muted hex color from a seed (for playlist song spines, which
+    have no artwork/palette). Fixed S/L, hue from the hash. */
+function colorForSeed(seed: string): string {
+  const hue = hashOf(seed) % 360;
+  const s = 0.32;
+  const l = 0.4;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] = (
+    hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x]
+  ) as [number, number, number];
+  const hex = (v: number): string => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+/** Synthesize a shelf spine for one playlist track (single-playlist song view).
+    Not backed by an ingested album: `albumUri`/`trackIndex` drive song→album. */
+export function songShelfItem(track: Track, i: number, playlistId: string): ShelfItem {
+  const primary = colorForSeed(`${track.artist}|${track.title}`);
+  const dark = darken(primary, 0.5);
+  return {
+    albumId: `${playlistId}::t${i}`,
+    kind: 'playlist',
+    title: track.title,
+    artist: track.artist,
+    year: null,
+    order: i,
+    stackId: null,
+    addedAt: '',
+    playCount: 0,
+    primaryColor: primary,
+    darkColor: dark,
+    inkColor: pickInk(primary),
+    spineWidth: 56,
+    durationSec: null,
+    spineStripUrl: null,
+    spineScanUrl: null,
+    customSpineUrl: null,
+    artworkUrl: null,
+    labelFont: null,
+    labelTracking: null,
+    artistColor: null,
+    titleColor: null,
+    overrideSpineMode: null,
+    overrideLayout: null,
+    overrideYearDisplay: null,
+    albumUri: track.albumUri ?? null,
+    trackIndex: track.index ?? i + 1,
+  };
+}
 
 /** Cache-bust cached art with its mtime so a regenerated strip gets a fresh URL. */
 function artUrl(artBase: string, artDir: string, file: string): string {

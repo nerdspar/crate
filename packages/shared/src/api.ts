@@ -72,6 +72,20 @@ export interface PlayRequest {
   albumId: string;
   trackIndex?: number;
   playerId?: string;
+  /** Off-shelf album to play by provider uri (a song tapped in a playlist song
+      view). When set, albumId is ignored server-side. */
+  providerUri?: string;
+}
+
+/** Detail for an off-shelf provider album (song→album card; not ingested). */
+export interface ProviderAlbumDetail {
+  providerUri: string;
+  title: string;
+  artist: string;
+  artworkUrl: string | null;
+  tracks: Track[];
+  /** 0-based album track index the source song maps to, or -1 if unknown. */
+  cueIndex: number;
 }
 
 export type TransportCmd = 'play' | 'pause' | 'next' | 'previous' | 'seek';

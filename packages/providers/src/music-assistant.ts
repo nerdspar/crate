@@ -184,17 +184,36 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       provider_instance_id_or_domain: provider,
     });
     // Playlists have no track numbering of their own — use playlist position.
+    // `artists` is often empty in this list payload, and the track's `album.uri`
+    // is a name-based ref that won't resolve — so carry the track's own (real)
+    // uri and resolve its album lazily on tap (getTrackAlbum).
     return arr(raw).map((t, i): Track => {
       const item = rec(t);
       return {
         index: num(item['position']) ?? i + 1,
         title: str(item['name']) ?? `Track ${i + 1}`,
-        artist: firstArtistName(item),
+        artist: arr(item['artists']).length ? firstArtistName(item) : '',
         duration: num(item['duration']) ?? null,
         uri: str(item['uri']) ?? null,
-        albumUri: str(rec(item['album'])['uri']) ?? null,
+        albumUri: str(item['uri']) ?? null,
       };
     });
+  }
+
+  /** Resolve a track uri to its real album uri + 0-based album position. Playlist
+      tracks carry an unresolvable name-based album ref; the full track has the real one. */
+  async getTrackAlbum(trackUri: string): Promise<{ albumUri: string; trackIndex: number } | null> {
+    const parsed = parseProviderUri(trackUri);
+    if (!parsed) return null;
+    const full = rec(
+      await this.client.command('music/tracks/get_track', {
+        item_id: parsed.id,
+        provider_instance_id_or_domain: parsed.provider,
+      }),
+    );
+    const albumUri = str(rec(full['album'])['uri']);
+    const trackNumber = num(full['track_number']) ?? 0;
+    return albumUri ? { albumUri, trackIndex: trackNumber > 0 ? trackNumber - 1 : -1 } : null;
   }
 
   async listLibraryPlaylists(limit = 200): Promise<ProviderPlaylist[]> {

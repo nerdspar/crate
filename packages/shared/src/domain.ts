@@ -122,6 +122,11 @@ export interface ShelfItem {
   overrideYearDisplay: YearDisplay | null;
   /** Cover artwork URL (local cached path preferred, else remote). */
   artworkUrl: string | null;
+  /** Playlist song-spine only (single-playlist shelf): the provider uri of the
+      song's album to open, and which track to cue, when the spine is tapped.
+      Absent on album spines and playlist-case spines. */
+  albumUri?: string | null;
+  trackIndex?: number | null;
 }
 
 export interface Stack {

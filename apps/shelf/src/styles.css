@@ -268,6 +268,15 @@ button {
   padding: 1.6vh 0; width: 100%;
 }
 .play:active { transform: scale(0.97); }
+/* Secondary action on a playlist case: open it as its own song shelf. */
+.songs {
+  background: transparent; color: var(--ink);
+  border: 1px solid rgba(236,231,221,0.3);
+  font-size: 1.9vh; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 1.1vh 0; width: 100%;
+}
+.songs:active { transform: scale(0.97); }
 .rooms { display: flex; gap: 1vh; flex-wrap: wrap; }
 .room {
   background: transparent; color: var(--ink-dim);
@@ -350,6 +359,8 @@ button {
 .track .n { font-size: 1.6vh; width: 2.4vh; color: var(--brass); }
 .track.now { color: var(--ink); }
 .track.now .n { color: var(--ink); }
+/* The song this playlist spine cues to, inside its album's track list. */
+.track.cued { color: var(--brass); }
 /* mini now-playing EQ shown in the track number slot (replaces the ♪ glyph) */
 .track-eq { display: inline-flex; gap: 1.5px; align-items: flex-end; height: 1.8vh; }
 .track-eq i { width: 2px; background: currentColor; border-radius: 1px; animation: track-eq 0.9s ease-in-out infinite; }

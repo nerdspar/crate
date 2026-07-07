@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type LibraryPlaylist, type OpenMode, type Player, type PlayerState, type SearchAlbum, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -102,6 +102,10 @@ let pauseGuardUntil = 0;
 let resumeGuardUntil = 0;
 
 const trackCache = new Map<string, Track[]>();
+/** For playlist song spines: cached off-shelf album detail (keyed by album uri)
+    and the resolved album-track index each song cues to. */
+const albumDetailCache = new Map<string, ProviderAlbumDetail>();
+const songCue = new Map<string, number>();
 
 /** Live shelf search (control center). Empty = everything matches; non-matches
     collapse to slivers via spineWidthPx. */
@@ -231,6 +235,10 @@ function buildShelf(): void {
           `<div class="spine-label title-label" style="${labelCss}">${titleSpan}</div>`
         : `<div class="spine-label" style="${labelCss}; color:${baseInk}">${artistSpan}&nbsp;&nbsp;${titleSpan}</div>`;
 
+    // A playlist *case* (on the All Playlists shelf) gets a "Songs" action that
+    // opens it as its own single-playlist song shelf. Song spines don't.
+    const isPlaylistCase = a.kind === 'playlist' && !a.albumUri;
+
     el.innerHTML = `
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
@@ -255,6 +263,7 @@ function buildShelf(): void {
         <h2>${escapeHtml(a.artist)}</h2>
         <div class="actions">
           <button class="play">Play</button>
+          ${isPlaylistCase ? '<button class="songs">Songs</button>' : ''}
           <div class="rooms"></div>
           <div class="vol">
             <span class="vol-ico">${VOL_LOW_SVG}</span>
@@ -285,6 +294,10 @@ function buildShelf(): void {
     el.querySelector('.play')!.addEventListener('click', (e) => {
       stop(e);
       void onPlayButton(i);
+    });
+    el.querySelector('.songs')?.addEventListener('click', (e) => {
+      stop(e);
+      void openAsSongShelf(a.albumId, a.title);
     });
     // ⋯ menu on the card (will also hold "Add to shelf…"). Toggles the popover.
     const panelPop = el.querySelector('.panel-pop') as HTMLElement;
@@ -463,12 +476,12 @@ function renderRooms(el: HTMLElement): void {
 async function renderTracks(el: HTMLElement, i: number): Promise<void> {
   const item = items[i]!;
   const wrap = el.querySelector('.tracks') as HTMLElement;
-  const draw = (tracks: Track[]): void => {
+  const draw = (tracks: Track[], cueIdx: number): void => {
     wrap.innerHTML = '';
     tracks.forEach((t, ti) => {
       const row = document.createElement('div');
       const isNow = playingIdx === i && playingTrack === ti;
-      row.className = 'track' + (isNow ? ' now' : '');
+      row.className = 'track' + (isNow ? ' now' : ti === cueIdx ? ' cued' : '');
       const dur = t.duration ? fmtDur(t.duration) : '';
       row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
       row.addEventListener('click', (e) => {
@@ -478,18 +491,56 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       wrap.appendChild(row);
     });
   };
+  // Song spine (single-playlist shelf) → open its ALBUM, cued to this song.
+  if (item.albumUri) {
+    const apply = (d: ProviderAlbumDetail): void => {
+      applyAlbumToCard(el, d);
+      const cue = d.cueIndex >= 0 ? d.cueIndex : Math.max(0, d.tracks.findIndex((t) => t.title === item.title));
+      songCue.set(item.albumId, cue);
+      draw(d.tracks, cue);
+    };
+    const cached = albumDetailCache.get(item.albumUri);
+    if (cached) {
+      apply(cached);
+      return;
+    }
+    try {
+      const d = await client.getProviderAlbum(item.albumUri);
+      albumDetailCache.set(item.albumUri, d);
+      if (openIdx === i) apply(d);
+    } catch {
+      /* leave empty */
+    }
+    return;
+  }
   const cached = trackCache.get(item.albumId);
   if (cached) {
-    draw(cached);
+    draw(cached, -1);
     return;
   }
   try {
     const detail = await client.getAlbum(item.albumId);
     trackCache.set(item.albumId, detail.tracks);
-    if (openIdx === i) draw(detail.tracks);
+    if (openIdx === i) draw(detail.tracks, -1);
   } catch {
     /* leave empty */
   }
+}
+
+/** Repaint an opened song spine's card with its album's cover/title/artist. */
+function applyAlbumToCard(el: HTMLElement, d: ProviderAlbumDetail): void {
+  const cover = el.querySelector('.face-cover') as HTMLElement | null;
+  if (cover && d.artworkUrl) {
+    cover.style.backgroundImage = `url('${d.artworkUrl}')`;
+    cover.style.backgroundSize = 'cover';
+    cover.classList.add('has-art');
+  }
+  const coverType = el.querySelector('.cover-type') as HTMLElement | null;
+  if (coverType) coverType.textContent = d.title;
+  const h1 = el.querySelector('.panel h1') as HTMLElement | null;
+  if (h1) h1.textContent = d.title;
+  const h2 = el.querySelector('.panel h2') as HTMLElement | null;
+  if (h2) h2.textContent = d.artist;
 }
 
 function fmtDur(seconds: number): string {
@@ -518,13 +569,37 @@ async function onPlayButton(i: number): Promise<void> {
   await play(i);
 }
 
-async function play(i: number, trackIndex = 0): Promise<void> {
+async function play(i: number, trackIndex?: number): Promise<void> {
   const item = items[i]!;
+  // A song spine plays its ALBUM: resolve the real album uri (its `albumUri` is
+  // the track uri) and cue either the explicitly-tapped row or the song's index.
+  const song = !!item.albumUri;
+  let providerUri: string | undefined;
+  let cue = trackIndex ?? 0;
+  if (song) {
+    let d = albumDetailCache.get(item.albumUri as string);
+    if (!d) {
+      try {
+        d = await client.getProviderAlbum(item.albumUri as string);
+        albumDetailCache.set(item.albumUri as string, d);
+      } catch {
+        /* fall back to playing the track itself */
+      }
+    }
+    if (d) {
+      providerUri = d.providerUri;
+      if (trackIndex === undefined) cue = songCue.get(item.albumId) ?? (d.cueIndex >= 0 ? d.cueIndex : 0);
+    } else {
+      providerUri = item.albumUri as string;
+      cue = 0;
+    }
+  }
   try {
     await client.play({
       albumId: item.albumId,
       ...(activePlayerId ? { playerId: activePlayerId } : {}),
-      ...(trackIndex > 0 ? { trackIndex } : {}),
+      ...(providerUri ? { providerUri } : {}),
+      ...(cue > 0 ? { trackIndex: cue } : {}),
     });
   } catch (e) {
     console.error('play failed', e);
@@ -535,7 +610,7 @@ async function play(i: number, trackIndex = 0): Promise<void> {
   userPaused = false;
   pauseGuardUntil = 0;
   resumeGuardUntil = 0;
-  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   applyNow();
   scheduleAfterPlayClose();
   showToast(`Playing on ${roomName(activePlayerId)}`);
@@ -1606,6 +1681,26 @@ async function createNamedShelf(name: string): Promise<void> {
   if (!sh) return;
   shelves.push(sh);
   await switchShelf(sh.id, false); // keep the Find bar open after creating
+}
+
+/** Promote a playlist (case) to its own persistent single-playlist song shelf,
+    then switch the wall to it. Reuses an existing same-named playlist shelf. */
+async function openAsSongShelf(playlistMediaId: string, name: string): Promise<void> {
+  const existing = shelves.find((s) => s.kind === 'playlist' && s.id !== 'playlists' && s.name === name);
+  if (existing) {
+    closeAlbum();
+    await switchShelf(existing.id);
+    return;
+  }
+  const sh = await client.createShelf({ name, kind: 'playlist' }).catch(() => null);
+  if (!sh) {
+    showToast('Could not create shelf');
+    return;
+  }
+  await client.addAlbumToShelf(sh.id, playlistMediaId).catch(() => {});
+  shelves.push(sh);
+  closeAlbum();
+  await switchShelf(sh.id);
 }
 
 /** Populate the card ⋯ menu's "Add to shelf" list for one album. */

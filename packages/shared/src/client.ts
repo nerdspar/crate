@@ -9,6 +9,7 @@ import type {
   OverrideRequest,
   PlayRequest,
   PlayersResponse,
+  ProviderAlbumDetail,
   SearchAlbum,
   ShelfResponse,
   SystemStatus,
@@ -60,6 +61,11 @@ export class CrateClient {
 
   getAlbum(id: string): Promise<AlbumDetail> {
     return this.req(`/api/albums/${encodeURIComponent(id)}`);
+  }
+
+  /** Off-shelf album detail by provider uri (for song→album cards). */
+  getProviderAlbum(uri: string): Promise<ProviderAlbumDetail> {
+    return this.req(`/api/provider-album?uri=${encodeURIComponent(uri)}`);
   }
 
   getPlayers(): Promise<PlayersResponse> {

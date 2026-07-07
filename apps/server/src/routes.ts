@@ -62,8 +62,17 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
 
   app.post('/api/play', async (req) => {
     const b = req.body as PlayRequest;
-    await service.play(b.albumId, b.trackIndex, b.playerId);
+    await service.play(b.albumId, b.trackIndex, b.playerId, b.providerUri);
     return { ok: true };
+  });
+
+  // Off-shelf album detail (song→album card in a playlist song view).
+  app.get('/api/provider-album', async (req, reply) => {
+    const uri = (req.query as { uri?: string }).uri;
+    if (!uri) return reply.code(400).send({ error: 'uri required' });
+    const detail = await service.providerAlbum(uri);
+    if (!detail) return reply.code(404).send({ error: 'not found' });
+    return detail;
   });
 
   app.post('/api/transport', async (req) => {
