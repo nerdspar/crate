@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -583,22 +583,24 @@ async function onPlayButton(i: number): Promise<void> {
   await play(i);
 }
 
+/** On Play, if a still-grouped speaker was picked individually, pull it out of its
+    group first (deferred from selection so a mis-tap doesn't disband the group). */
+async function ungroupActiveSoloIfNeeded(): Promise<void> {
+  if (!activePlayerId || !activeSolo) return;
+  const solo = activePlayerId;
+  const members = groupMembers(leaderOf(solo)).map((r) => r.id);
+  if (members.length < 2) return;
+  const remaining = members.filter((x) => x !== solo);
+  setLeaderLocal(solo, solo);
+  remaining.forEach((m) => setLeaderLocal(m, remaining[0] ?? solo));
+  armGroupGuard();
+  renderRoomUIs();
+  await client.group({ playerIds: remaining }).catch(() => {});
+}
+
 async function play(i: number, trackIndex?: number): Promise<void> {
   const item = items[i]!;
-  // If a still-grouped speaker was picked individually, pull it out of its group
-  // now (on Play, not on selection — so a mis-tap doesn't disband the group).
-  if (activePlayerId && activeSolo) {
-    const solo = activePlayerId;
-    const members = groupMembers(leaderOf(solo)).map((r) => r.id);
-    if (members.length >= 2) {
-      const remaining = members.filter((x) => x !== solo);
-      setLeaderLocal(solo, solo);
-      remaining.forEach((m) => setLeaderLocal(m, remaining[0] ?? solo));
-      armGroupGuard();
-      renderRoomUIs();
-      await client.group({ playerIds: remaining }).catch(() => {});
-    }
-  }
+  await ungroupActiveSoloIfNeeded();
   // A song spine plays its ALBUM: resolve the real album uri (its `albumUri` is
   // the track uri) and cue either the explicitly-tapped row or the song's index.
   const song = !!item.albumUri;
@@ -1477,9 +1479,8 @@ window.addEventListener('pointerup', (e) => {
 const findResults = document.getElementById('find-results') as HTMLElement;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
-let providerResults: SearchAlbum[] = [];
-let providerSearching = false;
-let playlistResults: LibraryPlaylist[] = []; // playlist-tab search hits
+let searchSource = 'all'; // selected global-search source (instance id or 'all')
+let globalResults: GlobalSearchResponse | null = null;
 let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
 findSearch.addEventListener('input', () => {
@@ -1488,97 +1489,198 @@ findSearch.addEventListener('input', () => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
   sizeFaces();
-  providerResults = [];
-  providerSearching = filterQuery.length >= 2;
-  renderResults();
   if (searchTimer) clearTimeout(searchTimer);
-  if (filterQuery.length >= 2) searchTimer = setTimeout(() => void searchProvider(), 450);
-  else clearFindResults();
+  if (filterQuery.length >= 2) {
+    renderGlobal(true); // show the loading scaffold immediately
+    searchTimer = setTimeout(() => void runGlobalSearch(), 400);
+  } else {
+    clearFindResults();
+  }
 });
 // Enter (hardware keyboards / the on-screen "Go" key) searches immediately.
 findSearch.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && filterQuery) {
     if (searchTimer) clearTimeout(searchTimer);
-    void searchProvider();
+    void runGlobalSearch();
   }
 });
 
 function clearFindResults(): void {
   searchSeq++; // cancel any in-flight render
-  providerResults = [];
-  playlistResults = [];
-  providerSearching = false;
+  globalResults = null;
   findResults.hidden = true;
   findResults.innerHTML = '';
 }
 
-/** Search for things to add: Apple Music albums (Albums tab) or your library
-    playlists (Playlists tab). */
-async function searchProvider(): Promise<void> {
+/** Global search across the connected sources → albums, playlists, songs. */
+async function runGlobalSearch(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
   const seq = ++searchSeq;
-  if (shelfTab === 'playlist') {
-    // Search playlists across your library AND provider-curated (Apple Music).
-    try {
-      const res = await client.searchPlaylists(q);
-      if (seq !== searchSeq) return;
-      playlistResults = res;
-    } catch {
-      if (seq !== searchSeq) return;
-      playlistResults = [];
-    }
-    providerSearching = false;
-    renderResults();
-    return;
-  }
   try {
-    const res = await client.search(q);
+    const res = await client.globalSearch(q, searchSource);
     if (seq !== searchSeq) return;
-    providerResults = res;
-    providerSearching = false;
-    renderResults();
+    globalResults = res;
   } catch {
     if (seq !== searchSeq) return;
-    providerResults = [];
-    providerSearching = false;
-    renderResults();
+    globalResults = null;
   }
+  renderGlobal(false);
 }
 
-/** Render the pick-list: shelf matches (open) + provider matches not on the shelf (add). */
-function renderResults(): void {
+/** Sonos-style results: a source dropdown + three columns (Albums / Playlists / Songs). */
+function renderGlobal(loading: boolean): void {
   if (!filterQuery) {
     clearFindResults();
     return;
   }
   findResults.hidden = false;
   findResults.innerHTML = '';
-  // Playlists tab: a unified list of your library playlists — added ones Open,
-  // the rest Add. (Apple Music search is album-only, so it doesn't apply here.)
-  if (shelfTab === 'playlist') {
-    for (const pl of playlistResults) findResults.appendChild(playlistCard(pl));
-    if (!playlistResults.length) {
-      findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching playlists…' : 'No playlists found.'}</div>`;
+  const g = globalResults;
+
+  const bar = document.createElement('div');
+  bar.className = 'find-srcbar';
+  bar.appendChild(sourceDropdown(g?.sources ?? []));
+  findResults.appendChild(bar);
+
+  const cats = document.createElement('div');
+  cats.className = 'find-cats';
+  const localMatches = items.filter(matchesFilter).map(shelfCard); // your shelf's own hits, in Albums
+  cats.appendChild(catColumn('Albums', [...localMatches, ...(g?.albums ?? []).filter((a) => !a.onShelf).map(addCard)], loading));
+  cats.appendChild(catColumn('Playlists', (g?.playlists ?? []).map(playlistCard), loading));
+  cats.appendChild(catColumn('Songs', (g?.songs ?? []).map(songResultCard), loading));
+  findResults.appendChild(cats);
+}
+
+function catColumn(title: string, cards: HTMLElement[], loading: boolean): HTMLElement {
+  const col = document.createElement('div');
+  col.className = 'find-cat';
+  const h = document.createElement('div');
+  h.className = 'find-cat-h';
+  h.textContent = title;
+  col.appendChild(h);
+  const list = document.createElement('div');
+  list.className = 'find-cat-list';
+  if (cards.length) cards.forEach((c) => list.appendChild(c));
+  else {
+    const e = document.createElement('div');
+    e.className = 'find-empty';
+    e.textContent = loading ? 'Searching…' : 'None';
+    list.appendChild(e);
+  }
+  col.appendChild(list);
+  return col;
+}
+
+/** Source dropdown at the top of the results (All + each connected streaming source). */
+function sourceDropdown(sources: GlobalSearchResponse['sources']): HTMLElement {
+  const cur = sources.find((s) => s.instanceId === searchSource);
+  const btn = document.createElement('button');
+  btn.className = 'find-src-btn';
+  btn.textContent = `Source: ${cur?.name ?? 'All'} ▾`;
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    if (activeAddMenu) {
+      closeAddMenu();
+      return;
     }
+    openAddMenu(btn, [
+      { label: 'All sources', on: searchSource === 'all', fn: () => pickSource('all') },
+      ...sources.map((s) => ({ label: s.name, on: s.instanceId === searchSource, fn: () => pickSource(s.instanceId) })),
+    ]);
+  };
+  return btn;
+}
+function pickSource(id: string): void {
+  searchSource = id;
+  void runGlobalSearch();
+}
+
+/** A song result — tap to open its album with the track cued. */
+function songResultCard(s: SearchSong): HTMLElement {
+  const card = cardShell(s.title, s.artist + (s.album ? ` · ${s.album}` : ''), s.artworkUrl, '');
+  card.querySelector('.find-card-add')?.remove();
+  card.classList.add('find-card-tap');
+  card.addEventListener('click', () => void openProviderAlbum(s.trackUri));
+  return card;
+}
+
+/* =====================================================================
+   Standalone album card — an off-shelf album (from a global-search album or a
+   tapped song). Fetches the album by provider uri (a track uri resolves to its
+   album + cue index), shows its tracks, and lets you play (from the cued track),
+   pick a room, or add it to a shelf. Reused, doesn't need a shelf spine.
+   ===================================================================== */
+const albumModal = document.getElementById('album-modal') as HTMLElement;
+let modalUri: string | null = null; // the uri we asked to open (album or track)
+let modalAlbumUri: string | null = null; // resolved real album uri to play
+let modalCue = -1;
+
+(albumModal.querySelector('.am-backdrop') as HTMLElement).addEventListener('click', closeAlbumModal);
+(albumModal.querySelector('.am-play') as HTMLElement).addEventListener('click', () => void playModal());
+
+function closeAlbumModal(): void {
+  albumModal.hidden = true;
+  modalUri = null;
+  modalAlbumUri = null;
+}
+
+async function openProviderAlbum(uri: string): Promise<void> {
+  modalUri = uri;
+  modalAlbumUri = null;
+  modalCue = -1;
+  const set = (sel: string, text: string): void => {
+    (albumModal.querySelector(sel) as HTMLElement).textContent = text;
+  };
+  set('.am-title', 'Loading…');
+  set('.am-artist', '');
+  set('.am-eyebrow', 'Apple Music');
+  (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = '';
+  (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
+  (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
+  albumModal.hidden = false;
+
+  let d: ProviderAlbumDetail;
+  try {
+    d = await client.getProviderAlbum(uri);
+  } catch {
+    if (modalUri === uri) set('.am-title', 'Couldn’t load album');
     return;
   }
-  const locals = items.filter(matchesFilter);
-  const adds = providerResults.filter((a) => !a.onShelf);
-  for (const it of locals) findResults.appendChild(shelfCard(it));
-  // Group the add results by streaming source (Apple Music, a 2nd account, …).
-  // With a single source, no headers — just the cards, as before.
-  const sources = [...new Set(adds.map((a) => a.source))];
-  if (sources.length <= 1) {
-    for (const al of adds) findResults.appendChild(addCard(al));
-  } else {
-    for (const src of sources) {
-      findResults.appendChild(sourceHeader(src));
-      for (const al of adds.filter((a) => a.source === src)) findResults.appendChild(addCard(al));
-    }
-  }
-  if (!locals.length && !adds.length) {
-    findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching…' : 'Nothing found.'}</div>`;
+  if (modalUri !== uri) return; // superseded by a newer open
+  modalAlbumUri = d.providerUri;
+  modalCue = d.cueIndex;
+  (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = d.artworkUrl ? `url('${d.artworkUrl}')` : '';
+  set('.am-title', d.title);
+  set('.am-artist', d.artist);
+  const tw = albumModal.querySelector('.am-tracks') as HTMLElement;
+  tw.innerHTML = '';
+  d.tracks.forEach((t, ti) => {
+    const row = document.createElement('div');
+    row.className = 'track' + (ti === d.cueIndex ? ' cued' : '');
+    const dur = t.duration ? fmtDur(t.duration) : '';
+    row.innerHTML = `<span class="n">${ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
+    row.addEventListener('click', () => void playModal(ti));
+    tw.appendChild(row);
+  });
+  renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reuse the room picker
+  (albumModal.querySelector('.am-add') as HTMLElement).appendChild(addAlbumControl(d.providerUri));
+}
+
+async function playModal(trackIndex?: number): Promise<void> {
+  if (!modalAlbumUri) return;
+  const cue = trackIndex ?? (modalCue >= 0 ? modalCue : 0);
+  if (activePlayerId && activeSolo) await ungroupActiveSoloIfNeeded();
+  try {
+    await client.play({
+      albumId: modalAlbumUri,
+      providerUri: modalAlbumUri,
+      ...(activePlayerId ? { playerId: activePlayerId } : {}),
+      ...(cue > 0 ? { trackIndex: cue } : {}),
+    });
+    showToast(`Playing on ${roomName(activePlayerId)}`);
+  } catch {
+    showToast('Playback failed');
   }
 }
 
@@ -1617,14 +1719,6 @@ function openAddMenu(anchor: HTMLElement, options: Array<{ label: string; on?: b
   (menu as unknown as { _out: (e: Event) => void })._out = out;
   activeAddMenu = menu;
   setTimeout(() => document.addEventListener('pointerdown', out, true), 0);
-}
-
-/** A slim vertical source-label divider between per-source groups in the results strip. */
-function sourceHeader(name: string): HTMLElement {
-  const h = document.createElement('div');
-  h.className = 'find-source';
-  h.textContent = name;
-  return h;
 }
 
 function cardShell(title: string, artist: string, artUrl: string | null, action: string): HTMLElement {
@@ -1735,15 +1829,22 @@ async function makeSongShelfFromPlaylist(pl: LibraryPlaylist): Promise<void> {
   await openAsSongShelf(media.albumId, pl.name);
 }
 
-/** A provider match not on the shelf — Add it. The button adds to the currently
-    open shelf (or the library on All); a ▾ dropdown picks a different destination. */
+/** A provider album match — the button adds to the open shelf (or library on All);
+    a ▾ dropdown picks a different destination (or a new shelf). */
 function addCard(al: SearchAlbum): HTMLElement {
   const card = cardShell(al.title, al.artist, al.artworkUrl, '');
   card.querySelector('.find-card-add')?.remove();
+  card.classList.add('find-card-tap'); // tap the card → open it (preview / play now)
+  card.addEventListener('click', () => void openProviderAlbum(al.providerUri));
+  card.appendChild(addAlbumControl(al.providerUri));
+  return card;
+}
 
+/** The "Add to ‹shelf›" button + ▾ destination dropdown for one album provider uri.
+    Shared by the search cards and the standalone album modal. */
+function addAlbumControl(providerUri: string): HTMLElement {
   const albumShelves = (): Shelf[] => shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
   const nameOf = (id: string): string | null => (id === 'all' ? null : (shelves.find((s) => s.id === id)?.name ?? null));
-  // Default destination = the album shelf you're viewing, else the library (All).
   const defaultDest = activeShelf !== 'all' && shelves.some((s) => s.id === activeShelf && s.kind === 'album') ? activeShelf : 'all';
 
   const ctrl = document.createElement('div');
@@ -1766,7 +1867,7 @@ function addCard(al: SearchAlbum): HTMLElement {
     caret.disabled = true;
     mainBtn.textContent = 'Adding…';
     try {
-      await client.addToShelf({ providerUri: al.providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
+      await client.addToShelf({ providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
       const n = nameOf(shelfId);
       mainBtn.textContent = n ? `Added to ${n}` : 'Added';
     } catch {
@@ -1777,7 +1878,10 @@ function addCard(al: SearchAlbum): HTMLElement {
     }
   };
 
-  mainBtn.onclick = () => void doAdd(defaultDest);
+  mainBtn.onclick = (e) => {
+    e.stopPropagation(); // don't also trigger a card tap
+    void doAdd(defaultDest);
+  };
   caret.onclick = (e) => {
     e.stopPropagation();
     if (activeAddMenu) {
@@ -1787,13 +1891,12 @@ function addCard(al: SearchAlbum): HTMLElement {
     openAddMenu(caret, [
       { label: 'Library (All)', on: defaultDest === 'all', fn: () => void doAdd('all') },
       ...albumShelves().map((s) => ({ label: s.name, on: s.id === defaultDest, fn: () => void doAdd(s.id) })),
-      { label: '+ New shelf', fn: () => void addToNewShelf(al.providerUri) },
+      { label: '+ New shelf', fn: () => void addToNewShelf(providerUri) },
     ]);
   };
 
   ctrl.append(mainBtn, caret);
-  card.appendChild(ctrl);
-  return card;
+  return ctrl;
 }
 
 /** Create a new album shelf, add the album to it, switch to it (auto-select),
