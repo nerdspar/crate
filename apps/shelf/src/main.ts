@@ -3209,7 +3209,11 @@ function updatePlayButton(): void {
   // Skip ⏮/⏭ flank the button only while it's the live play/pause control.
   if (prev) prev.hidden = !transport;
   if (next) next.hidden = !transport;
-  if (eyebrow) eyebrow.textContent = isThis || pending ? 'Now playing' : 'From your library';
+  // Eyebrow shows the current SONG while this album plays (its track list is right
+  // below), else the album context.
+  const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying;
+  const song = (isThis || pending) && np?.title ? np.title : null;
+  if (eyebrow) eyebrow.textContent = song ?? (isThis || pending ? 'Now playing' : 'From your library');
 }
 
 function updateOpenTrackIndicator(): void {
