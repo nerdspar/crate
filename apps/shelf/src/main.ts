@@ -490,14 +490,18 @@ function openCardAlbumUri(): string | null {
     can mark which are safe to take over. */
 function roomPlayState(id: string): 'this' | 'other' | 'idle' {
   const hereId = openCardAlbumId();
-  // Optimistic: the room we just told to play this album, before its WS frame lands
-  // (and before MA resolves the album uri) — so its EQ shows immediately.
-  if (id === now.playerId && now.state === 'playing' && !!now.albumId && now.albumId === hereId) return 'this';
-  const s = lastStates.find((x) => x.playerId === id && x.state === 'playing' && x.nowPlaying);
+  // Optimistic: the room we just told to play/pause this album, before its WS frame
+  // lands (and before MA resolves the album uri) — so its EQ shows immediately.
+  if (id === now.playerId && (now.state === 'playing' || now.state === 'paused') && !!now.albumId && now.albumId === hereId)
+    return 'this';
+  // A room playing OR paused on this album keeps its EQ (frozen when paused, so it
+  // tracks the song row in the list); only a room actively playing OTHER music gets
+  // the busy dot — a paused room isn't actively using the speaker.
+  const s = lastStates.find((x) => x.playerId === id && (x.state === 'playing' || x.state === 'paused') && x.nowPlaying);
   if (!s) return 'idle';
   const np = s.nowPlaying;
   const matches = (!!np?.albumId && np.albumId === hereId) || (!!np?.albumUri && np.albumUri === openCardAlbumUri());
-  return matches ? 'this' : 'other';
+  return matches ? 'this' : s.state === 'playing' ? 'other' : 'idle';
 }
 /** A group's play state = whatever any member is doing (they share the queue). */
 function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' {
@@ -3202,9 +3206,11 @@ function handleState(states: PlayerState[]): void {
   // Re-render the room grid on group changes (confirm/revert optimistic grouping)
   // OR when the set of *playing* rooms changes (keep the EQ / bold markers live).
   const sig = groupSig();
+  // Include paused rooms and encode the state so play→pause and pause→idle both
+  // re-render the pickers (a paused room shows a frozen EQ; when it stops, clear it).
   const psig = lastStates
-    .filter((s) => s.state === 'playing' && s.nowPlaying)
-    .map((s) => s.playerId)
+    .filter((s) => (s.state === 'playing' || s.state === 'paused') && s.nowPlaying)
+    .map((s) => `${s.state}:${s.playerId}`)
     .sort()
     .join(',');
   if (sig !== lastGroupSig || psig !== lastPlayingSig) {
@@ -3288,7 +3294,10 @@ function updatePlayButton(): void {
   const transport = pending || (isThis && !selectionChanged(openIdx));
   if (btn) {
     btn.hidden = false;
-    btn.textContent = pending ? 'Pause' : transport ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
+    // While the latch rides the queue-load churn, keep showing "Pause" — UNLESS the
+    // user explicitly paused (userPaused), which must flip to "Resume" immediately.
+    const showPause = now.state === 'playing' || (pending && !userPaused);
+    btn.textContent = transport ? (showPause ? 'Pause' : 'Resume') : 'Play';
     btn.classList.toggle('compact', transport); // shrink to make room for the flanking skips
   }
   // Skip ⏮/⏭ flank the button only while it's the live play/pause control.
