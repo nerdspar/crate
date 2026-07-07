@@ -2125,6 +2125,18 @@ let modalIsPlaylist = false; // the overlay is showing a playlist (plays the pla
 (albumModal.querySelector('.am-next') as HTMLElement).addEventListener('click', () => {
   if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
 });
+// Tap the overlay seek bar to scrub (mirrors the card's nowbar seek).
+(albumModal.querySelector('.am-nowbar .seek') as HTMLElement).addEventListener('click', (e) => {
+  if (now.duration <= 0 || !now.playerId || !modalIsPlaying()) return;
+  const seek = albumModal.querySelector('.am-nowbar .seek') as HTMLElement;
+  const rect = seek.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, ((e as MouseEvent).clientX - rect.left) / rect.width));
+  const pos = Math.floor(ratio * now.duration);
+  now.elapsed = pos;
+  now.at = performance.now();
+  updateModalNowbar();
+  void client.transport({ playerId: now.playerId, cmd: 'seek', position: pos }).catch(() => {});
+});
 
 function closeAlbumModal(): void {
   albumModal.hidden = true;
@@ -3346,6 +3358,7 @@ function applyNow(): void {
   if (!albumModal.hidden) {
     updateModalTransport();
     updateModalNowTrack();
+    updateModalNowbar();
   }
   renderCCNow();
   syncEqs();
@@ -3416,6 +3429,21 @@ function updateNowbar(): void {
   }
 }
 
+/** Seek bar for the play-now overlay — mirrors the card's nowbar, shown while the
+    overlay's album is the one playing. */
+function updateModalNowbar(): void {
+  if (albumModal.hidden) return;
+  const bar = albumModal.querySelector('.am-nowbar') as HTMLElement | null;
+  if (!bar) return;
+  const show = modalIsPlaying();
+  bar.hidden = !show;
+  if (!show || now.duration <= 0) return;
+  const e = liveElapsed();
+  (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
+  (bar.querySelector('.cur') as HTMLElement).textContent = fmtDur(e);
+  (bar.querySelector('.dur') as HTMLElement).textContent = fmtDur(now.duration);
+}
+
 function handleProgress(playerId: string, elapsed: number): void {
   if (playerId !== now.playerId) return;
   // Ignore a stale tick that would snap the bar far from the resume position (see handleState).
@@ -3427,6 +3455,7 @@ function handleProgress(playerId: string, elapsed: number): void {
 
 function tick(): void {
   if (openIdx !== null && playingIdx === openIdx) updateNowbar();
+  if (!albumModal.hidden) updateModalNowbar();
   if (ccIsOpen()) updateCCSeek();
   requestAnimationFrame(tick);
 }
