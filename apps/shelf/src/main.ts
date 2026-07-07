@@ -1120,6 +1120,24 @@ function groupRoom(id: string): void {
   renderRoomUIs();
   void client.group({ playerIds: [leader, ...ids.filter((x) => x !== leader)] }).catch(() => {});
 }
+/** Add the armed room to an existing group (leader). Part of the same 2-tap flow:
+    arm a room → tap "Add" on a group. */
+function addToGroup(leader: string): void {
+  if (!pendingGroup) return;
+  const ids = [
+    ...new Set([
+      leader,
+      pendingGroup,
+      ...groupMembers(leader).map((r) => r.id),
+      ...groupMembers(leaderOf(pendingGroup)).map((r) => r.id),
+    ]),
+  ];
+  ids.forEach((m) => setLeaderLocal(m, leader));
+  armGroupGuard();
+  pendingGroup = null;
+  renderRoomUIs();
+  void client.group({ playerIds: [leader, ...ids.filter((x) => x !== leader)] }).catch(() => {});
+}
 /** Remove a room from its group (member or leader) and focus it to play on its own. */
 function ungroupRoom(id: string): void {
   const members = groupMembers(leaderOf(id)).map((r) => r.id);
@@ -1156,10 +1174,11 @@ function roomCell(r: Player): HTMLElement {
   const armed = r.id === pendingGroup;
   const row = document.createElement('div');
   row.className = 'cc-room' + (r.id === focusedPlayerId ? ' focused' : '') + (armed ? ' pending' : '');
+  const isAdd = !armed && pendingGroup;
   row.innerHTML =
     `<div class="cc-room-top">` +
     `<span class="cc-room-name">${escapeHtml(r.name)}</span>` +
-    `<button class="cc-room-join">${armed ? 'Cancel' : pendingGroup ? 'Add' : 'Group'}</button>` +
+    `<button class="cc-room-join${isAdd ? ' is-add' : ''}">${armed ? 'Cancel' : pendingGroup ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
   wireVolume(row.querySelector('input') as HTMLInputElement, r.id);
@@ -1173,24 +1192,34 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   const avg = Math.round(members.reduce((s, r) => s + roomVol(r.id), 0) / members.length);
   const leaderName = rooms.find((r) => r.id === leader)?.name ?? 'Group';
   const expanded = expandedGroups.has(leader);
+  // A room is armed for grouping and isn't already in this group → tapping the
+  // button drops it here (Add). Otherwise the button arms/cancels this whole group.
+  const canAdd = pendingGroup !== null && leaderOf(pendingGroup) !== leader;
+  const groupArmed = pendingGroup === leader;
   const cell = document.createElement('div');
-  cell.className = 'cc-room grouped cc-group';
+  cell.className = 'cc-room grouped cc-group' + (groupArmed ? ' pending' : '');
   cell.innerHTML =
     `<div class="cc-room-top">` +
+    `<button class="cc-group-toggle" aria-label="Show rooms">${expanded ? '▴' : '▾'}</button>` +
     `<span class="cc-room-name">${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
-    `<button class="cc-group-toggle">${expanded ? 'Hide' : 'Rooms'}</button>` +
+    `<button class="cc-room-join${canAdd ? ' is-add' : ''}">${groupArmed ? 'Cancel' : canAdd ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +
     `<div class="cc-group-members"${expanded ? '' : ' hidden'}></div>`;
+  (cell.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', () =>
+    canAdd ? addToGroup(leader) : groupRoom(leader),
+  );
   (cell.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
     const level = +(e.target as HTMLInputElement).value;
     for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
   });
-  (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', () => {
+  const toggleGroup = (): void => {
     if (expandedGroups.has(leader)) expandedGroups.delete(leader);
     else expandedGroups.add(leader);
     renderCCRooms();
-  });
+  };
+  (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', toggleGroup);
+  (cell.querySelector('.cc-room-top > .cc-room-name') as HTMLElement).addEventListener('click', toggleGroup);
   const memWrap = cell.querySelector('.cc-group-members') as HTMLElement;
   for (const r of members) {
     const m = document.createElement('div');
