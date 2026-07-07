@@ -2507,12 +2507,14 @@ function addAlbumControl(providerUri: string): HTMLElement {
     caret.disabled = true;
     mainBtn.textContent = 'Adding…';
     try {
-      await client.addToShelf({ providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
-      const albumId = albumIdFromUri(providerUri);
+      const res = await client.addToShelf({ providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
+      // The server may dedupe to an existing release of the same album — use its id.
+      const albumId = res.albumId;
+      if (res.duplicate) showToast('Already in your library');
       // Morph into the "added" state: Open + ▾ (add-to-other / remove), like the others.
-      ctrl.replaceWith(addedAlbumControl(albumId, () => openShelfAlbum(albumId), providerUri));
+      ctrl.replaceWith(addedAlbumControl(albumId, () => openShelfAlbum(albumId), res.duplicate ? undefined : providerUri));
       // Reveal the album on the shelf behind the still-open Find bar (any destination).
-      void revealAddedAlbum(shelfId, providerUri);
+      void revealAddedAlbumById(shelfId, albumId);
     } catch {
       mainBtn.disabled = false;
       caret.disabled = false;

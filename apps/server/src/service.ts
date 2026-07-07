@@ -302,10 +302,18 @@ export class Service {
     return { albums, playlists, songs, sources };
   }
 
-  async addToShelf(providerUri: string, shelfId?: string): Promise<void> {
+  async addToShelf(providerUri: string, shelfId?: string): Promise<{ albumId: string; duplicate: boolean }> {
     const album = await this.ma.getAlbum(providerUri);
     if (!album) throw new Error(`album not found: ${providerUri}`);
     const id = albumIdFromUri(providerUri);
+    // Dedupe: if another release of the same album is already in the library, use it
+    // instead of adding a second copy (Apple Music often has multiple editions).
+    const dup = this.db.findLibraryAlbumByTitleArtist(album.title, album.artist);
+    if (dup && dup.id !== id) {
+      if (shelfId && shelfId !== 'all') this.db.addAlbumToShelf(shelfId, dup.id);
+      this.hub.broadcast({ type: 'shelf' });
+      return { albumId: dup.id, duplicate: true };
+    }
     const existing = this.db.getAlbum(id);
     // Album runtime for duration-scaled spine widths (best-effort; keep any
     // previously-computed value if the track fetch fails).
@@ -339,6 +347,7 @@ export class Service {
     if (album.artworkUrl) {
       void this.processArtwork(id, album.artworkUrl);
     }
+    return { albumId: id, duplicate: false };
   }
 
   // --- Playlists ----------------------------------------------------------

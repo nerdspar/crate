@@ -102,7 +102,7 @@ export class CrateClient {
     return this.post('/api/group', body);
   }
 
-  addToShelf(body: AddToShelfRequest): Promise<{ ok: true }> {
+  addToShelf(body: AddToShelfRequest): Promise<{ ok: true; albumId: string; duplicate: boolean }> {
     return this.post('/api/shelf/add', body);
   }
 

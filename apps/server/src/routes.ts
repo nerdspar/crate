@@ -104,8 +104,8 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
 
   app.post('/api/shelf/add', async (req) => {
     const b = req.body as AddToShelfRequest;
-    await service.addToShelf(b.providerUri, b.shelfId);
-    return { ok: true };
+    const res = await service.addToShelf(b.providerUri, b.shelfId);
+    return { ok: true, ...res };
   });
 
   app.delete('/api/shelf/:id', (req) => {
