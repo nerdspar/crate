@@ -330,9 +330,19 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       media: providerUri,
       option: 'replace',
     });
-    if (opts?.trackIndex !== undefined && opts.trackIndex > 0) {
-      // Best-effort: jump to the requested track after the album is queued.
-      await this.client.command('player_queues/play_index', { queue_id: playerId, index: opts.trackIndex });
+    const idx = opts?.trackIndex;
+    if (idx !== undefined && idx > 0) {
+      // The album queues asynchronously; a play_index fired too early hits an empty
+      // queue and is ignored (playback stays stuck on the first track). Retry the jump
+      // until the queue catches up and the index actually lands. (The caller doesn't
+      // await this response, so taking a few seconds here doesn't block the UI.)
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await this.client.command('player_queues/play_index', { queue_id: playerId, index: idx }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 300));
+        const queues = arr(await this.client.command('player_queues/all').catch(() => []));
+        const q = queues.map(rec).find((x) => str(x['queue_id']) === playerId);
+        if (q && (num(q['current_index']) ?? -1) === idx) return;
+      }
     }
   }
 

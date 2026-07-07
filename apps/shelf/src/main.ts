@@ -106,6 +106,11 @@ let userPaused = false;
     'playing' frames, resumeGuard drops stale non-playing frames. */
 let pauseGuardUntil = 0;
 let resumeGuardUntil = 0;
+/** After hitting play, the album's queue can take a few seconds to load (during which
+    other rooms' frames churn the now-state). Force this album's card to read as playing
+    until the real state catches up, so the controls don't flicker to Play. */
+let playPendingIdx = -1;
+let playPendingUntil = 0;
 
 const trackCache = new Map<string, Track[]>();
 /** For playlist song spines: cached off-shelf album detail (keyed by album uri)
@@ -651,6 +656,12 @@ async function ungroupActiveSoloIfNeeded(): Promise<void> {
 
 async function play(i: number, trackIndex?: number): Promise<void> {
   const item = items[i]!;
+  // Latch the controls to "playing this" up front (before any await) so they never
+  // flicker — even for the one frame before the optimistic now-state is set below.
+  playPendingIdx = i;
+  playPendingUntil = performance.now() + 8000;
+  if (activePlayerId) focusedPlayerId = activePlayerId;
+  if (openIdx === i) updatePlayButton();
   await ungroupActiveSoloIfNeeded();
   // A song spine plays its ALBUM: resolve the real album uri (its `albumUri` is
   // the track uri) and cue either the explicitly-tapped row or the song's index.
@@ -675,27 +686,31 @@ async function play(i: number, trackIndex?: number): Promise<void> {
       cue = 0;
     }
   }
-  try {
-    await client.play({
-      albumId: item.albumId,
-      ...(activePlayerId ? { playerId: activePlayerId } : {}),
-      ...(providerUri ? { providerUri } : {}),
-      ...(cue > 0 ? { trackIndex: cue } : {}),
-    });
-  } catch (e) {
-    console.error('play failed', e);
-    showToast('Playback failed');
-    return;
-  }
-  // Optimistic now-state; the next WS state/progress corrects it. Guard the first few
-  // seconds so a stale "not yet playing" frame doesn't flip the controls back to Play.
+  // Optimistic now-state FIRST (before the network call, which can take a few seconds
+  // while the album queue populates) so the controls flip to "playing this" instantly
+  // and don't reflect the stale/loading state. The guard holds it through the load.
   userPaused = false;
   pauseGuardUntil = 0;
-  resumeGuardUntil = performance.now() + 3000;
+  resumeGuardUntil = performance.now() + 8000;
+  // (focus pin + play latch were set up front, before the awaits above.)
+  // Selection is now committed to playback — clear it so the transient where the player
+  // is still on the old track doesn't read as a pending change (flipping Pause→Play).
+  songCue.delete(item.albumId);
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   applyNow();
   scheduleAfterPlayClose();
   showToast(`Playing on ${roomName(activePlayerId)}`);
+  client
+    .play({
+      albumId: item.albumId,
+      ...(activePlayerId ? { playerId: activePlayerId } : {}),
+      ...(providerUri ? { providerUri } : {}),
+      ...(cue > 0 ? { trackIndex: cue } : {}),
+    })
+    .catch((e) => {
+      console.error('play failed', e);
+      showToast('Playback failed');
+    });
 }
 
 let afterPlayTimer: ReturnType<typeof setTimeout> | undefined;
@@ -3078,10 +3093,11 @@ function handleState(states: PlayerState[]): void {
   const pausedS =
     pool.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'paused' && s.nowPlaying);
-  // When the user has paused an album *here*, don't let another room that's playing
-  // steal the now-playing focus — keep `now` on the paused album until they act (many
-  // rooms in the house may be playing at once).
-  const cand = forFocus ?? forOpen ?? (userPaused && now.albumId ? undefined : (playingS ?? pausedS));
+  // Don't let another room steal the now-playing focus while (a) the user paused an
+  // album here, or (b) we just hit play and its queue is still loading — keep `now` on
+  // our album until its own frames arrive (forOpen) instead of jumping to another room.
+  const holdFocus = (userPaused || resumeGuard) && now.albumId;
+  const cand = forFocus ?? forOpen ?? (holdFocus ? undefined : (playingS ?? pausedS));
   if (cand?.nowPlaying) {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
     if (st === 'playing') userPaused = false;
@@ -3160,18 +3176,22 @@ function updatePlayButton(): void {
   const prev = panel.querySelector('.np-prev') as HTMLElement | null;
   const next = panel.querySelector('.np-next') as HTMLElement | null;
   const isThis = playingIdx === openIdx; // this album is the focused now-playing
-  // Pause/Resume only when this album plays and nothing's changed; otherwise it's the
-  // "play my selection" trigger (a different room or track) — always visible.
-  const pureToggle = isThis && !selectionChanged(openIdx);
+  // Hold the just-played album as "playing" through its queue-load window — the
+  // now-state churns in and out of "settled" during the load, so we ride the timer
+  // rather than clearing on the first (flickery) settle.
+  const pending = openIdx === playPendingIdx && performance.now() < playPendingUntil;
+  // Pause/Resume when this album plays and nothing's changed (or during the load latch);
+  // otherwise it's the "play my selection" trigger (a different room or track).
+  const transport = pending || (isThis && !selectionChanged(openIdx));
   if (btn) {
     btn.hidden = false;
-    btn.textContent = pureToggle ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
-    btn.classList.toggle('compact', pureToggle); // shrink to make room for the flanking skips
+    btn.textContent = pending ? 'Pause' : transport ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
+    btn.classList.toggle('compact', transport); // shrink to make room for the flanking skips
   }
   // Skip ⏮/⏭ flank the button only while it's the live play/pause control.
-  if (prev) prev.hidden = !pureToggle;
-  if (next) next.hidden = !pureToggle;
-  if (eyebrow) eyebrow.textContent = isThis ? 'Now playing' : 'From your library';
+  if (prev) prev.hidden = !transport;
+  if (next) next.hidden = !transport;
+  if (eyebrow) eyebrow.textContent = isThis || pending ? 'Now playing' : 'From your library';
 }
 
 function updateOpenTrackIndicator(): void {
