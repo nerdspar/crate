@@ -479,13 +479,25 @@ function openCardAlbumId(): string | null {
   if (!albumModal.hidden && modalAlbumUri) return albumIdFromUri(modalAlbumUri);
   return null;
 }
+/** Provider album uri of the card/overlay album — off-shelf content has no crate id
+    (server reports albumId null), so we also match rooms by album uri. */
+function openCardAlbumUri(): string | null {
+  if (openIdx !== null) return items[openIdx]?.providerUri ?? null;
+  if (!albumModal.hidden) return modalAlbumUri;
+  return null;
+}
 /** Whether a room is playing THIS album, some OTHER music, or nothing — so the picker
     can mark which are safe to take over. */
 function roomPlayState(id: string): 'this' | 'other' | 'idle' {
+  const hereId = openCardAlbumId();
+  // Optimistic: the room we just told to play this album, before its WS frame lands
+  // (and before MA resolves the album uri) — so its EQ shows immediately.
+  if (id === now.playerId && now.state === 'playing' && !!now.albumId && now.albumId === hereId) return 'this';
   const s = lastStates.find((x) => x.playerId === id && x.state === 'playing' && x.nowPlaying);
   if (!s) return 'idle';
-  const here = openCardAlbumId();
-  return s.nowPlaying?.albumId && s.nowPlaying.albumId === here ? 'this' : 'other';
+  const np = s.nowPlaying;
+  const matches = (!!np?.albumId && np.albumId === hereId) || (!!np?.albumUri && np.albumUri === openCardAlbumUri());
+  return matches ? 'this' : 'other';
 }
 /** A group's play state = whatever any member is doing (they share the queue). */
 function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' {
@@ -741,6 +753,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   songCue.delete(item.albumId);
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   applyNow();
+  if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement); // target room EQ now
   scheduleAfterPlayClose();
   showToast(`Playing on ${roomName(activePlayerId)}`);
   client
@@ -2229,17 +2242,27 @@ async function playModal(trackIndex?: number): Promise<void> {
   if (!modalAlbumUri) return;
   const cue = trackIndex ?? (modalCue >= 0 ? modalCue : 0);
   if (activePlayerId && activeSolo) await ungroupActiveSoloIfNeeded();
-  try {
-    await client.play({
+  // Optimistic now-state so the overlay flips to playing right away (song EQ + the
+  // ⏮ Pause ⏭ transport), like the album card. Albums only — a playlist reports its
+  // current track's album, not the playlist itself, so it can't be matched here.
+  if (!modalIsPlaylist) {
+    userPaused = false;
+    pauseGuardUntil = 0;
+    resumeGuardUntil = performance.now() + 8000;
+    if (activePlayerId) focusedPlayerId = activePlayerId;
+    now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+    applyNow();
+    renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's EQ now
+  }
+  showToast(`Playing on ${roomName(activePlayerId)}`);
+  client
+    .play({
       albumId: modalAlbumUri,
       providerUri: modalAlbumUri,
       ...(activePlayerId ? { playerId: activePlayerId } : {}),
       ...(cue > 0 ? { trackIndex: cue } : {}),
-    });
-    showToast(`Playing on ${roomName(activePlayerId)}`);
-  } catch {
-    showToast('Playback failed');
-  }
+    })
+    .catch(() => showToast('Playback failed'));
 }
 
 /** A fixed-position dropdown anchored to a button, on <body> so the results
@@ -3185,11 +3208,13 @@ function handleState(states: PlayerState[]): void {
     .sort()
     .join(',');
   if (sig !== lastGroupSig || psig !== lastPlayingSig) {
-    const groupChanged = sig !== lastGroupSig;
     lastGroupSig = sig;
     lastPlayingSig = psig;
     if (ccIsOpen()) renderCCRooms();
-    if (groupChanged && openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    // Re-render the pickers on group OR playing changes so the play-state markers
+    // (EQ / dot) and group chips stay live in the album card and the play-now overlay.
+    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    if (!albumModal.hidden) renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   }
 }
 
@@ -3208,10 +3233,16 @@ function markPlayingSpines(): void {
     list and spines pulse in unison (each otherwise starts when its element renders). */
 function syncEqs(): void {
   requestAnimationFrame(() => {
+    const paused = document.body.classList.contains('nowpaused');
     document.querySelectorAll('.track-eq i, .eq i').forEach((el) => {
       for (const a of (el as HTMLElement).getAnimations()) {
         try {
-          a.startTime = 0; // common timeline origin → same phase (per-bar delays preserved)
+          if (paused) {
+            a.pause(); // frozen while the focused album is paused
+          } else {
+            a.play();
+            a.startTime = 0; // common timeline origin → same phase (per-bar delays preserved)
+          }
         } catch {
           /* animation not ready yet */
         }
