@@ -3261,17 +3261,30 @@ function handleState(states: PlayerState[]): void {
   const forOpen = openAlbumId
     ? (pool.find((s) => onOpenAlbum(s) && s.playerId === now.playerId) ?? (holdFocus ? undefined : pool.find(onOpenAlbum)))
     : undefined;
+  // The play-now overlay has no shelf index, so anchor `now` to its album by URI (off-shelf
+  // frames carry albumUri, not a crate albumId) — the overlay's equivalent of forOpen, so
+  // external pause/track changes on that album reflect in the overlay too.
+  const modalUri = !albumModal.hidden && !modalIsPlaylist ? modalAlbumUri : null;
+  const onModalAlbum = (s: PlayerState) =>
+    (s.state === 'playing' || s.state === 'paused') && !!s.nowPlaying && s.nowPlaying.albumUri === modalUri;
+  const forModal = modalUri
+    ? (pool.find((s) => onModalAlbum(s) && s.playerId === now.playerId) ?? (holdFocus ? undefined : pool.find(onModalAlbum)))
+    : undefined;
   const playingS =
     pool.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'playing' && s.nowPlaying);
   const pausedS =
     pool.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'paused' && s.nowPlaying);
-  const cand = forFocus ?? forOpen ?? (holdFocus ? undefined : (playingS ?? pausedS));
+  const cand = forFocus ?? forOpen ?? forModal ?? (holdFocus ? undefined : (playingS ?? pausedS));
   if (cand?.nowPlaying) {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
     if (st === 'playing') userPaused = false;
     const samePlayer = cand.playerId === now.playerId;
+    // Once the player we're tracking actually reports playing, the just-played/resume hold
+    // has done its job — release the resume guard so a later EXTERNAL pause (Sonos app)
+    // isn't filtered out and shows up in the controls right away.
+    if (samePlayer && st === 'playing') resumeGuardUntil = 0;
     const nextAlbumId = cand.nowPlaying.albumId ?? (samePlayer ? now.albumId : null);
     const nextTrackIndex = cand.nowPlaying.trackIndex ?? (samePlayer ? now.trackIndex : 0);
     let nextElapsed = cand.nowPlaying.elapsed ?? now.elapsed;
