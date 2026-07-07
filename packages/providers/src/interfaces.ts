@@ -36,7 +36,9 @@ export type TransportCommand = 'play' | 'pause' | 'next' | 'previous' | 'seek';
 /** A music metadata/catalog source (search, album, tracks). */
 export interface MusicSource {
   readonly id: string;
-  search(query: string, limit?: number): Promise<ProviderAlbum[]>;
+  search(query: string, limit?: number, providerInstance?: string): Promise<ProviderAlbum[]>;
+  /** Connected streaming music sources, for per-source search. */
+  listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>>;
   getAlbum(providerUri: string): Promise<ProviderAlbum | null>;
   getTracks(providerUri: string): Promise<Track[]>;
   /** The user's saved playlists (Apple Music library + MA-local), for the add picker. */

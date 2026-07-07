@@ -245,8 +245,8 @@ export class Service {
   }
 
   async search(query: string): Promise<SearchAlbum[]> {
-    const [albums, shelved] = [await this.ma.search(query), this.db.shelfedUris()];
-    return albums.map((a) => ({
+    const [sources, shelved] = [await this.ma.listMusicProviders().catch(() => []), this.db.shelfedUris()];
+    const toHit = (a: { providerUri: string; provider: string; title: string; artist: string; year: number | null; artworkUrl: string | null }, source: string): SearchAlbum => ({
       providerUri: a.providerUri,
       provider: a.provider,
       title: a.title,
@@ -254,7 +254,17 @@ export class Service {
       year: a.year,
       artworkUrl: a.artworkUrl,
       onShelf: shelved.has(a.providerUri),
-    }));
+      source,
+    });
+    // No known sources → one unscoped search. Otherwise search each streaming
+    // source so results can be grouped/labelled by source (e.g. two Apple accounts).
+    if (sources.length === 0) {
+      return (await this.ma.search(query)).map((a) => toHit(a, 'Music'));
+    }
+    const perSource = await Promise.all(
+      sources.map(async (s) => (await this.ma.search(query, 20, s.instanceId).catch(() => [])).map((a) => toHit(a, s.name))),
+    );
+    return perSource.flat();
   }
 
   async addToShelf(providerUri: string, shelfId?: string): Promise<void> {

@@ -1566,9 +1566,19 @@ function renderResults(): void {
   const locals = items.filter(matchesFilter);
   const adds = providerResults.filter((a) => !a.onShelf);
   for (const it of locals) findResults.appendChild(shelfCard(it));
-  for (const al of adds) findResults.appendChild(addCard(al));
+  // Group the add results by streaming source (Apple Music, a 2nd account, …).
+  // With a single source, no headers — just the cards, as before.
+  const sources = [...new Set(adds.map((a) => a.source))];
+  if (sources.length <= 1) {
+    for (const al of adds) findResults.appendChild(addCard(al));
+  } else {
+    for (const src of sources) {
+      findResults.appendChild(sourceHeader(src));
+      for (const al of adds.filter((a) => a.source === src)) findResults.appendChild(addCard(al));
+    }
+  }
   if (!locals.length && !adds.length) {
-    findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching Apple Music…' : 'Nothing found.'}</div>`;
+    findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching…' : 'Nothing found.'}</div>`;
   }
 }
 
@@ -1607,6 +1617,14 @@ function openAddMenu(anchor: HTMLElement, options: Array<{ label: string; on?: b
   (menu as unknown as { _out: (e: Event) => void })._out = out;
   activeAddMenu = menu;
   setTimeout(() => document.addEventListener('pointerdown', out, true), 0);
+}
+
+/** A slim vertical source-label divider between per-source groups in the results strip. */
+function sourceHeader(name: string): HTMLElement {
+  const h = document.createElement('div');
+  h.className = 'find-source';
+  h.textContent = name;
+  return h;
 }
 
 function cardShell(title: string, artist: string, artUrl: string | null, action: string): HTMLElement {

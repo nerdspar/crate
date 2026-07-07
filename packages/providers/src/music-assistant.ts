@@ -138,18 +138,30 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   // --- MusicSource --------------------------------------------------------
 
-  async search(query: string, limit = 20): Promise<ProviderAlbum[]> {
+  async search(query: string, limit = 20, providerInstance?: string): Promise<ProviderAlbum[]> {
     const result = rec(
       await this.client.command('music/search', {
         search_query: query,
         media_types: ['album'],
         limit,
         library_only: false,
+        ...(providerInstance ? { provider: providerInstance } : {}),
       }),
     );
     return arr(result['albums'])
       .map((a) => this.toProviderAlbum(rec(a)))
       .filter((a): a is ProviderAlbum => a !== null);
+  }
+
+  /** Connected streaming music sources (e.g. Apple Music accounts) — for searching
+      each and labelling results by source. */
+  async listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>> {
+    const raw = arr(await this.client.command('providers', {}));
+    return raw
+      .map(rec)
+      .filter((p) => p['type'] === 'music' && p['is_streaming_provider'] === true && p['available'] !== false)
+      .map((p) => ({ instanceId: str(p['instance_id']) ?? '', name: str(p['name']) ?? 'Music' }))
+      .filter((p) => p.instanceId);
   }
 
   async getAlbum(providerUri: string): Promise<ProviderAlbum | null> {
