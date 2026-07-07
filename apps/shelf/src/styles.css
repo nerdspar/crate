@@ -490,6 +490,10 @@ button {
 .set-pane { display: none; }
 .set-pane.on { display: block; columns: 20vw; column-gap: 4vw; }
 .set-pane > * { break-inside: avoid; }
+/* Device pane uses explicit, independent columns (fixed placement; a hidden row in
+   one column never reflows another). */
+.set-pane[data-pane='device'].on { display: flex; column-gap: 4vw; align-items: flex-start; }
+.set-col { flex: 1 1 0; min-width: 0; }
 /* Keeps grouped rows (e.g. When-idle-screen + its dim slider) together in one column. */
 .setting-keep { break-inside: avoid; }
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }

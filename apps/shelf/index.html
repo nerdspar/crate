@@ -142,80 +142,88 @@
       </div>
     </div>
     <div class="set-pane" data-pane="device">
-      <div class="setting-row">
-        <div class="label">Brightness</div>
-        <input id="cc-brightness" type="range" min="8" max="100" value="100">
-      </div>
-      <div class="setting-row">
-        <div class="label">Auto-brightness <span class="hint">(needs sensor)</span></div>
-        <div class="choices" id="autobright-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Go idle after</div>
-        <div class="choices" id="idle-after-choices"></div>
-      </div>
-      <div class="setting-keep">
+      <div class="set-col">
         <div class="setting-row">
-          <div class="label">When idle — screen</div>
-          <div class="choices" id="idle-screen-choices"></div>
+          <div class="label">Brightness</div>
+          <input id="cc-brightness" type="range" min="8" max="100" value="100">
         </div>
         <div class="setting-row">
-          <div class="label">Idle dim brightness <span class="hint" id="idle-dim-val">20%</span></div>
-          <input id="idle-dim-slider" type="range" min="5" max="100" value="20">
+          <div class="label">Auto-brightness <span class="hint">(needs sensor)</span></div>
+          <div class="choices" id="autobright-choices"></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">Proximity — go idle <span class="hint">(needs sensor)</span></div>
+          <div class="choices" id="sensor-idle-choices"></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">Proximity — wake <span class="hint">(needs sensor)</span></div>
+          <div class="choices" id="sensor-wake-choices"></div>
         </div>
       </div>
-      <div class="setting-row">
-        <div class="label">When idle — show</div>
-        <div class="choices" id="idle-content-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Idle / auto-open shelf</div>
-        <div class="choices" id="idle-shelf-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Auto-open every</div>
-        <div class="choices" id="autoopen-every-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Auto-open from</div>
-        <div class="choices" id="autoopen-pool-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Auto-open order</div>
-        <div class="choices" id="autoopen-random-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Proximity — go idle <span class="hint">(needs sensor)</span></div>
-        <div class="choices" id="sensor-idle-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Proximity — wake <span class="hint">(needs sensor)</span></div>
-        <div class="choices" id="sensor-wake-choices"></div>
-      </div>
-      <div class="setting-row set-schedule-row">
-        <div class="label">Sleep schedule</div>
-        <div id="wall-schedule"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Display &amp; system</div>
-        <div class="cc-syscols">
-          <div class="cc-syscol">
-            <div class="cc-block-label">Display</div>
-            <div class="cc-sys-actions">
-              <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
-            </div>
+      <div class="set-col">
+        <div class="setting-row">
+          <div class="label">Go idle after</div>
+          <div class="choices" id="idle-after-choices"></div>
+        </div>
+        <div class="setting-keep">
+          <div class="setting-row">
+            <div class="label">When idle — screen</div>
+            <div class="choices" id="idle-screen-choices"></div>
           </div>
-          <div class="cc-syscol">
-            <div class="cc-block-label">System</div>
-            <div class="cc-sys-actions">
-              <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
-              <button id="cc-restart" class="cc-sysbtn">Restart app</button>
-              <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
-            </div>
+          <div class="setting-row">
+            <div class="label">Idle dim brightness <span class="hint" id="idle-dim-val">20%</span></div>
+            <input id="idle-dim-slider" type="range" min="5" max="100" value="20">
           </div>
-          <div class="cc-syscol">
-            <div class="cc-block-label">Status</div>
-            <div class="cc-sysline"><span id="cc-ip">—</span><span class="cc-ver" id="cc-ver"></span></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">When idle — show</div>
+          <div class="choices" id="idle-content-choices"></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">Idle / auto-open shelf</div>
+          <div class="choices" id="idle-shelf-choices"></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">Auto-open every</div>
+          <div class="choices" id="autoopen-every-choices"></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">Auto-open from</div>
+          <div class="choices" id="autoopen-pool-choices"></div>
+        </div>
+        <div class="setting-row">
+          <div class="label">Auto-open order</div>
+          <div class="choices" id="autoopen-random-choices"></div>
+        </div>
+      </div>
+      <div class="set-col">
+        <div class="setting-row set-schedule-row">
+          <div class="label">Sleep schedule</div>
+          <div id="wall-schedule"></div>
+        </div>
+      </div>
+      <div class="set-col">
+        <div class="setting-row">
+          <div class="label">Display &amp; system</div>
+          <div class="cc-syscols">
+            <div class="cc-syscol">
+              <div class="cc-block-label">Display</div>
+              <div class="cc-sys-actions">
+                <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
+              </div>
+            </div>
+            <div class="cc-syscol">
+              <div class="cc-block-label">System</div>
+              <div class="cc-sys-actions">
+                <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
+                <button id="cc-restart" class="cc-sysbtn">Restart app</button>
+                <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
+              </div>
+            </div>
+            <div class="cc-syscol">
+              <div class="cc-block-label">Status</div>
+              <div class="cc-sysline"><span id="cc-ip">—</span><span class="cc-ver" id="cc-ver"></span></div>
+            </div>
           </div>
         </div>
       </div>
