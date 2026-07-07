@@ -490,18 +490,20 @@ function openCardAlbumUri(): string | null {
     can mark which are safe to take over. */
 function roomPlayState(id: string): 'this' | 'other' | 'idle' {
   const hereId = openCardAlbumId();
-  // Optimistic: the room we just told to play/pause this album, before its WS frame
-  // lands (and before MA resolves the album uri) — so its EQ shows immediately.
+  // The FOCUSED room (the one this card controls) keeps its EQ when playing OR paused —
+  // frozen while paused so its chip tracks the song row + Pause button. This also serves
+  // as the optimistic marker for the room we just told to play, before its frame lands.
+  // Other rooms only qualify when actively playing (below), so a background room you've
+  // moved away from — left paused on this album — does NOT keep a stale EQ.
   if (id === now.playerId && (now.state === 'playing' || now.state === 'paused') && !!now.albumId && now.albumId === hereId)
     return 'this';
-  // A room playing OR paused on this album keeps its EQ (frozen when paused, so it
-  // tracks the song row in the list); only a room actively playing OTHER music gets
-  // the busy dot — a paused room isn't actively using the speaker.
-  const s = lastStates.find((x) => x.playerId === id && (x.state === 'playing' || x.state === 'paused') && x.nowPlaying);
+  // Any OTHER room must be ACTIVELY playing to get a marker: its EQ if it's on this
+  // album, else the busy dot for other music. A paused background room shows nothing.
+  const s = lastStates.find((x) => x.playerId === id && x.state === 'playing' && x.nowPlaying);
   if (!s) return 'idle';
   const np = s.nowPlaying;
   const matches = (!!np?.albumId && np.albumId === hereId) || (!!np?.albumUri && np.albumUri === openCardAlbumUri());
-  return matches ? 'this' : s.state === 'playing' ? 'other' : 'idle';
+  return matches ? 'this' : 'other';
 }
 /** A group's play state = whatever any member is doing (they share the queue). */
 function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' {
