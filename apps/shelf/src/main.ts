@@ -3221,11 +3221,24 @@ function handleState(states: PlayerState[]): void {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
     if (st === 'playing') userPaused = false;
     const samePlayer = cand.playerId === now.playerId;
+    const nextAlbumId = cand.nowPlaying.albumId ?? (samePlayer ? now.albumId : null);
+    const nextTrackIndex = cand.nowPlaying.trackIndex ?? (samePlayer ? now.trackIndex : 0);
+    let nextElapsed = cand.nowPlaying.elapsed ?? now.elapsed;
+    // Hold the seek bar steady during a resume: MA can replay a stale position for a
+    // frame as the queue re-initializes — either behind (snap back) or ahead (snap
+    // forward) of where we resumed — before settling on the real position. Right after a
+    // resume we KNOW the position (it continues from the pause point), so within the SAME
+    // track ignore any frame that deviates far from our interpolated position and keep
+    // interpolating; normal per-tick progress (~1s) is well within tolerance. A real jump
+    // (seek) already set now.elapsed itself, so it reads as ~0 deviation and is kept.
+    // (Track changes reset trackIndex → sameTrack false → guard skipped.)
+    const sameTrack = samePlayer && nextAlbumId === now.albumId && nextTrackIndex === now.trackIndex;
+    if (resumeGuard && sameTrack && st === 'playing' && Math.abs(nextElapsed - liveElapsed()) > 8) nextElapsed = liveElapsed();
     now = {
       playerId: cand.playerId,
-      albumId: cand.nowPlaying.albumId ?? (samePlayer ? now.albumId : null),
-      trackIndex: cand.nowPlaying.trackIndex ?? (samePlayer ? now.trackIndex : 0),
-      elapsed: cand.nowPlaying.elapsed ?? now.elapsed,
+      albumId: nextAlbumId,
+      trackIndex: nextTrackIndex,
+      elapsed: nextElapsed,
       duration: cand.nowPlaying.duration ?? (samePlayer ? now.duration : 0),
       state: st,
       at: performance.now(),
@@ -3381,6 +3394,8 @@ function updateNowbar(): void {
 
 function handleProgress(playerId: string, elapsed: number): void {
   if (playerId !== now.playerId) return;
+  // Ignore a stale tick that would snap the bar far from the resume position (see handleState).
+  if (performance.now() < resumeGuardUntil && Math.abs(elapsed - liveElapsed()) > 8) return;
   now.elapsed = elapsed;
   now.at = performance.now();
   if (now.state === 'idle') now.state = 'playing';
