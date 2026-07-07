@@ -4,7 +4,7 @@
  * The full admin (sources, curation, players, appearance, system) is Phase 4.
  */
 
-import { CrateClient, type OverrideRequest, type SearchAlbum, type ShelfItem } from '@crate/shared';
+import { CrateClient, type OverrideRequest, type SearchAlbum, type Shelf, type ShelfItem } from '@crate/shared';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
@@ -22,6 +22,18 @@ const toast = document.getElementById('toast') as HTMLElement;
 
 let results: SearchAlbum[] = [];
 let shelf: ShelfItem[] = [];
+let shelfView: 'list' | 'tile' = 'tile';
+let shelfSort = 'added';
+let shelves: Shelf[] = [];
+const crateMembers = new Map<string, Set<string>>(); // album crate id → member album ids
+
+const shelfSortSel = document.getElementById('shelf-sort') as HTMLSelectElement;
+const viewListBtn = document.getElementById('view-list') as HTMLButtonElement;
+const viewTileBtn = document.getElementById('view-tile') as HTMLButtonElement;
+const cratesListEl = document.getElementById('crates-list') as HTMLElement;
+const crateForm = document.getElementById('crate-form') as HTMLFormElement;
+const crateNameInput = document.getElementById('crate-name') as HTMLInputElement;
+const defaultSpeakerSel = document.getElementById('default-speaker') as HTMLSelectElement;
 
 function esc(s: string): string {
   const d = document.createElement('div');
@@ -64,14 +76,26 @@ function renderResults(): void {
   });
 }
 
+function sortedShelf(): ShelfItem[] {
+  const s = [...shelf];
+  s.sort((a, b) => {
+    if (shelfSort === 'artist') return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
+    if (shelfSort === 'title') return a.title.localeCompare(b.title);
+    if (shelfSort === 'year') return (b.year ?? 0) - (a.year ?? 0);
+    return (b.addedAt || '').localeCompare(a.addedAt || ''); // added: newest first
+  });
+  return s;
+}
+
 function renderShelf(): void {
   shelfCountEl.textContent = String(shelf.length);
+  shelfListEl.className = shelfView === 'list' ? 'list' : 'grid';
   if (shelf.length === 0) {
     shelfListEl.innerHTML = `<div class="empty">Nothing on the shelf yet.</div>`;
     return;
   }
   shelfListEl.innerHTML = '';
-  shelf.forEach((it) => {
+  for (const it of sortedShelf()) {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
@@ -79,15 +103,18 @@ function renderShelf(): void {
       <div class="meta">
         <div class="t">${esc(it.title)}</div>
         <div class="a">${esc(it.artist)}</div>
+        <div class="y">${it.year ?? ''}</div>
       </div>
       <div class="card-actions">
+        <button class="ghost crate-btn">Crates</button>
         <button class="ghost edit-btn">Edit</button>
-        <button class="ghost">Remove</button>
+        <button class="ghost rm-btn">Remove</button>
       </div>`;
+    card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it));
     card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
-    card.querySelectorAll('button')[1]!.addEventListener('click', () => void removeFromShelf(it.albumId));
+    card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromShelf(it.albumId));
     shelfListEl.appendChild(card);
-  });
+  }
 }
 
 async function search(query: string): Promise<void> {
@@ -232,5 +259,159 @@ form.addEventListener('submit', (e) => {
   if (q) void search(q);
 });
 
+/* ---------- Crates (curated shelves) ---------- */
+async function loadCrates(): Promise<void> {
+  try {
+    shelves = (await client.getShelf()).shelves;
+  } catch {
+    return;
+  }
+  crateMembers.clear();
+  await Promise.all(
+    shelves
+      .filter((s) => s.kind === 'album' && s.id !== 'all')
+      .map(async (c) => {
+        try {
+          const m = await client.getShelf(c.id);
+          crateMembers.set(c.id, new Set(m.items.map((i) => i.albumId)));
+        } catch {
+          crateMembers.set(c.id, new Set());
+        }
+      }),
+  );
+  renderCrates();
+}
+
+function albumCrates(): Shelf[] {
+  return shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
+}
+
+function renderCrates(): void {
+  const crates = albumCrates();
+  cratesListEl.innerHTML = '';
+  if (!crates.length) {
+    cratesListEl.innerHTML = `<div class="empty">No crates yet — create one below.</div>`;
+    return;
+  }
+  for (const c of crates) {
+    const row = document.createElement('div');
+    row.className = 'crate-row';
+    row.innerHTML =
+      `<span class="crate-name">${esc(c.name)}</span>` +
+      `<span class="crate-n">${crateMembers.get(c.id)?.size ?? 0} albums</span>` +
+      `<button class="ghost crate-del">Delete</button>`;
+    row.querySelector('.crate-del')!.addEventListener('click', () => void deleteCrate(c.id, c.name));
+    cratesListEl.appendChild(row);
+  }
+}
+
+async function deleteCrate(id: string, name: string): Promise<void> {
+  if (!confirm(`Delete crate "${name}"? Its albums stay in your library.`)) return;
+  await client.deleteShelf(id).catch(() => {});
+  await loadCrates();
+  showToast('Crate deleted');
+}
+
+crateForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = crateNameInput.value.trim();
+  if (!name) return;
+  await client.createShelf({ name, kind: 'album' }).catch(() => {});
+  crateNameInput.value = '';
+  await loadCrates();
+  showToast('Crate created');
+});
+
+/* Per-album crate assignment — a floating checklist. */
+let activeCrateMenu: HTMLElement | null = null;
+function closeCrateMenu(): void {
+  if (!activeCrateMenu) return;
+  document.removeEventListener('pointerdown', onCrateOutside, true);
+  activeCrateMenu.remove();
+  activeCrateMenu = null;
+}
+function onCrateOutside(e: Event): void {
+  if (activeCrateMenu && !activeCrateMenu.contains(e.target as Node)) closeCrateMenu();
+}
+function openCratePicker(anchor: HTMLElement, it: ShelfItem): void {
+  closeCrateMenu();
+  const crates = albumCrates();
+  const menu = document.createElement('div');
+  menu.className = 'crate-menu';
+  if (!crates.length) {
+    menu.innerHTML = `<div class="empty">No crates yet — create one below.</div>`;
+  }
+  for (const c of crates) {
+    const on = crateMembers.get(c.id)?.has(it.albumId) ?? false;
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span>${esc(c.name)}</span>`;
+    const cb = label.querySelector('input') as HTMLInputElement;
+    cb.addEventListener('change', async () => {
+      const set = crateMembers.get(c.id) ?? new Set<string>();
+      if (cb.checked) {
+        await client.addAlbumToShelf(c.id, it.albumId).catch(() => {});
+        set.add(it.albumId);
+      } else {
+        await client.removeAlbumFromShelf(c.id, it.albumId).catch(() => {});
+        set.delete(it.albumId);
+      }
+      crateMembers.set(c.id, set);
+      renderCrates();
+    });
+    menu.appendChild(label);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${r.bottom + 6}px`;
+  activeCrateMenu = menu;
+  setTimeout(() => document.addEventListener('pointerdown', onCrateOutside, true), 0);
+}
+
+/* ---------- Settings: default speaker ---------- */
+async function loadSettingsPanel(): Promise<void> {
+  try {
+    const [players, settings] = [await client.getPlayers(), await client.getSettings()];
+    defaultSpeakerSel.innerHTML = '';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = '(auto — first available)';
+    defaultSpeakerSel.appendChild(auto);
+    for (const p of players.players) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.available ? p.name : `${p.name} (offline)`;
+      if (settings.defaultPlayerId === p.id) o.selected = true;
+      defaultSpeakerSel.appendChild(o);
+    }
+  } catch {
+    defaultSpeakerSel.innerHTML = '<option>Could not load players</option>';
+  }
+}
+defaultSpeakerSel.addEventListener('change', async () => {
+  await client.putSettings({ defaultPlayerId: defaultSpeakerSel.value || null }).catch(() => {});
+  showToast('Default speaker saved');
+});
+
+/* ---------- View toggle + sort ---------- */
+viewListBtn.addEventListener('click', () => {
+  shelfView = 'list';
+  viewListBtn.classList.add('on');
+  viewTileBtn.classList.remove('on');
+  renderShelf();
+});
+viewTileBtn.addEventListener('click', () => {
+  shelfView = 'tile';
+  viewTileBtn.classList.add('on');
+  viewListBtn.classList.remove('on');
+  renderShelf();
+});
+shelfSortSel.addEventListener('change', () => {
+  shelfSort = shelfSortSel.value;
+  renderShelf();
+});
+
 renderResults();
 void loadShelf();
+void loadCrates();
+void loadSettingsPanel();

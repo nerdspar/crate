@@ -80,6 +80,49 @@ button:disabled { opacity: 0.5; cursor: default; }
 .field input[type='file'] { color: var(--ink-dim); font-size: 0.85rem; }
 .field2 { display: flex; gap: 1.4rem; }
 
+/* Section header with toolbar (sort + view toggle) */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.toolbar { display: flex; align-items: center; gap: 1.2rem; }
+.toolbar label { color: var(--ink-dim); font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
+.toolbar select, #settings-section select {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); font: inherit; padding: 0.45rem 0.7rem; outline: none;
+}
+.toolbar select:focus, #settings-section select:focus { border-color: var(--brass); }
+.viewtoggle { display: inline-flex; gap: 0.3rem; }
+.viewtoggle button { padding: 0.4rem 0.95rem; font-size: 0.85rem; }
+.viewtoggle button.on { background: var(--ink); color: #131114; }
+.hint { color: var(--ink-dim); font-size: 0.85rem; margin-top: 0.4rem; }
+
+/* List view: readable full-width rows */
+#shelf-list.list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.5vh; }
+#shelf-list.list .card { border-radius: 8px; padding: 0.55rem 0.9rem; }
+#shelf-list.list .card img, #shelf-list.list .card .noart { width: 44px; height: 44px; }
+.card .y { color: var(--brass); font-size: 0.85rem; }
+
+/* Crates */
+#crate-form { display: flex; gap: 0.6rem; max-width: 620px; margin-top: 1.5vh; }
+#crate-form input {
+  flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  color: var(--ink); font: inherit; padding: 0.7rem 1.2rem; outline: none;
+}
+#crate-form input:focus { border-color: var(--brass); }
+.crate-row {
+  display: flex; align-items: center; gap: 1rem; padding: 0.65rem 0.9rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 0.5rem;
+}
+.crate-row .crate-name { font-weight: 600; flex: 1; }
+.crate-row .crate-n { color: var(--brass); font-size: 0.85rem; }
+.crate-row .crate-del { padding: 0.4rem 0.9rem; font-size: 0.85rem; }
+.crate-menu {
+  position: fixed; z-index: 60; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 0.5rem; min-width: 210px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; gap: 0.15rem; max-height: 50vh; overflow-y: auto;
+}
+.crate-menu label { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; border-radius: 6px; cursor: pointer; }
+.crate-menu label:hover { background: rgba(255,255,255,0.05); }
+#settings-section .field { max-width: 620px; margin-top: 1rem; }
+
 #toast {
   position: fixed; bottom: 4vh; left: 50%; transform: translate(-50%, 200%);
   background: var(--ink); color: #131114; font-weight: 700; padding: 0.9rem 1.8rem;

@@ -22,8 +22,42 @@
   </section>
 
   <section id="shelf-section">
-    <h2>On the shelf (<span id="shelf-count">0</span>)</h2>
+    <div class="section-head">
+      <h2>On the shelf (<span id="shelf-count">0</span>)</h2>
+      <div class="toolbar">
+        <label>Sort
+          <select id="shelf-sort">
+            <option value="added">Recently added</option>
+            <option value="artist">Artist</option>
+            <option value="title">Title</option>
+            <option value="year">Year</option>
+          </select>
+        </label>
+        <div class="viewtoggle">
+          <button id="view-list" class="ghost">List</button>
+          <button id="view-tile" class="ghost on">Tile</button>
+        </div>
+      </div>
+    </div>
     <div id="shelf-list" class="grid"></div>
+  </section>
+
+  <section id="crates-section">
+    <div class="section-head"><h2>Crates</h2></div>
+    <p class="hint">Curated shelves the wall can switch between. "All" holds every album.</p>
+    <div id="crates-list"></div>
+    <form id="crate-form">
+      <input id="crate-name" type="text" placeholder="New crate name…" autocomplete="off">
+      <button type="submit">Create crate</button>
+    </form>
+  </section>
+
+  <section id="settings-section">
+    <div class="section-head"><h2>Settings</h2></div>
+    <div class="field">
+      <label>Default speaker <span class="hint">(where albums play when none is picked)</span></label>
+      <select id="default-speaker"><option value="">Loading…</option></select>
+    </div>
   </section>
 </main>
 
