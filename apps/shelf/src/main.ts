@@ -3053,6 +3053,12 @@ function tick(): void {
 function connectWs(): void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => {
+    // On (re)connect, pull current playback immediately — a client that connected
+    // after playback started (e.g. another app began it) otherwise shows no EQ /
+    // now-playing controls until the next broadcast.
+    void client.getPlayers().then((r) => handleState(r.state)).catch(() => {});
+  };
   ws.onmessage = (ev) => {
     let msg: WsMessage;
     try {
