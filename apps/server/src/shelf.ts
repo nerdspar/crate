@@ -27,15 +27,23 @@ function colorForSeed(seed: string): string {
 }
 
 /** Synthesize a shelf spine for one playlist track (single-playlist song view).
-    Not backed by an ingested album: `albumUri`/`trackIndex` drive song→album. */
-export function songShelfItem(track: Track, i: number, playlistId: string): ShelfItem {
-  const primary = colorForSeed(`${track.artist}|${track.title}`);
+    Not backed by an ingested album: `albumUri`/`trackIndex` drive song→album.
+    `enriched` (from the song cache) supplies the real artist + album cover art. */
+export function songShelfItem(
+  track: Track,
+  i: number,
+  playlistId: string,
+  enriched?: { artist: string | null; artworkUrl: string | null },
+): ShelfItem {
+  const artist = enriched?.artist || track.artist || '';
+  const cover = enriched?.artworkUrl ?? null;
+  const primary = colorForSeed(`${artist}|${track.title}`);
   const dark = darken(primary, 0.5);
   return {
     albumId: `${playlistId}::t${i}`,
     kind: 'playlist',
     title: track.title,
-    artist: track.artist,
+    artist,
     year: null,
     order: i,
     stackId: null,
@@ -43,21 +51,23 @@ export function songShelfItem(track: Track, i: number, playlistId: string): Shel
     playCount: 0,
     primaryColor: primary,
     darkColor: dark,
-    inkColor: pickInk(primary),
+    inkColor: 'light',
     spineWidth: 56,
     durationSec: null,
-    spineStripUrl: null,
+    // Real album cover on the spine edge (rendered as 'art'); falls back to the
+    // seeded gradient until the track is enriched.
+    spineStripUrl: cover,
     spineScanUrl: null,
     customSpineUrl: null,
-    artworkUrl: null,
+    artworkUrl: cover,
     labelFont: null,
     labelTracking: null,
     artistColor: null,
     titleColor: null,
-    overrideSpineMode: null,
-    overrideLayout: null,
+    overrideSpineMode: cover ? 'art' : null,
+    overrideLayout: 'split', // artist | title at opposite ends of the spine
     overrideYearDisplay: null,
-    albumUri: track.albumUri ?? null,
+    albumUri: track.uri ?? null,
     trackIndex: track.index ?? i + 1,
   };
 }

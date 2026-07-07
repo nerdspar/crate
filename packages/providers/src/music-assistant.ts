@@ -216,6 +216,29 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return albumUri ? { albumUri, trackIndex: trackNumber > 0 ? trackNumber - 1 : -1 } : null;
   }
 
+  /** Resolve one playlist track's real metadata (playlist_tracks omits artists and
+      gives a broken album ref): artist, real album uri, cover art, album position. */
+  async enrichTrack(
+    trackUri: string,
+  ): Promise<{ artist: string; albumUri: string | null; artworkUrl: string | null; albumIndex: number } | null> {
+    const parsed = parseProviderUri(trackUri);
+    if (!parsed) return null;
+    const full = rec(
+      await this.client.command('music/tracks/get_track', {
+        item_id: parsed.id,
+        provider_instance_id_or_domain: parsed.provider,
+      }),
+    );
+    const album = rec(full['album']);
+    const trackNumber = num(full['track_number']) ?? 0;
+    return {
+      artist: firstArtistName(full),
+      albumUri: str(album['uri']) ?? null,
+      artworkUrl: this.artworkUrl(full) ?? this.artworkUrl(album),
+      albumIndex: trackNumber > 0 ? trackNumber - 1 : -1,
+    };
+  }
+
   async listLibraryPlaylists(limit = 200): Promise<ProviderPlaylist[]> {
     const raw = await this.client.command('music/playlists/library_items', { limit, favorite: false });
     const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);

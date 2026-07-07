@@ -28,6 +28,19 @@ import type { Track } from '@crate/shared';
 
 const ART_BASE = '/art';
 
+/** Run an async fn over items with bounded concurrency (keeps track enrichment
+    from firing hundreds of simultaneous MA commands). */
+async function runLimited<T>(items: T[], limit: number, fn: (t: T) => Promise<void>): Promise<void> {
+  let idx = 0;
+  const worker = async (): Promise<void> => {
+    while (idx < items.length) {
+      const cur = items[idx++] as T;
+      await fn(cur);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 /** Sum track durations (seconds) for duration-scaled spine widths; null when no
     track reports a duration (so the UI can fall back to a uniform width). */
 function sumDuration(tracks: Track[]): number | null {
@@ -118,12 +131,45 @@ export class Service {
     };
   }
 
-  /** The songs of a single-playlist shelf, as spines (song→album via albumUri). */
+  private readonly enriching = new Set<string>(); // track uris currently being resolved
+
+  /** The songs of a single-playlist shelf, as spines (song→album via albumUri).
+      Returns immediately from the cache; un-enriched tracks resolve in the
+      background (get_track is per-track and serial through MA) and stream in via
+      `shelf` broadcasts — so the shelf shows instantly and fills with art+artist. */
   private async songItems(shelfId: string): Promise<ShelfItem[]> {
     const playlist = this.db.listShelfMembers(shelfId)[0]; // holds exactly one playlist
     if (!playlist) return [];
     const tracks = await this.ma.getTracks(playlist.provider_uri).catch((): Track[] => []);
-    return tracks.map((t, i) => songShelfItem(t, i, playlist.id));
+    const misses = tracks.filter((t) => t.uri && !this.db.getSongCache(t.uri));
+    if (misses.length) void this.enrichSongsInBackground(misses);
+    return tracks.map((t, i) => {
+      const c = t.uri ? this.db.getSongCache(t.uri) : undefined;
+      return songShelfItem(t, i, playlist.id, c ? { artist: c.artist, artworkUrl: c.artwork_url } : undefined);
+    });
+  }
+
+  private async enrichSongsInBackground(misses: Track[]): Promise<void> {
+    const todo = misses.filter((t) => t.uri && !this.enriching.has(t.uri));
+    if (!todo.length) return;
+    todo.forEach((t) => this.enriching.add(t.uri as string));
+    let done = 0;
+    await runLimited(todo, 6, async (t) => {
+      const uri = t.uri as string;
+      const e = await this.ma.enrichTrack(uri).catch(() => null);
+      if (e) {
+        this.db.upsertSongCache({
+          track_uri: uri,
+          artist: e.artist,
+          album_uri: e.albumUri,
+          artwork_url: e.artworkUrl,
+          album_index: e.albumIndex,
+        });
+      }
+      this.enriching.delete(uri);
+      if (++done % 12 === 0) this.hub.broadcast({ type: 'shelf' }); // stream progress in
+    });
+    this.hub.broadcast({ type: 'shelf' });
   }
 
   /** Album detail for an off-shelf provider album (song→album card). Not ingested.
@@ -132,10 +178,17 @@ export class Service {
     let albumUri = uri;
     let cueIndex = -1;
     if (uri.includes('://track/')) {
-      const res = await this.ma.getTrackAlbum(uri).catch(() => null);
-      if (!res) return null;
-      albumUri = res.albumUri;
-      cueIndex = res.trackIndex;
+      // Fast path: a song shelf already resolved this track's album into the cache.
+      const cached = this.db.getSongCache(uri);
+      if (cached?.album_uri) {
+        albumUri = cached.album_uri;
+        cueIndex = cached.album_index ?? -1;
+      } else {
+        const res = await this.ma.getTrackAlbum(uri).catch(() => null);
+        if (!res) return null;
+        albumUri = res.albumUri;
+        cueIndex = res.trackIndex;
+      }
     }
     const [album, tracks] = await Promise.all([
       this.ma.getAlbum(albumUri),

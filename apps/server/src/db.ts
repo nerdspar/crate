@@ -26,6 +26,14 @@ export interface ShelfRow extends AlbumRow {
   stack_id: string | null;
 }
 
+export interface SongCacheRow {
+  track_uri: string;
+  artist: string | null;
+  album_uri: string | null;
+  artwork_url: string | null;
+  album_index: number | null;
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS albums (
   id TEXT PRIMARY KEY,
@@ -69,6 +77,15 @@ CREATE TABLE IF NOT EXISTS shelf_members (
   album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
   sort_order INTEGER NOT NULL,
   PRIMARY KEY (shelf_id, album_id)
+);
+-- Enriched playlist-track metadata (artist/album/art), keyed by track uri, so a
+-- single-playlist song shelf only resolves each track once (get_track is per-track).
+CREATE TABLE IF NOT EXISTS song_cache (
+  track_uri TEXT PRIMARY KEY,
+  artist TEXT,
+  album_uri TEXT,
+  artwork_url TEXT,
+  album_index INTEGER
 );
 CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY,
@@ -279,6 +296,23 @@ export class Db {
     return (
       this.db.prepare('SELECT shelf_id FROM shelf_members WHERE album_id = ?').all(albumId) as Array<{ shelf_id: string }>
     ).map((r) => r.shelf_id);
+  }
+
+  // --- Song cache (enriched playlist tracks) -----------------------------
+
+  getSongCache(trackUri: string): SongCacheRow | undefined {
+    return this.db.prepare('SELECT * FROM song_cache WHERE track_uri = ?').get(trackUri) as SongCacheRow | undefined;
+  }
+
+  upsertSongCache(row: SongCacheRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO song_cache (track_uri, artist, album_uri, artwork_url, album_index)
+         VALUES (@track_uri, @artist, @album_uri, @artwork_url, @album_index)
+         ON CONFLICT(track_uri) DO UPDATE SET
+           artist=@artist, album_uri=@album_uri, artwork_url=@artwork_url, album_index=@album_index`,
+      )
+      .run(row);
   }
 
   listStacks(): Stack[] {
