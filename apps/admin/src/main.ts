@@ -4,7 +4,7 @@
  * The full admin (sources, curation, players, appearance, system) is Phase 4.
  */
 
-import { CrateClient, type OverrideRequest, type SearchAlbum, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
@@ -25,6 +25,7 @@ let shelf: ShelfItem[] = [];
 let shelfView: 'list' | 'tile' = 'tile';
 let shelfSort = 'added';
 let shelves: Shelf[] = [];
+let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // album crate id → member album ids
 
 const shelfSortSel = document.getElementById('shelf-sort') as HTMLSelectElement;
@@ -77,6 +78,7 @@ function renderResults(): void {
 }
 
 function sortedShelf(): ShelfItem[] {
+  if (shelfSort === 'custom') return [...shelf]; // as fetched = the manual (sort_order) order
   const s = [...shelf];
   s.sort((a, b) => {
     if (shelfSort === 'artist') return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
@@ -95,9 +97,20 @@ function renderShelf(): void {
     return;
   }
   shelfListEl.innerHTML = '';
+  const draggable = shelfSort === 'custom';
+  shelfListEl.classList.toggle('draggable', draggable);
   for (const it of sortedShelf()) {
     const card = document.createElement('div');
     card.className = 'card';
+    card.dataset.id = it.albumId;
+    if (draggable) {
+      card.draggable = true;
+      card.addEventListener('dragstart', () => card.classList.add('dragging'));
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        void saveShelfOrder();
+      });
+    }
     card.innerHTML = `
       ${artThumb(it.artworkUrl)}
       <div class="meta">
@@ -368,10 +381,34 @@ function openCratePicker(anchor: HTMLElement, it: ShelfItem): void {
   setTimeout(() => document.addEventListener('pointerdown', onCrateOutside, true), 0);
 }
 
-/* ---------- Settings: default speaker ---------- */
+/* ---------- Settings (mirrors the wall's on-screen Settings) ---------- */
+const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> = [
+  ['spineMode', 'Spine art', [['scan', 'Real when available'], ['art', 'Generated']]],
+  ['spineThickness', 'CD thickness', [['thin', 'Thin'], ['medium', 'Medium'], ['thick', 'Thick']]],
+  ['spineWidthMode', 'Spine width', [['uniform', 'Uniform'], ['duration', 'By length']]],
+  ['spineTextDir', 'Text direction', [['ttb', 'Top → bottom'], ['btt', 'Bottom → top']]],
+  ['inkMode', 'Label ink', [['contrast', 'Contrast'], ['match', 'Match accent']]],
+  ['labelLayout', 'Label layout', [['split', 'Split'], ['center', 'Centered'], ['top', 'Top'], ['bottom', 'Bottom'], ['varied', 'Varied']]],
+  ['labelVary', 'Typography', [['uniform', 'Uniform'], ['varied', 'Varied']]],
+  ['yearDisplay', 'Album year', [['off', 'Off'], ['vertical', 'Vertical'], ['horizontal', 'Horizontal']]],
+  ['yearPos', 'Year position', [['top', 'Top'], ['bottom', 'Bottom']]],
+  ['yearEmphasis', 'Year emphasis', [['thin', 'Thin'], ['bold', 'Bold']]],
+  ['openMode', 'Opening an album', [['cover', 'Cover only'], ['card', 'Full card']]],
+  ['sortBy', 'Shelf sort', [['artist', 'Artist'], ['title', 'Title'], ['added', 'Recently added'], ['played', 'Most played'], ['year', 'Year'], ['color', 'Color'], ['custom', 'Custom order']]],
+  ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open'], ['auto', 'Auto (sensor)']]],
+  ['awayAction', 'Step away (sensor)', [['close', 'Put away'], ['keep', 'Keep open']]],
+  ['returnAction', 'Return (sensor)', [['reopen', 'Reopen last'], ['none', 'Nothing']]],
+];
+const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
+  ['afterPlayLingerSec', 'Linger seconds', 1, 60],
+  ['longPressMs', 'Long-press (ms)', 100, 1500],
+  ['idleMinutes', 'Idle auto-open (min)', 1, 120],
+];
+
 async function loadSettingsPanel(): Promise<void> {
   try {
-    const [players, settings] = [await client.getPlayers(), await client.getSettings()];
+    const [players, s] = [await client.getPlayers(), await client.getSettings()];
+    settings = s;
     defaultSpeakerSel.innerHTML = '';
     const auto = document.createElement('option');
     auto.value = '';
@@ -381,17 +418,99 @@ async function loadSettingsPanel(): Promise<void> {
       const o = document.createElement('option');
       o.value = p.id;
       o.textContent = p.available ? p.name : `${p.name} (offline)`;
-      if (settings.defaultPlayerId === p.id) o.selected = true;
+      if (s.defaultPlayerId === p.id) o.selected = true;
       defaultSpeakerSel.appendChild(o);
     }
+    renderSettingsForm();
   } catch {
     defaultSpeakerSel.innerHTML = '<option>Could not load players</option>';
   }
 }
+
+function renderSettingsForm(): void {
+  const form = document.getElementById('settings-form') as HTMLElement;
+  if (!settings) return;
+  form.innerHTML = '';
+  for (const [key, label, opts] of SETTING_SELECTS) {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const sel = document.createElement('select');
+    for (const [v, l] of opts) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = l;
+      if (String(settings![key]) === v) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => void saveSetting(key, sel.value));
+    field.innerHTML = `<label>${label}</label>`;
+    field.appendChild(sel);
+    form.appendChild(field);
+  }
+  for (const [key, label, min, max] of SETTING_NUMBERS) {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.min = String(min);
+    inp.max = String(max);
+    inp.value = String(settings![key]);
+    inp.addEventListener('change', () => void saveSetting(key, Math.max(min, Math.min(max, Number(inp.value)))));
+    field.innerHTML = `<label>${label}</label>`;
+    field.appendChild(inp);
+    form.appendChild(field);
+  }
+  const tf = document.createElement('div');
+  tf.className = 'field field-toggle';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!settings.idleAutoOpen;
+  cb.addEventListener('change', () => void saveSetting('idleAutoOpen', cb.checked));
+  const lab = document.createElement('label');
+  lab.appendChild(cb);
+  lab.append(' Idle auto-open');
+  tf.appendChild(lab);
+  form.appendChild(tf);
+}
+
+async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
+  if (settings) settings[key] = value;
+  await client.putSettings({ [key]: value } as Partial<Settings>).catch(() => {});
+  showToast('Saved');
+}
+
 defaultSpeakerSel.addEventListener('change', async () => {
   await client.putSettings({ defaultPlayerId: defaultSpeakerSel.value || null }).catch(() => {});
   showToast('Default speaker saved');
 });
+
+/* ---------- Drag-to-reorder (Custom sort) ---------- */
+function dragAfter(container: HTMLElement, y: number): HTMLElement | null {
+  const cards = [...container.querySelectorAll<HTMLElement>('.card:not(.dragging)')];
+  let closest: { offset: number; el: HTMLElement | null } = { offset: -Infinity, el: null };
+  for (const child of cards) {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) closest = { offset, el: child };
+  }
+  return closest.el;
+}
+shelfListEl.addEventListener('dragover', (e) => {
+  if (shelfSort !== 'custom') return;
+  e.preventDefault();
+  const dragging = shelfListEl.querySelector<HTMLElement>('.dragging');
+  if (!dragging) return;
+  const after = dragAfter(shelfListEl, e.clientY);
+  if (after == null) shelfListEl.appendChild(dragging);
+  else shelfListEl.insertBefore(dragging, after);
+});
+async function saveShelfOrder(): Promise<void> {
+  const ids = [...shelfListEl.querySelectorAll<HTMLElement>('.card')].map((c) => c.dataset.id!).filter(Boolean);
+  const byId = new Map(shelf.map((it) => [it.albumId, it]));
+  shelf = ids.map((id) => byId.get(id)).filter((x): x is ShelfItem => !!x);
+  await client.reorderShelf(ids).catch(() => {});
+  showToast('Order saved');
+}
 
 /* ---------- View toggle + sort ---------- */
 viewListBtn.addEventListener('click', () => {

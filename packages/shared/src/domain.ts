@@ -154,7 +154,7 @@ export type LabelLayout = 'split' | 'center' | 'top' | 'bottom' | 'varied';
 /** Whether every spine shares one type style or varies per artist. */
 export type LabelVary = 'uniform' | 'varied';
 export type OpenMode = 'cover' | 'card';
-export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color';
+export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color' | 'custom';
 export type SpineThickness = 'thin' | 'medium' | 'thick';
 /** How spine widths are sized: one uniform CD width, or scaled by album runtime
     (a 78-min double album is visibly fatter than a 34-min record). */

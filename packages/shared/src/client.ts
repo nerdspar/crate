@@ -123,6 +123,10 @@ export class CrateClient {
   removeFromShelf(albumId: string): Promise<{ ok: true }> {
     return this.req(`/api/shelf/${encodeURIComponent(albumId)}`, { method: 'DELETE' });
   }
+  /** Set the manual album order for the library, or a crate (shelf id). */
+  reorderShelf(albumIds: string[], shelf?: string): Promise<{ ok: true }> {
+    return this.post('/api/shelf/reorder', { albumIds, ...(shelf ? { shelf } : {}) });
+  }
 
   putOverride(albumId: string, body: OverrideRequest): Promise<{ ok: true }> {
     return this.post(`/api/albums/${encodeURIComponent(albumId)}/override`, body);

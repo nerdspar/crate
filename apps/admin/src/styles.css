@@ -122,6 +122,23 @@ button:disabled { opacity: 0.5; cursor: default; }
 .crate-menu label { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; border-radius: 6px; cursor: pointer; }
 .crate-menu label:hover { background: rgba(255,255,255,0.05); }
 #settings-section .field { max-width: 620px; margin-top: 1rem; }
+.settings-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem 1.4rem; margin-top: 1.4rem; max-width: 960px;
+}
+.settings-grid .field { margin-top: 0; }
+.settings-grid select, .settings-grid input[type='number'] {
+  width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); font: inherit; padding: 0.5rem 0.7rem; outline: none;
+}
+.settings-grid select:focus, .settings-grid input[type='number']:focus { border-color: var(--brass); }
+.field-toggle { flex-direction: row; align-items: center; }
+.field-toggle label { cursor: pointer; color: var(--ink); }
+.field-toggle input[type='checkbox'] { width: 1.1rem; height: 1.1rem; }
+/* Drag-to-reorder (Custom sort) */
+#shelf-list.draggable .card { cursor: grab; }
+#shelf-list.draggable .card:active { cursor: grabbing; }
+.card.dragging { opacity: 0.45; }
 
 #toast {
   position: fixed; bottom: 4vh; left: 50%; transform: translate(-50%, 200%);

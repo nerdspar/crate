@@ -1411,6 +1411,7 @@ function renderCCSort(): void {
       ['played', 'Most played', ''],
       ['year', 'Release year', ''],
       ['color', 'Color', ''],
+      ['custom', 'Custom', ''],
     ],
     (k) => settings.sortBy === k,
     (k) => {
@@ -1432,6 +1433,8 @@ function applySort(): void {
   const by = settings.sortBy;
   items.sort((a, b) => {
     switch (by) {
+      case 'custom':
+        return a.order - b.order; // the manual order set in admin
       case 'title':
         return a.title.localeCompare(b.title);
       case 'year':

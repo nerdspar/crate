@@ -238,6 +238,24 @@ export class Db {
     this.db.prepare('DELETE FROM shelf_items WHERE album_id = ?').run(albumId);
   }
 
+  /** Set the manual order of library albums to match the given id sequence. */
+  reorderShelfItems(orderedIds: string[]): void {
+    const stmt = this.db.prepare('UPDATE shelf_items SET sort_order = ? WHERE album_id = ?');
+    const tx = this.db.transaction((ids: string[]) => {
+      ids.forEach((id, i) => stmt.run(i, id));
+    });
+    tx(orderedIds);
+  }
+
+  /** Set the manual order of a crate's members to match the given id sequence. */
+  reorderShelfMembers(shelfId: string, orderedIds: string[]): void {
+    const stmt = this.db.prepare('UPDATE shelf_members SET sort_order = ? WHERE shelf_id = ? AND album_id = ?');
+    const tx = this.db.transaction((ids: string[]) => {
+      ids.forEach((id, i) => stmt.run(i, shelfId, id));
+    });
+    tx(orderedIds);
+  }
+
   // --- Shelves (named curated collections) --------------------------------
 
   listShelves(): Shelf[] {

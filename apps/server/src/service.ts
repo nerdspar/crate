@@ -457,6 +457,13 @@ export class Service {
     this.hub.broadcast({ type: 'shelf' });
   }
 
+  /** Manually order albums: the library (no shelfId) or a specific crate. */
+  reorder(albumIds: string[], shelfId?: string): void {
+    if (shelfId && shelfId !== 'all') this.db.reorderShelfMembers(shelfId, albumIds);
+    else this.db.reorderShelfItems(albumIds);
+    this.hub.broadcast({ type: 'shelf' });
+  }
+
   async albumDetail(id: string): Promise<AlbumDetail | null> {
     const row = this.db.getAlbum(id);
     if (!row) return null;

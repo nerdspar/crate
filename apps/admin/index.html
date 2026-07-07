@@ -31,6 +31,7 @@
             <option value="artist">Artist</option>
             <option value="title">Title</option>
             <option value="year">Year</option>
+            <option value="custom">Custom order (drag)</option>
           </select>
         </label>
         <div class="viewtoggle">
@@ -54,10 +55,12 @@
 
   <section id="settings-section">
     <div class="section-head"><h2>Settings</h2></div>
+    <p class="hint">These are the same settings as the wall's on-screen Settings — change them from either place.</p>
     <div class="field">
       <label>Default speaker <span class="hint">(where albums play when none is picked)</span></label>
       <select id="default-speaker"><option value="">Loading…</option></select>
     </div>
+    <div id="settings-form" class="settings-grid"></div>
   </section>
 </main>
 

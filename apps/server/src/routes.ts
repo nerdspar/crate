@@ -113,6 +113,13 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     return { ok: true };
   });
 
+  // Manual ordering: reorder the library, or a crate when `shelf` is given.
+  app.post('/api/shelf/reorder', (req) => {
+    const b = req.body as { albumIds: string[]; shelf?: string };
+    service.reorder(b.albumIds ?? [], b.shelf);
+    return { ok: true };
+  });
+
   // Playlists: list the provider-library playlists for the add picker, and add one.
   app.get('/api/playlists/library', () => service.listLibraryPlaylists());
   app.get('/api/playlists/search', async (req) => {
