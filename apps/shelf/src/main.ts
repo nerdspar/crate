@@ -3199,12 +3199,23 @@ function handleState(states: PlayerState[]): void {
   if (resumeGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state !== 'playing'));
 
   const openAlbumId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
+  // Don't let another room steal the now-playing focus while (a) the user paused an
+  // album here, or (b) we just hit play and its queue is still loading — keep `now` on
+  // our album/player until its own frames arrive instead of jumping to another room.
+  // Defined up front so it can gate the candidates below.
+  const holdFocus = (userPaused || resumeGuard) && !!now.albumId;
+  const onOpenAlbum = (s: PlayerState) =>
+    (s.state === 'playing' || s.state === 'paused') && !!s.nowPlaying && s.nowPlaying.albumId === openAlbumId;
   // A tapped room (focusedPlayerId) wins, so the hero follows the room you picked.
   const forFocus = focusedPlayerId
     ? pool.find((s) => s.playerId === focusedPlayerId && (s.state === 'playing' || s.state === 'paused') && s.nowPlaying)
     : undefined;
+  // The open album playing on some room. Prefer the CURRENT player so a second room on
+  // the same album can't hijack the card; during a hold ONLY the current player qualifies
+  // (else, when the focused room's frame is briefly filtered by the pause/resume guards,
+  // the card flip-flopped to the other room's track/seek/eyebrow).
   const forOpen = openAlbumId
-    ? pool.find((s) => (s.state === 'playing' || s.state === 'paused') && s.nowPlaying?.albumId === openAlbumId)
+    ? (pool.find((s) => onOpenAlbum(s) && s.playerId === now.playerId) ?? (holdFocus ? undefined : pool.find(onOpenAlbum)))
     : undefined;
   const playingS =
     pool.find((s) => s.state === 'playing' && s.nowPlaying?.albumId) ??
@@ -3212,10 +3223,6 @@ function handleState(states: PlayerState[]): void {
   const pausedS =
     pool.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'paused' && s.nowPlaying);
-  // Don't let another room steal the now-playing focus while (a) the user paused an
-  // album here, or (b) we just hit play and its queue is still loading — keep `now` on
-  // our album until its own frames arrive (forOpen) instead of jumping to another room.
-  const holdFocus = (userPaused || resumeGuard) && now.albumId;
   const cand = forFocus ?? forOpen ?? (holdFocus ? undefined : (playingS ?? pausedS));
   if (cand?.nowPlaying) {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
