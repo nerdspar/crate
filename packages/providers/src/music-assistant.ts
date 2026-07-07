@@ -78,6 +78,11 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   private readonly client: MaClient;
   private readonly maBaseUrl: string;
   private stateDebounce: ReturnType<typeof setTimeout> | undefined;
+  // Short-lived album/playlist track-list cache. Opening a card resolves the tracks
+  // (getProviderAlbum → getTracks); reusing them when you then hit play makes the play
+  // path skip that round-trip, so playback starts sooner.
+  private readonly trackCache = new Map<string, { tracks: Track[]; at: number }>();
+  private static readonly TRACK_TTL_MS = 5 * 60_000;
 
   constructor(opts: MaClientOptions) {
     this.client = new MaClient(opts);
@@ -207,13 +212,19 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   async getTracks(providerUri: string): Promise<Track[]> {
     const parsed = parseProviderUri(providerUri);
     if (!parsed) return [];
-    if (parsed.type === 'playlist') return this.getPlaylistTracks(parsed.provider, parsed.id);
+    const cached = this.trackCache.get(providerUri);
+    if (cached && Date.now() - cached.at < MusicAssistantProvider.TRACK_TTL_MS) return cached.tracks;
+    if (parsed.type === 'playlist') {
+      const pl = await this.getPlaylistTracks(parsed.provider, parsed.id);
+      this.trackCache.set(providerUri, { tracks: pl, at: Date.now() });
+      return pl;
+    }
     const raw = await this.client.command('music/albums/album_tracks', {
       item_id: parsed.id,
       provider_instance_id_or_domain: parsed.provider,
       in_library_only: false,
     });
-    return arr(raw).map((t, i): Track => {
+    const tracks = arr(raw).map((t, i): Track => {
       const item = rec(t);
       return {
         index: num(item['track_number']) ?? i + 1,
@@ -223,6 +234,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         uri: str(item['uri']) ?? null,
       };
     });
+    this.trackCache.set(providerUri, { tracks, at: Date.now() });
+    return tracks;
   }
 
   private async getPlaylistTracks(provider: string, id: string): Promise<Track[]> {
