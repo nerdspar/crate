@@ -22,9 +22,11 @@ export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
+    // Only declare a JSON content-type when there's actually a body — a body-less
+    // DELETE with content-type:application/json makes Fastify reject the empty body.
     const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: { 'content-type': 'application/json' },
       ...init,
+      headers: { ...(init?.body != null ? { 'content-type': 'application/json' } : {}), ...init?.headers },
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');

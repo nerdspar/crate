@@ -32,6 +32,8 @@ let settings: Settings = { ...DEFAULT_SETTINGS };
 let shelves: Shelf[] = [];
 let activeShelf = 'all';
 let shelfTab: ShelfKind = 'album';
+let shelfAdding = false; // showing the inline "name this shelf" box
+let shelfDeleteArmed: string | null = null; // shelf id whose ✕ is armed for confirm
 
 type ResolvedLayout = 'split' | 'center' | 'top' | 'bottom';
 /** Resolve the artist/title layout for an album; 'varied' picks one deterministically. */
@@ -1578,6 +1580,8 @@ const findShelfList = document.getElementById('find-shelf-list') as HTMLElement;
 document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     shelfTab = tab.dataset['kind'] as ShelfKind;
+    shelfAdding = false;
+    shelfDeleteArmed = null;
     document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', t === tab));
     renderShelfList();
   });
@@ -1586,23 +1590,66 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
 function renderShelfList(): void {
   findShelfList.innerHTML = '';
   for (const s of shelves.filter((sh) => sh.kind === shelfTab)) {
-    const b = document.createElement('button');
-    b.className = 'find-shelf' + (s.id === activeShelf ? ' on' : '');
-    b.textContent = s.name;
-    b.onclick = () => void switchShelf(s.id);
-    findShelfList.appendChild(b);
+    const chip = document.createElement('div');
+    chip.className = 'find-shelf chip' + (s.id === activeShelf ? ' on' : '');
+    const name = document.createElement('span');
+    name.className = 'find-shelf-name';
+    name.textContent = s.name;
+    name.onclick = () => void switchShelf(s.id);
+    chip.appendChild(name);
+    // Delete ✕ only on the *selected* user shelf (never the virtual All/All Playlists).
+    if (s.id === activeShelf && s.id !== 'all' && s.id !== 'playlists') {
+      const x = document.createElement('button');
+      const armed = shelfDeleteArmed === s.id;
+      x.className = 'find-shelf-x' + (armed ? ' armed' : '');
+      x.textContent = armed ? 'Delete?' : '✕';
+      x.onclick = (e) => {
+        e.stopPropagation();
+        void onDeleteShelf(s.id);
+      };
+      chip.appendChild(x);
+    }
+    findShelfList.appendChild(chip);
   }
-  const add = document.createElement('button');
-  add.className = 'find-shelf find-shelf-new';
-  // Album shelves are named-and-filled; playlist shelves come from your library.
+  // Add control: album shelves are named here; playlist shelves come from the library.
   if (shelfTab === 'playlist') {
+    const add = document.createElement('button');
+    add.className = 'find-shelf find-shelf-new';
     add.textContent = '+ Add playlists';
     add.onclick = () => void openPlaylistPicker();
+    findShelfList.appendChild(add);
+  } else if (shelfAdding) {
+    findShelfList.appendChild(newShelfInput());
   } else {
+    const add = document.createElement('button');
+    add.className = 'find-shelf find-shelf-new';
     add.textContent = '+ New';
-    add.onclick = () => newShelfInput();
+    add.onclick = () => {
+      shelfAdding = true;
+      renderShelfList();
+    };
+    findShelfList.appendChild(add);
   }
-  findShelfList.appendChild(add);
+}
+
+/** Two-tap delete: first tap arms (✕ → "Delete?"), second confirms. */
+async function onDeleteShelf(id: string): Promise<void> {
+  if (shelfDeleteArmed !== id) {
+    shelfDeleteArmed = id;
+    renderShelfList();
+    setTimeout(() => {
+      if (shelfDeleteArmed === id) {
+        shelfDeleteArmed = null;
+        renderShelfList();
+      }
+    }, 3000);
+    return;
+  }
+  shelfDeleteArmed = null;
+  await client.deleteShelf(id).catch(() => {});
+  shelves = shelves.filter((s) => s.id !== id);
+  if (activeShelf === id) await switchShelf('all', false);
+  else renderShelfList();
 }
 
 /** Add-flow for playlists: pick from your provider-library playlists. Reuses the
@@ -1649,6 +1696,8 @@ function playlistCard(pl: LibraryPlaylist): HTMLElement {
 }
 
 async function switchShelf(id: string, close = true): Promise<void> {
+  shelfAdding = false;
+  shelfDeleteArmed = null;
   const res = await client.getShelf(id === 'all' ? undefined : id);
   activeShelf = id;
   items = res.items;
@@ -1663,21 +1712,41 @@ async function switchShelf(id: string, close = true): Promise<void> {
   showToast(shelves.find((s) => s.id === id)?.name ?? 'Shelf');
 }
 
-function newShelfInput(): void {
+/** The inline "name this shelf" box + ✓/✕ (the wall has no Enter key). */
+function newShelfInput(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'find-shelf-add';
   const input = document.createElement('input');
   input.className = 'find-shelf-input';
   input.placeholder = 'Name this shelf…';
   input.autocomplete = 'off';
+  const confirm = (): void => {
+    if (input.value.trim()) void createNamedShelf(input.value.trim());
+  };
+  const cancel = (): void => {
+    shelfAdding = false;
+    renderShelfList();
+  };
+  const ok = document.createElement('button');
+  ok.className = 'find-shelf-ok';
+  ok.textContent = '✓';
+  ok.onclick = confirm;
+  const no = document.createElement('button');
+  no.className = 'find-shelf-cancel';
+  no.textContent = '✕';
+  no.onclick = cancel;
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && input.value.trim()) void createNamedShelf(input.value.trim());
-    else if (e.key === 'Escape') renderShelfList();
+    if (e.key === 'Enter') confirm();
+    else if (e.key === 'Escape') cancel();
   });
-  findShelfList.appendChild(input);
-  input.focus({ preventScroll: true });
+  wrap.append(input, ok, no);
+  requestAnimationFrame(() => input.focus({ preventScroll: true }));
+  return wrap;
 }
 
 async function createNamedShelf(name: string): Promise<void> {
   const sh = await client.createShelf({ name, kind: shelfTab }).catch(() => null);
+  shelfAdding = false;
   if (!sh) return;
   shelves.push(sh);
   await switchShelf(sh.id, false); // keep the Find bar open after creating
