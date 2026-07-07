@@ -78,10 +78,12 @@ export class CrateClient {
   search(query: string): Promise<SearchAlbum[]> {
     return this.req(`/api/search?q=${encodeURIComponent(query)}`);
   }
-  /** Global search: albums + playlists + songs, optionally scoped to one source. */
-  globalSearch(query: string, source?: string): Promise<GlobalSearchResponse> {
+  /** Global search: albums + playlists + songs, optionally scoped to one source.
+      `limit` is the per-section cap (raised to page in more results). */
+  globalSearch(query: string, source?: string, limit?: number): Promise<GlobalSearchResponse> {
     const s = source && source !== 'all' ? `&source=${encodeURIComponent(source)}` : '';
-    return this.req(`/api/search/global?q=${encodeURIComponent(query)}${s}`);
+    const l = limit ? `&limit=${limit}` : '';
+    return this.req(`/api/search/global?q=${encodeURIComponent(query)}${s}${l}`);
   }
 
   play(body: PlayRequest): Promise<{ ok: true }> {

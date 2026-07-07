@@ -1683,6 +1683,26 @@ let searchSource = 'all'; // selected global-search source (instance id or 'all'
 let globalResults: GlobalSearchResponse | null = null;
 let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
+/* Search paging: show 20 per section, "Load more" raises the fetch limit + reveals
+   the next 20. MA search has no offset, so we re-fetch with a larger per-section cap. */
+const SEARCH_PAGE = 20;
+let searchLimit = SEARCH_PAGE;
+const searchShown = { albums: SEARCH_PAGE, playlists: SEARCH_PAGE, songs: SEARCH_PAGE };
+function resetSearchPaging(): void {
+  searchLimit = SEARCH_PAGE;
+  searchShown.albums = searchShown.playlists = searchShown.songs = SEARCH_PAGE;
+}
+function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
+  searchShown[key] += SEARCH_PAGE;
+  const need = Math.max(searchShown.albums, searchShown.playlists, searchShown.songs);
+  if (need > searchLimit) {
+    searchLimit = need;
+    void runGlobalSearch(); // fetch the bigger page, then re-render
+  } else {
+    renderGlobal(false); // already fetched — just reveal more
+  }
+}
+
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
   items.forEach((a, i) => {
@@ -1691,6 +1711,7 @@ findSearch.addEventListener('input', () => {
   sizeFaces();
   if (searchTimer) clearTimeout(searchTimer);
   if (filterQuery.length >= 2) {
+    resetSearchPaging(); // a new query starts back at the first page
     renderGlobal(true); // show the loading scaffold immediately
     searchTimer = setTimeout(() => void runGlobalSearch(), 400);
   } else {
@@ -1718,7 +1739,7 @@ async function runGlobalSearch(): Promise<void> {
   if (!q) return;
   const seq = ++searchSeq;
   try {
-    const res = await client.globalSearch(q, searchSource);
+    const res = await client.globalSearch(q, searchSource, searchLimit);
     if (seq !== searchSeq) return;
     globalResults = res;
   } catch {
@@ -1746,13 +1767,22 @@ function renderGlobal(loading: boolean): void {
   const cats = document.createElement('div');
   cats.className = 'find-cats';
   const localMatches = items.filter(matchesFilter).map(shelfCard); // your shelf's own hits, in Albums
-  cats.appendChild(catColumn('Albums', [...localMatches, ...(g?.albums ?? []).filter((a) => !a.onShelf).map(addCard)], loading));
-  cats.appendChild(catColumn('Playlists', (g?.playlists ?? []).map(playlistCard), loading));
-  cats.appendChild(catColumn('Songs', (g?.songs ?? []).map(songResultCard), loading));
+  const remoteAlbums = (g?.albums ?? []).filter((a) => !a.onShelf);
+  const playlists = g?.playlists ?? [];
+  const songs = g?.songs ?? [];
+  cats.appendChild(catColumn('Albums', [...localMatches, ...remoteAlbums.map(addCard)], loading, 'albums', remoteAlbums.length));
+  cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', playlists.length));
+  cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', songs.length));
   findResults.appendChild(cats);
 }
 
-function catColumn(title: string, cards: HTMLElement[], loading: boolean): HTMLElement {
+function catColumn(
+  title: string,
+  cards: HTMLElement[],
+  loading: boolean,
+  key: 'albums' | 'playlists' | 'songs',
+  remoteCount: number,
+): HTMLElement {
   const col = document.createElement('div');
   col.className = 'find-cat';
   const h = document.createElement('div');
@@ -1761,8 +1791,19 @@ function catColumn(title: string, cards: HTMLElement[], loading: boolean): HTMLE
   col.appendChild(h);
   const list = document.createElement('div');
   list.className = 'find-cat-list';
-  if (cards.length) cards.forEach((c) => list.appendChild(c));
-  else {
+  if (cards.length) {
+    const shown = searchShown[key];
+    cards.slice(0, shown).forEach((c) => list.appendChild(c));
+    // Offer more when we have extra fetched-but-hidden cards, or the source's page
+    // came back saturated (so there are likely more beyond what we've fetched).
+    if (!loading && (cards.length > shown || remoteCount >= searchLimit)) {
+      const more = document.createElement('button');
+      more.className = 'find-more';
+      more.textContent = 'Load more';
+      more.onclick = () => loadMoreSection(key);
+      list.appendChild(more);
+    }
+  } else {
     const e = document.createElement('div');
     e.className = 'find-empty';
     e.textContent = loading ? 'Searching…' : 'None';
@@ -1793,6 +1834,7 @@ function sourceDropdown(sources: GlobalSearchResponse['sources']): HTMLElement {
 }
 function pickSource(id: string): void {
   searchSource = id;
+  resetSearchPaging(); // switching source is a fresh search
   void runGlobalSearch();
 }
 

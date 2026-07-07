@@ -840,6 +840,15 @@ body.idle #find-grip::after { opacity: 0; }
   background: rgba(0,0,0,0.28); border: 1px solid rgba(236,231,221,0.12);
   border-radius: 1.2vh; padding: 1vh 1.4vw;
 }
+/* "Load more" bar under a results section — reveals/fetches the next page. */
+.find-more {
+  flex: 0 0 auto; width: 100%; margin-top: 0.4vh;
+  background: transparent; color: var(--ink-dim);
+  border: 1px dashed rgba(236,231,221,0.28); border-radius: 1.2vh;
+  padding: 1.1vh 1.4vw; font: inherit; font-size: 1.8vh; letter-spacing: 0.08em;
+  text-transform: uppercase; cursor: pointer;
+}
+.find-more:active { color: var(--ink); border-color: var(--ink); background: rgba(255,255,255,0.05); }
 .find-card-tap { cursor: pointer; }
 .find-card-tap:active { background: rgba(255,255,255,0.06); }
 

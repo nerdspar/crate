@@ -62,10 +62,11 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
 
   // Global search: albums + playlists + songs, optionally scoped to one source.
   app.get('/api/search/global', async (req) => {
-    const { q, source } = req.query as { q?: string; source?: string };
+    const { q, source, limit } = req.query as { q?: string; source?: string; limit?: string };
     const query = (q ?? '').trim();
     if (!query) return { albums: [], playlists: [], songs: [], sources: [] };
-    return service.globalSearch(query, source);
+    const n = Math.min(Math.max(Number(limit) || 20, 20), 200); // clamp 20..200
+    return service.globalSearch(query, source, n);
   });
 
   app.post('/api/play', async (req) => {

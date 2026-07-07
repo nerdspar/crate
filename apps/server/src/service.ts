@@ -271,7 +271,7 @@ export class Service {
 
   /** Sonos-style global search: albums, playlists and songs across the connected
       sources (or one, when `source` is a specific instance id). */
-  async globalSearch(query: string, source?: string): Promise<GlobalSearchResponse> {
+  async globalSearch(query: string, source?: string, limit = 20): Promise<GlobalSearchResponse> {
     const sources = await this.ma.listMusicProviders().catch(() => []);
     const shelved = this.db.shelfedUris();
     const targets = source && source !== 'all' ? sources.filter((s) => s.instanceId === source) : sources;
@@ -279,7 +279,7 @@ export class Service {
     const results = await Promise.all(
       searchIn.map(async (s) => ({
         s,
-        r: await this.ma.searchAll(query, 20, s.instanceId || undefined).catch(() => ({ albums: [], playlists: [], tracks: [] })),
+        r: await this.ma.searchAll(query, limit, s.instanceId || undefined).catch(() => ({ albums: [], playlists: [], tracks: [] })),
       })),
     );
     const albums: SearchAlbum[] = [];
