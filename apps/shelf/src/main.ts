@@ -84,6 +84,7 @@ let playingIdx: number | null = null;
 let playingTrack = 0;
 let activePlayerId: string | null = null;
 let activeSolo = false; // the target was picked as an individual speaker (vs a group)
+let userPickedPlayer = false; // true once the user taps a room this session; until then the wall follows the admin default speaker
 let volume = 42;
 
 /** Live now-playing state, driven by WS state + progress ticks. */
@@ -464,6 +465,7 @@ function renderRooms(el: HTMLElement): void {
       e.stopPropagation();
       activePlayerId = leader;
       activeSolo = false;
+      userPickedPlayer = true;
       renderRooms(el);
     };
     wrap.appendChild(b);
@@ -481,6 +483,7 @@ function renderRooms(el: HTMLElement): void {
       e.stopPropagation();
       activePlayerId = r.id;
       activeSolo = true;
+      userPickedPlayer = true;
       renderRooms(el);
     };
     wrap.appendChild(b);
@@ -1374,7 +1377,10 @@ function armGroupGuard(): void {
     it). Toggles off. Independent of grouping. */
 function focusRoom(id: string): void {
   focusedPlayerId = focusedPlayerId === id ? null : id;
-  if (focusedPlayerId) activePlayerId = id;
+  if (focusedPlayerId) {
+    activePlayerId = id;
+    userPickedPlayer = true;
+  }
   renderRoomUIs();
   handleState(lastStates);
 }
@@ -2990,6 +2996,13 @@ function applySettings(s: Settings): void {
   const prev = settings;
   settings = s;
   openMode = s.openMode;
+  // Follow the admin default speaker until the user picks a room on the wall.
+  if (s.defaultPlayerId && s.defaultPlayerId !== prev.defaultPlayerId && !userPickedPlayer) {
+    activePlayerId = s.defaultPlayerId;
+    activeSolo = true;
+    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    if (ccIsOpen()) renderCCRooms();
+  }
   applyTextDir();
   applyYearGutter();
   applyYearEmphasis();

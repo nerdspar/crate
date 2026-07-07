@@ -367,8 +367,14 @@ button {
 .track .n { font-size: 1.6vh; width: 2.4vh; color: var(--brass); }
 .track.now { color: var(--ink); }
 .track.now .n { color: var(--ink); }
-/* The song this playlist spine cues to, inside its album's track list. */
-.track.cued { color: var(--brass); }
+/* Selected/cued track — the whole row stays highlighted until another is picked. */
+.track.cued {
+  color: var(--ink);
+  background: rgba(236, 231, 221, 0.13);
+  border-radius: 0.9vh; border-bottom-color: transparent;
+  padding-left: 1vh; padding-right: 1vh;
+}
+.track.cued .n { color: var(--ink); }
 /* mini now-playing EQ shown in the track number slot (replaces the ♪ glyph) */
 .track-eq { display: inline-flex; gap: 1.5px; align-items: flex-end; height: 1.8vh; }
 .track-eq i { width: 2px; background: currentColor; border-radius: 1px; animation: track-eq 0.9s ease-in-out infinite; }
