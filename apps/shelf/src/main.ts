@@ -511,6 +511,7 @@ function renderRooms(el: HTMLElement): void {
       userPickedPlayer = true;
       renderRooms(el);
       updatePlayButton(); // label flips to "Play" when this differs from what's playing
+      updateModalTransport();
     };
     wrap.appendChild(b);
   });
@@ -1942,12 +1943,60 @@ let modalAlbumUri: string | null = null; // resolved real album uri to play
 let modalCue = -1;
 
 (albumModal.querySelector('.am-backdrop') as HTMLElement).addEventListener('click', closeAlbumModal);
-(albumModal.querySelector('.am-play') as HTMLElement).addEventListener('click', () => void playModal());
+(albumModal.querySelector('.am-play') as HTMLElement).addEventListener('click', () => void onModalPlay());
+(albumModal.querySelector('.am-prev') as HTMLElement).addEventListener('click', () => {
+  if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'previous' }).catch(() => {});
+});
+(albumModal.querySelector('.am-next') as HTMLElement).addEventListener('click', () => {
+  if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
+});
 
 function closeAlbumModal(): void {
   albumModal.hidden = true;
   modalUri = null;
   modalAlbumUri = null;
+}
+
+/** Is the album shown in the overlay the one currently playing? */
+function modalIsPlaying(): boolean {
+  const id = modalAlbumUri ? albumIdFromUri(modalAlbumUri) : null;
+  return !!id && now.state !== 'idle' && now.albumId === id;
+}
+/** Has the user picked a different room/track in the overlay than what's playing? */
+function modalSelectionChanged(): boolean {
+  if (!modalIsPlaying()) return false;
+  const roomChanged = activePlayerId != null && activePlayerId !== now.playerId;
+  const trackChanged = modalCue >= 0 && modalCue !== now.trackIndex;
+  return roomChanged || trackChanged;
+}
+/** Overlay Play button: pause/resume when this album is playing unchanged, else play
+    the current selection. Skips flank it (like the expanded card) while it's playing. */
+async function onModalPlay(): Promise<void> {
+  if (modalIsPlaying() && !modalSelectionChanged() && now.playerId) {
+    const pausing = now.state === 'playing';
+    now.elapsed = liveElapsed();
+    now.at = performance.now();
+    now.state = pausing ? 'paused' : 'playing';
+    userPaused = pausing;
+    pauseGuardUntil = pausing ? performance.now() + 3000 : 0;
+    resumeGuardUntil = pausing ? 0 : performance.now() + 3000;
+    applyNow();
+    updateModalTransport();
+    await client.transport({ playerId: now.playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
+    return;
+  }
+  await playModal();
+}
+/** Show/hide the overlay skips and set its Play/Pause/Resume label. */
+function updateModalTransport(): void {
+  if (albumModal.hidden) return;
+  const prev = albumModal.querySelector('.am-prev') as HTMLElement;
+  const next = albumModal.querySelector('.am-next') as HTMLElement;
+  const play = albumModal.querySelector('.am-play') as HTMLElement;
+  const toggle = modalIsPlaying() && !modalSelectionChanged();
+  prev.hidden = !toggle;
+  next.hidden = !toggle;
+  play.textContent = toggle ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
 }
 
 async function openProviderAlbum(uri: string): Promise<void> {
@@ -1989,6 +2038,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
     row.addEventListener('click', () => {
       modalCue = ti;
       tw.querySelectorAll('.track').forEach((r, idx) => r.classList.toggle('cued', idx === ti));
+      updateModalTransport(); // a different track → Play (not Pause)
     });
     tw.appendChild(row);
   });
@@ -2008,6 +2058,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   } else {
     addSlot.appendChild(addAlbumControl(d.providerUri));
   }
+  updateModalTransport();
 }
 
 async function playModal(trackIndex?: number): Promise<void> {
@@ -2281,11 +2332,15 @@ async function revealAddedAlbum(shelfId: string, providerUri: string): Promise<v
   await revealAddedAlbumById(shelfId, albumIdFromUri(providerUri));
 }
 
-/** Switch the wall to a shelf and scroll to an album by id, leaving the Find bar open. */
+/** Switch the wall to a shelf, scroll to an album by id, and flip it open behind the
+    still-open Find bar so it's ready when you dismiss the search. */
 async function revealAddedAlbumById(shelfId: string, albumId: string): Promise<void> {
   await switchShelf(shelfId, false); // keep the Find bar open
   const idx = items.findIndex((it) => it.albumId === albumId);
-  if (idx >= 0) requestAnimationFrame(() => smoothScrollTo(vp, settledLeft(idx) - vp.clientWidth * 0.12));
+  if (idx >= 0) {
+    openAlbum(idx, false);
+    requestAnimationFrame(() => smoothScrollTo(vp, settledLeft(idx) - vp.clientWidth * 0.12));
+  }
 }
 
 /** An album search hit (on- or off-shelf). Tapping the card opens the play-now
@@ -2917,7 +2972,10 @@ function handleState(states: PlayerState[]): void {
   const pausedS =
     pool.find((s) => s.state === 'paused' && s.nowPlaying?.albumId) ??
     pool.find((s) => s.state === 'paused' && s.nowPlaying);
-  const cand = forFocus ?? forOpen ?? playingS ?? pausedS;
+  // When the user has paused an album *here*, don't let another room that's playing
+  // steal the now-playing focus — keep `now` on the paused album until they act (many
+  // rooms in the house may be playing at once).
+  const cand = forFocus ?? forOpen ?? (userPaused && now.albumId ? undefined : (playingS ?? pausedS));
   if (cand?.nowPlaying) {
     const st = cand.state === 'playing' ? 'playing' : 'paused';
     if (st === 'playing') userPaused = false;
@@ -2974,12 +3032,14 @@ function applyNow(): void {
   const loaded = idx >= 0 && now.state !== 'idle';
   playingIdx = loaded ? idx : null;
   playingTrack = now.trackIndex;
+  document.body.classList.toggle('nowpaused', now.state === 'paused'); // freeze EQ bars
   markPlayingSpines();
   if (openIdx !== null) {
     updateOpenTrackIndicator();
     updateNowbar();
     updatePlayButton();
   }
+  if (!albumModal.hidden) updateModalTransport();
   renderCCNow();
 }
 
@@ -3307,6 +3367,11 @@ async function boot(): Promise<void> {
   restartIdleWatch(); // start the idle-action timer from settings
   checkSchedule();
   setInterval(checkSchedule, 30000); // per-day sleep window
+  // The wall has no manual refresh — poll playback + shelf periodically so it stays in
+  // sync with changes made elsewhere (another app instance, the admin, other rooms).
+  setInterval(() => {
+    void client.getPlayers().then((r) => handleState(r.state)).catch(() => {});
+  }, 20000);
 }
 
 void boot();
