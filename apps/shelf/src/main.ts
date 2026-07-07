@@ -1610,6 +1610,10 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   (cell.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
     const level = +(e.target as HTMLInputElement).value;
     for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
+    // Move the member sliders in the dropdown to match (the group sets them all).
+    (cell.querySelectorAll('.cc-group-member input') as NodeListOf<HTMLInputElement>).forEach((inp) => {
+      inp.value = String(level);
+    });
   });
   // Expansion is exclusive — opening one group drops its volume sliders and closes
   // any other, so only one set of sliders is ever down.
