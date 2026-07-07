@@ -272,6 +272,15 @@ function buildShelf(): void {
         <div class="eyebrow">From your library</div>
         <h1>${escapeHtml(a.title)}</h1>
         <h2>${escapeHtml(a.artist)}</h2>
+        <div class="nowbar" hidden>
+          <div class="np-controls">
+            <button class="np-btn np-prev" aria-label="Previous">⏮</button>
+            <button class="np-btn np-play" aria-label="Play or pause">⏸</button>
+            <button class="np-btn np-next" aria-label="Next">⏭</button>
+          </div>
+          <div class="seek"><div class="seek-fill"></div></div>
+          <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
+        </div>
         <div class="actions">
           <button class="play">Play</button>
           ${isPlaylistCase ? '<button class="songs">Songs</button>' : ''}
@@ -281,10 +290,6 @@ function buildShelf(): void {
             <input type="range" min="0" max="100" value="42">
             <span class="vol-ico">${VOL_HIGH_SVG}</span>
           </div>
-        </div>
-        <div class="nowbar" hidden>
-          <div class="seek"><div class="seek-fill"></div></div>
-          <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
         </div>
         <div class="tracks"></div>
       </div>
@@ -305,6 +310,19 @@ function buildShelf(): void {
     el.querySelector('.play')!.addEventListener('click', (e) => {
       stop(e);
       void onPlayButton(i);
+    });
+    // Now-playing transport (only interactive while this album plays).
+    el.querySelector('.np-play')!.addEventListener('click', (e) => {
+      stop(e);
+      void onPlayButton(i);
+    });
+    el.querySelector('.np-prev')!.addEventListener('click', (e) => {
+      stop(e);
+      if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'previous' }).catch(() => {});
+    });
+    el.querySelector('.np-next')!.addEventListener('click', (e) => {
+      stop(e);
+      if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
     });
     el.querySelector('.songs')?.addEventListener('click', (e) => {
       stop(e);
@@ -604,6 +622,9 @@ async function ungroupActiveSoloIfNeeded(): Promise<void> {
   armGroupGuard();
   renderRoomUIs();
   await client.group({ playerIds: remaining }).catch(() => {});
+  // The speakers we left behind keep the old queue playing — stop them, since we're
+  // redirecting playback to the pulled-out speaker.
+  if (remaining[0]) void client.transport({ playerId: remaining[0], cmd: 'pause' }).catch(() => {});
 }
 
 async function play(i: number, trackIndex?: number): Promise<void> {
@@ -2895,10 +2916,14 @@ function applyNow(): void {
 function updatePlayButton(): void {
   if (openIdx === null) return;
   const panel = shelf.children[openIdx] as HTMLElement;
-  const btn = panel.querySelector('.play') as HTMLElement | null;
+  const btn = panel.querySelector('.play') as HTMLButtonElement | null;
   const eyebrow = panel.querySelector('.eyebrow') as HTMLElement | null;
   const isThis = playingIdx === openIdx;
-  if (btn) btn.textContent = isThis ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
+  // While this album plays, the nowbar transport handles play/pause — hide the big Play.
+  if (btn) {
+    btn.hidden = isThis;
+    btn.textContent = 'Play';
+  }
   if (eyebrow) eyebrow.textContent = isThis ? 'Now playing' : 'From your library';
 }
 
@@ -2923,13 +2948,16 @@ function updateNowbar(): void {
   const panel = shelf.children[openIdx] as HTMLElement;
   const bar = panel.querySelector('.nowbar') as HTMLElement | null;
   if (!bar) return;
-  const show = playingIdx === openIdx && now.duration > 0;
+  const show = playingIdx === openIdx; // transport shows whenever this album is the one playing
   bar.hidden = !show;
   if (!show) return;
-  const e = liveElapsed();
-  (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
-  (bar.querySelector('.cur') as HTMLElement).textContent = fmtDur(e);
-  (bar.querySelector('.dur') as HTMLElement).textContent = fmtDur(now.duration);
+  (bar.querySelector('.np-play') as HTMLElement).textContent = now.state === 'playing' ? '⏸' : '▶';
+  if (now.duration > 0) {
+    const e = liveElapsed();
+    (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
+    (bar.querySelector('.cur') as HTMLElement).textContent = fmtDur(e);
+    (bar.querySelector('.dur') as HTMLElement).textContent = fmtDur(now.duration);
+  }
 }
 
 function handleProgress(playerId: string, elapsed: number): void {
