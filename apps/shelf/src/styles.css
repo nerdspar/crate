@@ -490,6 +490,8 @@ button {
 .set-pane { display: none; }
 .set-pane.on { display: block; columns: 20vw; column-gap: 4vw; }
 .set-pane > * { break-inside: avoid; }
+/* Keeps grouped rows (e.g. When-idle-screen + its dim slider) together in one column. */
+.setting-keep { break-inside: avoid; }
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }
 .setting-row.hidden-row { display: none; }
 .setting-row .label {
