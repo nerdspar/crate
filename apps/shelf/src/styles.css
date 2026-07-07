@@ -677,7 +677,7 @@ body.idle #find-grip::after { opacity: 0; }
 }
 #cc-search::placeholder { color: var(--ink-dim); }
 
-#cc-brightness { width: 100%; accent-color: var(--ink); }
+#cc-brightness, #idle-dim-slider { width: 100%; accent-color: var(--ink); }
 /* Display · System · Status share one row; columns wrap on narrow screens.
    Each column is label + content, so their labels align across the row. */
 .cc-syscols { display: flex; flex-wrap: wrap; gap: 2.4vh 6vw; align-items: flex-start; }

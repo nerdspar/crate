@@ -988,7 +988,7 @@ function renderChoices(): void {
   );
   choiceRow(
     'idle-after-choices',
-    [['0', 'Never', ''], ['1', '1 min', ''], ['5', '5 min', ''], ['10', '10 min', ''], ['30', '30 min', '']],
+    [['0', 'Never', ''], ['1', '1 min', ''], ['5', '5 min', ''], ['10', '10 min', ''], ['30', '30 min', ''], ['60', '1 hr', '']],
     (k) => String(settings.idleAfterMin) === k,
     (k) => {
       settings.idleAfterMin = Number(k);
@@ -1005,15 +1005,11 @@ function renderChoices(): void {
       void client.putSettings({ idleScreen: settings.idleScreen }).catch(() => {});
     },
   );
-  choiceRow(
-    'idle-dim-choices',
-    [['5', '5%', ''], ['10', '10%', ''], ['20', '20%', ''], ['40', '40%', '']],
-    (k) => String(settings.idleDimPercent) === k,
-    (k) => {
-      settings.idleDimPercent = Number(k);
-      void client.putSettings({ idleDimPercent: settings.idleDimPercent }).catch(() => {});
-    },
-  );
+  // Idle dim brightness is a slider (see idleDimSlider wiring below); just sync it here.
+  if (idleDimSlider) {
+    idleDimSlider.value = String(settings.idleDimPercent);
+    if (idleDimVal) idleDimVal.textContent = `${settings.idleDimPercent}%`;
+  }
   choiceRow(
     'idle-content-choices',
     [
@@ -2401,6 +2397,8 @@ function renderAddShelves(container: HTMLElement, albumId: string): void {
 const dimEl = document.getElementById('dim') as HTMLElement;
 const sleepEl = document.getElementById('sleep') as HTMLElement;
 const ccBrightness = document.getElementById('cc-brightness') as HTMLInputElement;
+const idleDimSlider = document.getElementById('idle-dim-slider') as HTMLInputElement | null;
+const idleDimVal = document.getElementById('idle-dim-val');
 const ccIp = document.getElementById('cc-ip') as HTMLElement;
 const ccVer = document.getElementById('cc-ver') as HTMLElement;
 const ccRestart = document.getElementById('cc-restart') as HTMLButtonElement;
@@ -2440,6 +2438,20 @@ ccBrightness.addEventListener('input', () => {
 });
 ccBrightness.addEventListener('change', () => {
   void client.setBrightness(+ccBrightness.value).then(applySystemStatus).catch(() => {});
+});
+
+// Idle dim brightness slider (Idle & sleep tab). Preview the dim veil live while
+// dragging — #dim sits above #settings, so the whole sheet darkens to show the
+// chosen level — then restore the real brightness and persist on release.
+idleDimSlider?.addEventListener('input', () => {
+  const v = +idleDimSlider.value;
+  if (idleDimVal) idleDimVal.textContent = `${v}%`;
+  dimEl.style.opacity = String(((100 - v) / 100) * 0.85);
+});
+idleDimSlider?.addEventListener('change', () => {
+  settings.idleDimPercent = +idleDimSlider.value;
+  applyDim(); // drop the preview veil back to the live brightness
+  void client.putSettings({ idleDimPercent: settings.idleDimPercent }).catch(() => {});
 });
 
 // Display sleep: black veil, tap anywhere to wake.
