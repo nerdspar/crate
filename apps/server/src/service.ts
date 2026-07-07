@@ -1,7 +1,9 @@
 import type {
   AlbumDetail,
+  GlobalSearchResponse,
   LibraryPlaylist,
   NowPlaying,
+  SearchSong,
   PlayerState,
   PlayersResponse,
   ProviderAlbumDetail,
@@ -265,6 +267,33 @@ export class Service {
       sources.map(async (s) => (await this.ma.search(query, 20, s.instanceId).catch(() => [])).map((a) => toHit(a, s.name))),
     );
     return perSource.flat();
+  }
+
+  /** Sonos-style global search: albums, playlists and songs across the connected
+      sources (or one, when `source` is a specific instance id). */
+  async globalSearch(query: string, source?: string): Promise<GlobalSearchResponse> {
+    const sources = await this.ma.listMusicProviders().catch(() => []);
+    const shelved = this.db.shelfedUris();
+    const targets = source && source !== 'all' ? sources.filter((s) => s.instanceId === source) : sources;
+    const searchIn = targets.length ? targets : [{ instanceId: '', name: 'Music' }];
+    const results = await Promise.all(
+      searchIn.map(async (s) => ({
+        s,
+        r: await this.ma.searchAll(query, 20, s.instanceId || undefined).catch(() => ({ albums: [], playlists: [], tracks: [] })),
+      })),
+    );
+    const albums: SearchAlbum[] = [];
+    const playlists: LibraryPlaylist[] = [];
+    const songs: SearchSong[] = [];
+    for (const { s, r } of results) {
+      for (const a of r.albums)
+        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), source: s.name });
+      for (const p of r.playlists)
+        playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
+      for (const t of r.tracks)
+        songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, source: s.name });
+    }
+    return { albums, playlists, songs, sources };
   }
 
   async addToShelf(providerUri: string, shelfId?: string): Promise<void> {

@@ -12,6 +12,15 @@ export interface ProviderAlbum {
   artworkUrl: string | null;
 }
 
+export interface ProviderTrackHit {
+  /** Resolvable provider track uri (album ref from search is name-based/unresolvable). */
+  trackUri: string;
+  title: string;
+  artist: string;
+  album: string;
+  artworkUrl: string | null;
+}
+
 export interface ProviderPlaylist {
   /** Provider playback ref, e.g. `library://playlist/9`. */
   providerUri: string;
@@ -37,6 +46,12 @@ export type TransportCommand = 'play' | 'pause' | 'next' | 'previous' | 'seek';
 export interface MusicSource {
   readonly id: string;
   search(query: string, limit?: number, providerInstance?: string): Promise<ProviderAlbum[]>;
+  /** Global search: albums, playlists and tracks in one call (optionally scoped). */
+  searchAll(
+    query: string,
+    limit?: number,
+    providerInstance?: string,
+  ): Promise<{ albums: ProviderAlbum[]; playlists: ProviderPlaylist[]; tracks: ProviderTrackHit[] }>;
   /** Connected streaming music sources, for per-source search. */
   listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>>;
   getAlbum(providerUri: string): Promise<ProviderAlbum | null>;

@@ -4,6 +4,7 @@ import type {
   AddToShelfRequest,
   AlbumDetail,
   CreateShelfRequest,
+  GlobalSearchResponse,
   GroupRequest,
   LibraryPlaylist,
   OverrideRequest,
@@ -76,6 +77,11 @@ export class CrateClient {
 
   search(query: string): Promise<SearchAlbum[]> {
     return this.req(`/api/search?q=${encodeURIComponent(query)}`);
+  }
+  /** Global search: albums + playlists + songs, optionally scoped to one source. */
+  globalSearch(query: string, source?: string): Promise<GlobalSearchResponse> {
+    const s = source && source !== 'all' ? `&source=${encodeURIComponent(source)}` : '';
+    return this.req(`/api/search/global?q=${encodeURIComponent(query)}${s}`);
   }
 
   play(body: PlayRequest): Promise<{ ok: true }> {

@@ -125,6 +125,32 @@ export interface AddToShelfRequest {
   shelfId?: string;
 }
 
+/** A song hit from global search — tapping opens its album with the track cued. */
+export interface SearchSong {
+  /** Resolvable provider track uri (e.g. apple_music://track/123) → album + index. */
+  trackUri: string;
+  title: string;
+  artist: string;
+  album: string;
+  artworkUrl: string | null;
+  source: string;
+}
+
+/** A connected streaming music source (for the search source dropdown). */
+export interface MusicSourceInfo {
+  instanceId: string;
+  name: string;
+}
+
+/** Sonos-style global search: albums, playlists and songs at once, plus the list
+    of connected sources for the dropdown. */
+export interface GlobalSearchResponse {
+  albums: SearchAlbum[];
+  playlists: LibraryPlaylist[];
+  songs: SearchSong[];
+  sources: MusicSourceInfo[];
+}
+
 /** A saved playlist from the provider library, plus whether it's already added. */
 export interface LibraryPlaylist {
   providerUri: string;
@@ -133,6 +159,8 @@ export interface LibraryPlaylist {
   owner: string | null;
   artworkUrl: string | null;
   onShelf: boolean;
+  /** Streaming source display name (global search); optional elsewhere. */
+  source?: string;
 }
 
 export interface AddPlaylistRequest {

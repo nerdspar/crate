@@ -15,6 +15,7 @@ import type {
   ProviderAlbum,
   ProviderPlayer,
   ProviderPlaylist,
+  ProviderTrackHit,
   TransportCommand,
 } from './interfaces.js';
 
@@ -151,6 +152,40 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return arr(result['albums'])
       .map((a) => this.toProviderAlbum(rec(a)))
       .filter((a): a is ProviderAlbum => a !== null);
+  }
+
+  private toTrackHit(item: Record<string, unknown>): ProviderTrackHit | null {
+    const uri = str(item['uri']);
+    const title = str(item['name']);
+    if (!uri || !title) return null;
+    return {
+      trackUri: uri,
+      title,
+      artist: firstArtistName(item),
+      album: str(rec(item['album'])['name']) ?? '',
+      artworkUrl: this.artworkUrl(item),
+    };
+  }
+
+  async searchAll(
+    query: string,
+    limit = 20,
+    providerInstance?: string,
+  ): Promise<{ albums: ProviderAlbum[]; playlists: ProviderPlaylist[]; tracks: ProviderTrackHit[] }> {
+    const result = rec(
+      await this.client.command('music/search', {
+        search_query: query,
+        media_types: ['album', 'playlist', 'track'],
+        limit,
+        library_only: false,
+        ...(providerInstance ? { provider: providerInstance } : {}),
+      }),
+    );
+    return {
+      albums: arr(result['albums']).map((a) => this.toProviderAlbum(rec(a))).filter((a): a is ProviderAlbum => a !== null),
+      playlists: arr(result['playlists']).map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null),
+      tracks: arr(result['tracks']).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null),
+    };
   }
 
   /** Connected streaming music sources (e.g. Apple Music accounts) — for searching
