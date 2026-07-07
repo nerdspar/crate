@@ -2125,6 +2125,16 @@ let modalIsPlaylist = false; // the overlay is showing a playlist (plays the pla
 (albumModal.querySelector('.am-next') as HTMLElement).addEventListener('click', () => {
   if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
 });
+// Volume slider (mirrors the card's) — icons are JS SVG constants, so fill them here.
+{
+  const icons = albumModal.querySelectorAll('.am-vol .vol-ico');
+  if (icons[0]) icons[0].innerHTML = VOL_LOW_SVG;
+  if (icons[1]) icons[1].innerHTML = VOL_HIGH_SVG;
+  (albumModal.querySelector('.am-vol input') as HTMLInputElement).addEventListener('input', (e) => {
+    volume = +(e.target as HTMLInputElement).value;
+    if (activePlayerId) void client.setVolume({ playerId: activePlayerId, level: volume }).catch(() => {});
+  });
+}
 // Tap the overlay seek bar to scrub (mirrors the card's nowbar seek).
 (albumModal.querySelector('.am-nowbar .seek') as HTMLElement).addEventListener('click', (e) => {
   if (now.duration <= 0 || !now.playerId || !modalIsPlaying()) return;
@@ -2214,6 +2224,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   albumModal.hidden = false;
+  (albumModal.querySelector('.am-vol input') as HTMLInputElement).value = String(volume);
 
   let d: ProviderAlbumDetail;
   try {
@@ -2289,6 +2300,7 @@ async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).appendChild(playlistAddControl(pl));
   albumModal.hidden = false;
+  (albumModal.querySelector('.am-vol input') as HTMLInputElement).value = String(volume);
   renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   updateModalTransport();
   let tracks: Track[];
@@ -3211,6 +3223,10 @@ function handleState(states: PlayerState[]): void {
     volume = active.volume;
     if (openIdx !== null) {
       const inp = (shelf.children[openIdx] as HTMLElement).querySelector('.vol input') as HTMLInputElement | null;
+      if (inp) inp.value = String(volume);
+    }
+    if (!albumModal.hidden) {
+      const inp = albumModal.querySelector('.am-vol input') as HTMLInputElement | null;
       if (inp) inp.value = String(volume);
     }
   }
