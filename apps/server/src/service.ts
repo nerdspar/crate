@@ -68,7 +68,10 @@ export class Service {
     void applyBrightness(this.db.getRaw<number>('system.brightness', 100));
     this.ma.onConnect(() => {
       void this.refreshPlayers();
+      void this.pushState();
     });
+    // Reflect speaker renames / added / removed within ~1s (not just on reconnect).
+    this.ma.onPlayersChanged(() => void this.refreshPlayers());
     this.ma.onState((states) => {
       this.hub.broadcast({ type: 'state', state: this.resolveStates(states) });
     });
@@ -78,18 +81,32 @@ export class Service {
     try {
       await this.ma.start();
       await this.refreshPlayers();
+      await this.pushState();
     } catch (err) {
       process.stderr.write(`[crate] MA not reachable yet, will retry: ${(err as Error).message}\n`);
     }
   }
 
+  private lastRoster = '';
+
+  /** Sync the player roster (id/name/type/availability). Only broadcasts when it
+      actually changed, so frequent `player_updated` events (volume, etc.) don't churn. */
   private async refreshPlayers(): Promise<void> {
     try {
       const players = await this.ma.listPlayers();
+      const sig = players.map((p) => `${p.id}|${p.name}|${p.type}|${p.available ? 1 : 0}`).join(';');
+      if (sig === this.lastRoster) return;
+      this.lastRoster = sig;
       this.db.upsertPlayers(players.map((p) => ({ id: p.id, name: p.name, type: p.type, available: p.available })));
       this.hub.broadcast({ type: 'players' });
-      const states = await this.ma.getState();
-      this.hub.broadcast({ type: 'state', state: this.resolveStates(states) });
+    } catch {
+      /* transient */
+    }
+  }
+
+  private async pushState(): Promise<void> {
+    try {
+      this.hub.broadcast({ type: 'state', state: this.resolveStates(await this.ma.getState()) });
     } catch {
       /* transient */
     }

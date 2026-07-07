@@ -83,6 +83,7 @@ let openIdx: number | null = null;
 let playingIdx: number | null = null;
 let playingTrack = 0;
 let activePlayerId: string | null = null;
+let activeSolo = false; // the target was picked as an individual speaker (vs a group)
 let volume = 42;
 
 /** Live now-playing state, driven by WS state + progress ticks. */
@@ -455,27 +456,29 @@ function renderRooms(el: HTMLElement): void {
     if (members.length < 2) continue;
     const name = rooms.find((r) => r.id === leader)?.name ?? 'Group';
     const b = document.createElement('button');
-    b.className = 'room room-group' + (activePlayerId === leader ? ' on' : '');
+    b.className = 'room room-group' + (!activeSolo && activePlayerId === leader ? ' on' : '');
     b.textContent = `${name} +${members.length - 1}`;
     b.onclick = (e) => {
       e.stopPropagation();
       activePlayerId = leader;
+      activeSolo = false;
       renderRooms(el);
     };
     wrap.appendChild(b);
   }
-  // Members of the currently-targeted group get outlined so you can see the group.
-  const activeGroup = groupMembers(leaderOf(activePlayerId ?? ''));
+  // Outline the targeted group's members (only when a GROUP is the target).
+  const activeGroup = !activeSolo ? groupMembers(leaderOf(activePlayerId ?? '')) : [];
   const inActiveGroup = new Set(activeGroup.length >= 2 ? activeGroup.map((r) => r.id) : []);
-  // Then every individual speaker — picking a grouped one pulls it out to play solo.
+  // Then every individual speaker. Picking a grouped one just selects it — it's
+  // only pulled out of its group when you actually hit Play (so a mis-tap is safe).
   rooms.forEach((r) => {
     const b = document.createElement('button');
-    b.className = 'room' + (r.id === activePlayerId ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
+    b.className = 'room' + (activeSolo && r.id === activePlayerId ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
     b.textContent = r.name;
     b.onclick = (e) => {
       e.stopPropagation();
-      if (groupMembers(leaderOf(r.id)).length >= 2) ungroupRoom(r.id);
       activePlayerId = r.id;
+      activeSolo = true;
       renderRooms(el);
     };
     wrap.appendChild(b);
@@ -580,6 +583,20 @@ async function onPlayButton(i: number): Promise<void> {
 
 async function play(i: number, trackIndex?: number): Promise<void> {
   const item = items[i]!;
+  // If a still-grouped speaker was picked individually, pull it out of its group
+  // now (on Play, not on selection — so a mis-tap doesn't disband the group).
+  if (activePlayerId && activeSolo) {
+    const solo = activePlayerId;
+    const members = groupMembers(leaderOf(solo)).map((r) => r.id);
+    if (members.length >= 2) {
+      const remaining = members.filter((x) => x !== solo);
+      setLeaderLocal(solo, solo);
+      remaining.forEach((m) => setLeaderLocal(m, remaining[0] ?? solo));
+      armGroupGuard();
+      renderRoomUIs();
+      await client.group({ playerIds: remaining }).catch(() => {});
+    }
+  }
   // A song spine plays its ALBUM: resolve the real album uri (its `albumUri` is
   // the track uri) and cue either the explicitly-tapped row or the song's index.
   const song = !!item.albumUri;
@@ -2154,6 +2171,19 @@ function stepAlbum(dir: number): void {
   followOpen();
 }
 
+/** Which spine (by LAYOUT position) sits under this client X. Used for taps while
+    an album is open: the open album's flipped-open cover visually overlaps its LEFT
+    neighbors, so element hit-testing wrongly targets the open one — position is right. */
+function spineAtX(x: number): number {
+  for (let j = 0; j < items.length; j++) {
+    const el = shelf.children[j] as HTMLElement | undefined;
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (x >= r.left && x < r.right) return j;
+  }
+  return -1;
+}
+
 vp.addEventListener('pointerdown', (e) => {
   pDown = true;
   moved = false;
@@ -2212,11 +2242,11 @@ window.addEventListener('pointerup', (e) => {
   if (stepping) {
     stepping = false;
     if (Math.abs(e.clientX - startX) <= 8 && downTarget) {
-      if (downTarget.classList.contains('open')) {
-        closeAlbum();
-      } else {
-        openAlbum(+downTarget.dataset['idx']!);
-      }
+      // Resolve by layout position (not the visually-hit element) so tapping a
+      // LEFT neighbor opens it instead of hitting the open album's overlapping cover.
+      const j = spineAtX(e.clientX);
+      if (j < 0 || j === openIdx) closeAlbum();
+      else openAlbum(j);
     }
     return;
   }

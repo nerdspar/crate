@@ -381,6 +381,18 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     });
   }
 
+  /** Fires (debounced) when the player roster/metadata changes — added, removed,
+      or renamed in Music Assistant. */
+  onPlayersChanged(cb: () => void): () => void {
+    let deb: ReturnType<typeof setTimeout> | undefined;
+    const relevant = new Set(['player_added', 'player_removed', 'player_updated']);
+    return this.client.onEvent((e: MaEvent) => {
+      if (!relevant.has(e.event)) return;
+      if (deb) clearTimeout(deb);
+      deb = setTimeout(cb, 800);
+    });
+  }
+
   onState(cb: (states: PlayerState[]) => void): () => void {
     const refetch = (): void => {
       if (this.stateDebounce) clearTimeout(this.stateDebounce);
