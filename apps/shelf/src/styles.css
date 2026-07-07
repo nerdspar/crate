@@ -515,6 +515,20 @@ button {
   letter-spacing: 0.04em;
 }
 .choice.on { color: var(--ink); border-color: var(--ink); }
+.label .hint { font-family: 'Archivo Narrow', sans-serif; font-size: 2.2vh; font-weight: 400; color: var(--ink-dim); letter-spacing: 0; }
+
+/* Wall sleep-schedule editor (Idle & sleep tab). */
+#wall-schedule { display: flex; flex-direction: column; gap: 1.2vh; }
+.sched-row { display: flex; align-items: center; gap: 2vh; }
+.sched-row.sched-off { opacity: 0.5; }
+.sched-day { min-width: 9vh; text-align: center; }
+.sched-times { display: flex; align-items: center; gap: 1.2vh; color: var(--ink-dim); font-size: 2.2vh; }
+.sched-times input[type='time'] {
+  background: transparent; color: var(--ink);
+  border: 1px solid rgba(236,231,221,0.25); border-radius: 0.6vh;
+  font-size: 2.6vh; font-weight: 600; padding: 1vh 1.4vh; letter-spacing: 0.04em;
+  color-scheme: dark;
+}
 
 /* Anchored help tooltip (shown on "?" tap; dismissed by tapping elsewhere). */
 #set-tip {

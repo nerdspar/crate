@@ -166,7 +166,8 @@ export type AfterPlay = 'close' | 'linger' | 'stay';
 /** Unified idle / presence / sleep (§7). Timer + schedule work today; the sensor +
     ambient-light options are wired but dormant until that hardware exists. */
 export type IdleScreen = 'on' | 'dim' | 'off'; // what the display does when idle
-export type IdleContent = 'nothing' | 'nowPlaying' | 'shelf' | 'autoOpen'; // what it shows
+export type IdleContent = 'nothing' | 'nowPlaying' | 'currentShelf' | 'shelf' | 'autoOpen'; // what it shows
+// 'currentShelf' = close any open album, stay on whatever shelf is showing; 'shelf' = jump to a chosen one
 export type AutoOpenPool = 'all' | 'current' | 'shelf';
 /** One weekday's lights-out window (index 0 = Sunday). */
 export interface DaySchedule {

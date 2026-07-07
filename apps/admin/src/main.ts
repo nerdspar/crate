@@ -397,7 +397,7 @@ const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> 
   ['sortBy', 'Shelf sort', [['artist', 'Artist'], ['title', 'Title'], ['added', 'Recently added'], ['played', 'Most played'], ['year', 'Year'], ['color', 'Color'], ['custom', 'Custom order']]],
   ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open']]],
   ['idleScreen', 'When idle — screen', [['on', 'Stay on'], ['dim', 'Dim'], ['off', 'Screen off']]],
-  ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['shelf', 'A shelf'], ['autoOpen', 'Auto-open']]],
+  ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf'], ['autoOpen', 'Auto-open']]],
   ['autoOpenPool', 'Auto-open from', [['all', 'All albums'], ['current', 'Current shelf'], ['shelf', 'A specific shelf']]],
 ];
 const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [

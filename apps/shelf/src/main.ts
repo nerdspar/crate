@@ -1006,15 +1006,130 @@ function renderChoices(): void {
     },
   );
   choiceRow(
+    'idle-dim-choices',
+    [['5', '5%', ''], ['10', '10%', ''], ['20', '20%', ''], ['40', '40%', '']],
+    (k) => String(settings.idleDimPercent) === k,
+    (k) => {
+      settings.idleDimPercent = Number(k);
+      void client.putSettings({ idleDimPercent: settings.idleDimPercent }).catch(() => {});
+    },
+  );
+  choiceRow(
     'idle-content-choices',
-    [['nothing', 'Nothing', ''], ['nowPlaying', 'Now playing', ''], ['shelf', 'A shelf', ''], ['autoOpen', 'Auto-open', '']],
+    [
+      ['nothing', 'Nothing', ''],
+      ['nowPlaying', 'Now playing', ''],
+      ['currentShelf', 'Current shelf', ''],
+      ['shelf', 'A shelf', ''],
+      ['autoOpen', 'Auto-open', ''],
+    ],
     (k) => settings.idleContent === k,
     (k) => {
       settings.idleContent = k as IdleContent;
       void client.putSettings({ idleContent: settings.idleContent }).catch(() => {});
+      updateConditionalRows();
     },
   );
+  // Idle / auto-open target shelf — dynamic: "All" plus every album shelf.
+  choiceRow(
+    'idle-shelf-choices',
+    [['all', 'All', ''], ...shelves.filter((s) => s.kind === 'album' && s.id !== 'all').map((s) => [s.id, s.name, ''] as const)],
+    (k) => (settings.idleShelf ?? 'all') === k,
+    (k) => {
+      settings.idleShelf = k === 'all' ? null : k;
+      void client.putSettings({ idleShelf: settings.idleShelf }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'autoopen-every-choices',
+    [['10', '10s', ''], ['15', '15s', ''], ['25', '25s', ''], ['45', '45s', ''], ['90', '90s', '']],
+    (k) => String(settings.autoOpenEverySec) === k,
+    (k) => {
+      settings.autoOpenEverySec = Number(k);
+      void client.putSettings({ autoOpenEverySec: settings.autoOpenEverySec }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'autoopen-pool-choices',
+    [['all', 'All albums', ''], ['current', 'Current shelf', ''], ['shelf', 'A shelf', '']],
+    (k) => settings.autoOpenPool === k,
+    (k) => {
+      settings.autoOpenPool = k as import('@crate/shared').AutoOpenPool;
+      void client.putSettings({ autoOpenPool: settings.autoOpenPool }).catch(() => {});
+      updateConditionalRows();
+    },
+  );
+  choiceRow(
+    'autoopen-random-choices',
+    [['1', 'Shuffle', ''], ['0', 'In order', '']],
+    (k) => (settings.autoOpenRandom ? '1' : '0') === k,
+    (k) => {
+      settings.autoOpenRandom = k === '1';
+      void client.putSettings({ autoOpenRandom: settings.autoOpenRandom }).catch(() => {});
+    },
+  );
+  const toggleRow = (id: string, get: () => boolean, set: (v: boolean) => void): void =>
+    choiceRow(id, [['1', 'On', ''], ['0', 'Off', '']], (k) => (get() ? '1' : '0') === k, (k) => set(k === '1'));
+  toggleRow('sensor-idle-choices', () => settings.idleUseSensor, (v) => {
+    settings.idleUseSensor = v;
+    void client.putSettings({ idleUseSensor: v }).catch(() => {});
+  });
+  toggleRow('sensor-wake-choices', () => settings.wakeOnSensor, (v) => {
+    settings.wakeOnSensor = v;
+    void client.putSettings({ wakeOnSensor: v }).catch(() => {});
+  });
+  toggleRow('autobright-choices', () => settings.autoBrightness, (v) => {
+    settings.autoBrightness = v;
+    void client.putSettings({ autoBrightness: v }).catch(() => {});
+  });
+  renderWallSchedule();
   updateConditionalRows();
+}
+
+/* Per-weekday sleep schedule editor for the wall — mirrors the admin one. */
+const SCHED_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function renderWallSchedule(): void {
+  const wrap = document.getElementById('wall-schedule');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const sched = settings.sleepSchedule ?? [];
+  const save = (): void => void client.putSettings({ sleepSchedule: settings.sleepSchedule }).catch(() => {});
+  SCHED_DAYS.forEach((name, i) => {
+    const day = sched[i] ?? { on: false, sleep: '23:00', wake: '07:00' };
+    const row = document.createElement('div');
+    row.className = 'sched-row' + (day.on ? '' : ' sched-off');
+    const toggle = document.createElement('button');
+    toggle.className = 'sched-day choice' + (day.on ? ' on' : '');
+    toggle.textContent = name;
+    toggle.onclick = () => {
+      settings.sleepSchedule[i] = { ...day, on: !day.on };
+      save();
+      renderWallSchedule();
+    };
+    const sleep = document.createElement('input');
+    sleep.type = 'time';
+    sleep.value = day.sleep;
+    sleep.onchange = () => {
+      settings.sleepSchedule[i] = { ...settings.sleepSchedule[i]!, sleep: sleep.value };
+      save();
+    };
+    const wake = document.createElement('input');
+    wake.type = 'time';
+    wake.value = day.wake;
+    wake.onchange = () => {
+      settings.sleepSchedule[i] = { ...settings.sleepSchedule[i]!, wake: wake.value };
+      save();
+    };
+    const times = document.createElement('div');
+    times.className = 'sched-times';
+    const off = document.createElement('span');
+    off.textContent = 'off at';
+    const on = document.createElement('span');
+    on.textContent = 'on at';
+    times.append(off, sleep, on, wake);
+    row.append(toggle, times);
+    wrap.appendChild(row);
+  });
 }
 
 /** Hide settings that only apply in another setting's state — the year position
@@ -1024,11 +1139,21 @@ function updateConditionalRows(): void {
   for (const id of ['yearpos-choices', 'yearemph-choices']) {
     document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !yearOn);
   }
-  // Idle content/screen only matter if idle is enabled (idleAfterMin > 0).
-  const idleOn = settings.idleAfterMin > 0;
-  for (const id of ['idle-screen-choices', 'idle-content-choices']) {
-    document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !idleOn);
-  }
+  // The "when idle" behaviors only matter if idle can ever trigger (a timer or the sensor).
+  const idleOn = settings.idleAfterMin > 0 || settings.idleUseSensor;
+  const show = (id: string, on: boolean): void =>
+    void document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !on);
+  for (const id of ['idle-screen-choices', 'idle-content-choices'])
+    show(id, idleOn);
+  show('idle-dim-choices', idleOn && settings.idleScreen === 'dim');
+  // Target shelf is used by "A shelf" content and by auto-open when its pool is "A shelf".
+  const needsShelf =
+    settings.idleContent === 'shelf' ||
+    (settings.idleContent === 'autoOpen' && settings.autoOpenPool === 'shelf');
+  show('idle-shelf-choices', idleOn && needsShelf);
+  const attract = idleOn && settings.idleContent === 'autoOpen';
+  for (const id of ['autoopen-every-choices', 'autoopen-pool-choices', 'autoopen-random-choices'])
+    show(id, attract);
 }
 
 /* =====================================================================
@@ -2764,6 +2889,8 @@ async function enterIdle(): Promise<void> {
   // Content
   if (settings.idleContent === 'nowPlaying') {
     if (playingIdx !== null) openCover(playingIdx);
+  } else if (settings.idleContent === 'currentShelf') {
+    closeAlbum(); // stay on whatever shelf is showing; just drop any open album
   } else if (settings.idleContent === 'shelf') {
     await switchShelf(settings.idleShelf ?? 'all', true);
   } else if (settings.idleContent === 'autoOpen') {
