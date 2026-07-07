@@ -1453,6 +1453,8 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
 let providerResults: SearchAlbum[] = [];
 let providerSearching = false;
+let playlistResults: LibraryPlaylist[] = []; // playlist-tab search hits
+let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
@@ -1478,16 +1480,32 @@ findSearch.addEventListener('keydown', (e) => {
 function clearFindResults(): void {
   searchSeq++; // cancel any in-flight render
   providerResults = [];
+  playlistResults = [];
   providerSearching = false;
   findResults.hidden = true;
   findResults.innerHTML = '';
 }
 
-/** Search the provider (Apple Music via MA) for albums to add. */
+/** Search for things to add: Apple Music albums (Albums tab) or your library
+    playlists (Playlists tab). */
 async function searchProvider(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
   const seq = ++searchSeq;
+  if (shelfTab === 'playlist') {
+    try {
+      if (!libPlaylistsCache) libPlaylistsCache = await client.listLibraryPlaylists();
+      if (seq !== searchSeq) return;
+      const ql = q.toLowerCase();
+      playlistResults = libPlaylistsCache.filter((p) => p.name.toLowerCase().includes(ql));
+    } catch {
+      if (seq !== searchSeq) return;
+      playlistResults = [];
+    }
+    providerSearching = false;
+    renderResults();
+    return;
+  }
   try {
     const res = await client.search(q);
     if (seq !== searchSeq) return;
@@ -1508,10 +1526,19 @@ function renderResults(): void {
     clearFindResults();
     return;
   }
-  const locals = items.filter(matchesFilter);
-  const adds = providerResults.filter((a) => !a.onShelf);
   findResults.hidden = false;
   findResults.innerHTML = '';
+  // Playlists tab: a unified list of your library playlists — added ones Open,
+  // the rest Add. (Apple Music search is album-only, so it doesn't apply here.)
+  if (shelfTab === 'playlist') {
+    for (const pl of playlistResults) findResults.appendChild(playlistResultCard(pl));
+    if (!playlistResults.length) {
+      findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching your library…' : 'No playlists found.'}</div>`;
+    }
+    return;
+  }
+  const locals = items.filter(matchesFilter);
+  const adds = providerResults.filter((a) => !a.onShelf);
   for (const it of locals) findResults.appendChild(shelfCard(it));
   for (const al of adds) findResults.appendChild(addCard(al));
   if (!locals.length && !adds.length) {
@@ -1541,6 +1568,41 @@ function shelfCard(it: ShelfItem): HTMLElement {
   };
   card.addEventListener('click', open);
   return card;
+}
+
+/** A playlist-tab search hit: added → Open (jump to All Playlists + open it),
+    not added → Add to your library. */
+function playlistResultCard(pl: LibraryPlaylist): HTMLElement {
+  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, pl.onShelf ? 'Open' : 'Add');
+  const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
+  if (pl.onShelf) {
+    const open = (): void => void openAddedPlaylist(pl.name);
+    btn.onclick = open;
+    card.addEventListener('click', open);
+  } else {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = 'Adding…';
+      try {
+        await client.addPlaylist(pl.providerUri);
+        btn.textContent = 'Added';
+        libPlaylistsCache = null; // onShelf flags are now stale
+      } catch {
+        btn.disabled = false;
+        btn.textContent = 'Add';
+        showToast('Add failed');
+      }
+    };
+  }
+  return card;
+}
+
+/** Jump to the All Playlists shelf and open the named playlist's card. */
+async function openAddedPlaylist(name: string): Promise<void> {
+  clearSearch();
+  await switchShelf('playlists'); // closes the Find bar
+  const idx = items.findIndex((it) => it.title === name);
+  if (idx >= 0) openAlbum(idx);
 }
 
 /** A provider match not on the shelf — Add it. The button adds to the currently
@@ -1647,6 +1709,7 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     shelfTab = tab.dataset['kind'] as ShelfKind;
     shelfAdding = false;
     shelfDeleteArmed = null;
+    clearSearch(); // search behaves differently per tab; reset it
     document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', t === tab));
     renderShelfList();
   });
@@ -1751,6 +1814,7 @@ function playlistCard(pl: LibraryPlaylist): HTMLElement {
     try {
       await client.addPlaylist(pl.providerUri);
       btn.textContent = 'Added';
+      libPlaylistsCache = null; // onShelf flags are now stale
     } catch {
       btn.disabled = false;
       btn.textContent = 'Add';
