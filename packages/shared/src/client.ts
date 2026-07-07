@@ -5,6 +5,7 @@ import type {
   AlbumDetail,
   CreateShelfRequest,
   GroupRequest,
+  LibraryPlaylist,
   OverrideRequest,
   PlayRequest,
   PlayersResponse,
@@ -87,6 +88,14 @@ export class CrateClient {
 
   addToShelf(body: AddToShelfRequest): Promise<{ ok: true }> {
     return this.post('/api/shelf/add', body);
+  }
+
+  /** The user's provider-library playlists, for the add picker. */
+  listLibraryPlaylists(): Promise<LibraryPlaylist[]> {
+    return this.req('/api/playlists/library');
+  }
+  addPlaylist(providerUri: string): Promise<{ ok: true }> {
+    return this.post('/api/playlists', { providerUri });
   }
 
   removeFromShelf(albumId: string): Promise<{ ok: true }> {

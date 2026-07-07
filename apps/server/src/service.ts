@@ -1,5 +1,6 @@
 import type {
   AlbumDetail,
+  LibraryPlaylist,
   NowPlaying,
   PlayerState,
   PlayersResponse,
@@ -96,7 +97,12 @@ export class Service {
   }
 
   getShelf(shelfId?: string): ShelfResponse {
-    const rows = !shelfId || shelfId === 'all' ? this.db.listShelf() : this.db.listShelfMembers(shelfId);
+    const rows =
+      !shelfId || shelfId === 'all'
+        ? this.db.listShelf('album')
+        : shelfId === 'playlists'
+          ? this.db.listShelf('playlist')
+          : this.db.listShelfMembers(shelfId);
     return {
       items: rows.map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
       stacks: this.db.listStacks(),
@@ -183,7 +189,57 @@ export class Service {
     }
   }
 
-  private async processArtwork(id: string, url: string): Promise<void> {
+  // --- Playlists ----------------------------------------------------------
+
+  /** The user's provider-library playlists, marked with whether they're added. */
+  async listLibraryPlaylists(): Promise<LibraryPlaylist[]> {
+    const [playlists, shelved] = [await this.ma.listLibraryPlaylists(), this.db.shelfedUris()];
+    return playlists.map((p) => ({
+      providerUri: p.providerUri,
+      provider: p.provider,
+      name: p.name,
+      owner: p.owner,
+      artworkUrl: p.artworkUrl,
+      onShelf: shelved.has(p.providerUri),
+    }));
+  }
+
+  /** Ingest a playlist as a `kind='playlist'` media row (reuses the album store
+      and artwork pipeline; its "tracks" are the playlist's songs). */
+  async addPlaylist(providerUri: string): Promise<void> {
+    const pl = await this.ma.getPlaylist(providerUri);
+    if (!pl) throw new Error(`playlist not found: ${providerUri}`);
+    const id = albumIdFromUri(providerUri);
+    const existing = this.db.getAlbum(id);
+    const row: AlbumRow = {
+      id,
+      provider_uri: providerUri,
+      provider: pl.provider,
+      title: pl.name,
+      artist: pl.owner ?? 'Playlist',
+      year: null,
+      artwork_url: pl.artworkUrl,
+      artwork_path: existing?.artwork_path ?? null,
+      palette: existing?.palette ?? null,
+      spine_strip_path: existing?.spine_strip_path ?? null,
+      spine_scan_path: existing?.spine_scan_path ?? null,
+      spine_width: existing?.spine_width ?? spineWidthFor(id),
+      total_duration: null, // playlists use a uniform spine width, not runtime
+      added_at: existing?.added_at ?? new Date().toISOString(),
+      play_count: existing?.play_count ?? 0,
+      overrides: existing?.overrides ?? null,
+    };
+    this.db.upsertAlbum(row);
+    this.db.addToShelf(id, 'playlist');
+    this.hub.broadcast({ type: 'shelf' });
+    // Palette + blurred strip from the cover; no MusicBrainz spine scan (a
+    // playlist has no single artist/title to look up).
+    if (pl.artworkUrl) {
+      void this.processArtwork(id, pl.artworkUrl, { scan: false });
+    }
+  }
+
+  private async processArtwork(id: string, url: string, opts: { scan?: boolean } = {}): Promise<void> {
     try {
       const art = await buildArtwork(id, url, { artDir: this.cfg.artDir, coverHeightPx: this.cfg.coverHeightPx });
       this.db.updateArtwork(id, art.artworkPath, art.spineStripPath, art.palette);
@@ -193,7 +249,7 @@ export class Service {
     }
     // Real spine scan (best-effort, slow: MusicBrainz is rate-limited) — after
     // the fast artwork so the spine appears immediately, upgraded if a scan lands.
-    void this.processSpineScan(id);
+    if (opts.scan !== false) void this.processSpineScan(id);
   }
 
   private async processSpineScan(id: string): Promise<void> {

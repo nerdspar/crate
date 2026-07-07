@@ -9,7 +9,14 @@
 
 import type { PlaybackState, PlayerState, PlayerType, Track } from '@crate/shared';
 import { MaClient, type MaClientOptions, type MaEvent, type MaServerInfo } from './ma-client.js';
-import type { MusicSource, PlayerTarget, ProviderAlbum, ProviderPlayer, TransportCommand } from './interfaces.js';
+import type {
+  MusicSource,
+  PlayerTarget,
+  ProviderAlbum,
+  ProviderPlayer,
+  ProviderPlaylist,
+  TransportCommand,
+} from './interfaces.js';
 
 function rec(v: unknown): Record<string, unknown> {
   return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
@@ -116,6 +123,19 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     };
   }
 
+  private toProviderPlaylist(item: Record<string, unknown>): ProviderPlaylist | null {
+    const uri = str(item['uri']);
+    const name = str(item['name']);
+    if (!uri || !name) return null;
+    return {
+      providerUri: uri,
+      provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
+      name,
+      owner: str(item['owner']) ?? null,
+      artworkUrl: this.artworkUrl(item),
+    };
+  }
+
   // --- MusicSource --------------------------------------------------------
 
   async search(query: string, limit = 20): Promise<ProviderAlbum[]> {
@@ -140,6 +160,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   async getTracks(providerUri: string): Promise<Track[]> {
     const parsed = parseProviderUri(providerUri);
     if (!parsed) return [];
+    if (parsed.type === 'playlist') return this.getPlaylistTracks(parsed.provider, parsed.id);
     const raw = await this.client.command('music/albums/album_tracks', {
       item_id: parsed.id,
       provider_instance_id_or_domain: parsed.provider,
@@ -155,6 +176,36 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         uri: str(item['uri']) ?? null,
       };
     });
+  }
+
+  private async getPlaylistTracks(provider: string, id: string): Promise<Track[]> {
+    const raw = await this.client.command('music/playlists/playlist_tracks', {
+      item_id: id,
+      provider_instance_id_or_domain: provider,
+    });
+    // Playlists have no track numbering of their own — use playlist position.
+    return arr(raw).map((t, i): Track => {
+      const item = rec(t);
+      return {
+        index: num(item['position']) ?? i + 1,
+        title: str(item['name']) ?? `Track ${i + 1}`,
+        artist: firstArtistName(item),
+        duration: num(item['duration']) ?? null,
+        uri: str(item['uri']) ?? null,
+        albumUri: str(rec(item['album'])['uri']) ?? null,
+      };
+    });
+  }
+
+  async listLibraryPlaylists(limit = 200): Promise<ProviderPlaylist[]> {
+    const raw = await this.client.command('music/playlists/library_items', { limit, favorite: false });
+    const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);
+    return items.map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null);
+  }
+
+  async getPlaylist(providerUri: string): Promise<ProviderPlaylist | null> {
+    const item = rec(await this.client.command('music/item_by_uri', { uri: providerUri }));
+    return this.toProviderPlaylist(item);
   }
 
   // --- PlayerTarget -------------------------------------------------------

@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type OpenMode, type Player, type PlayerState, type SearchAlbum, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type LibraryPlaylist, type OpenMode, type Player, type PlayerState, type SearchAlbum, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -1519,9 +1519,58 @@ function renderShelfList(): void {
   }
   const add = document.createElement('button');
   add.className = 'find-shelf find-shelf-new';
-  add.textContent = '+ New';
-  add.onclick = () => newShelfInput();
+  // Album shelves are named-and-filled; playlist shelves come from your library.
+  if (shelfTab === 'playlist') {
+    add.textContent = '+ Add playlists';
+    add.onclick = () => void openPlaylistPicker();
+  } else {
+    add.textContent = '+ New';
+    add.onclick = () => newShelfInput();
+  }
   findShelfList.appendChild(add);
+}
+
+/** Add-flow for playlists: pick from your provider-library playlists. Reuses the
+    Find pick-list area (findResults). */
+async function openPlaylistPicker(): Promise<void> {
+  searchSeq++; // cancel any in-flight search render
+  findResults.hidden = false;
+  findResults.innerHTML = '<div class="find-empty">Loading your playlists…</div>';
+  let list: LibraryPlaylist[];
+  try {
+    list = await client.listLibraryPlaylists();
+  } catch {
+    findResults.innerHTML = '<div class="find-empty">Couldn’t load playlists.</div>';
+    return;
+  }
+  findResults.innerHTML = '';
+  if (!list.length) {
+    findResults.innerHTML = '<div class="find-empty">No playlists in your library.</div>';
+    return;
+  }
+  for (const pl of list) findResults.appendChild(playlistCard(pl));
+}
+
+function playlistCard(pl: LibraryPlaylist): HTMLElement {
+  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, pl.onShelf ? 'Added' : 'Add');
+  const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
+  if (pl.onShelf) {
+    btn.disabled = true;
+    return card;
+  }
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    try {
+      await client.addPlaylist(pl.providerUri);
+      btn.textContent = 'Added';
+    } catch {
+      btn.disabled = false;
+      btn.textContent = 'Add';
+      showToast('Add failed');
+    }
+  };
+  return card;
 }
 
 async function switchShelf(id: string, close = true): Promise<void> {

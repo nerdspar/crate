@@ -106,6 +106,20 @@ export interface AddToShelfRequest {
   providerUri: string;
 }
 
+/** A saved playlist from the provider library, plus whether it's already added. */
+export interface LibraryPlaylist {
+  providerUri: string;
+  provider: string;
+  name: string;
+  owner: string | null;
+  artworkUrl: string | null;
+  onShelf: boolean;
+}
+
+export interface AddPlaylistRequest {
+  providerUri: string;
+}
+
 export interface PlayersResponse {
   players: Player[];
   state: PlayerState[];

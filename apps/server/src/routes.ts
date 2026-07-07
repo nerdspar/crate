@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type {
+  AddPlaylistRequest,
   AddToShelfRequest,
   BrightnessRequest,
   CreateShelfRequest,
@@ -92,6 +93,14 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.delete('/api/shelf/:id', (req) => {
     const { id } = req.params as { id: string };
     service.removeFromShelf(id);
+    return { ok: true };
+  });
+
+  // Playlists: list the provider-library playlists for the add picker, and add one.
+  app.get('/api/playlists/library', () => service.listLibraryPlaylists());
+  app.post('/api/playlists', async (req) => {
+    const b = req.body as AddPlaylistRequest;
+    await service.addPlaylist(b.providerUri);
     return { ok: true };
   });
 

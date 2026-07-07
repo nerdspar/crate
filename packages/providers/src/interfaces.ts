@@ -12,6 +12,16 @@ export interface ProviderAlbum {
   artworkUrl: string | null;
 }
 
+export interface ProviderPlaylist {
+  /** Provider playback ref, e.g. `library://playlist/9`. */
+  providerUri: string;
+  provider: string;
+  name: string;
+  /** Playlist curator/owner (shown where an album shows the artist). */
+  owner: string | null;
+  artworkUrl: string | null;
+}
+
 export interface ProviderPlayer {
   id: string;
   name: string;
@@ -29,6 +39,10 @@ export interface MusicSource {
   search(query: string, limit?: number): Promise<ProviderAlbum[]>;
   getAlbum(providerUri: string): Promise<ProviderAlbum | null>;
   getTracks(providerUri: string): Promise<Track[]>;
+  /** The user's saved playlists (Apple Music library + MA-local), for the add picker. */
+  listLibraryPlaylists(limit?: number): Promise<ProviderPlaylist[]>;
+  /** Resolve one playlist (title, curator, artwork) for ingestion. */
+  getPlaylist(providerUri: string): Promise<ProviderPlaylist | null>;
 }
 
 /** A playback target (players, play, transport, volume, grouping, live state). */

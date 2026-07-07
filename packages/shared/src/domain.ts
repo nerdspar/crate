@@ -38,6 +38,9 @@ export interface Track {
   artist: string;
   duration: number | null;
   uri: string | null;
+  /** For playlist tracks: the provider uri of the track's album, so tapping a
+      song can open its album with the track cued. Null for plain album tracks. */
+  albumUri?: string | null;
 }
 
 export type PlayerType = 'sonos' | 'homepod' | 'airplay' | 'cast' | 'web' | 'other';

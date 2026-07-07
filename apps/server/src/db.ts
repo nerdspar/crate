@@ -188,14 +188,15 @@ export class Db {
 
   // --- Shelf --------------------------------------------------------------
 
-  listShelf(): ShelfRow[] {
+  listShelf(kind: ShelfKind = 'album'): ShelfRow[] {
     return this.db
       .prepare(
         `SELECT a.*, s.kind, s.sort_order, s.stack_id
          FROM shelf_items s JOIN albums a ON a.id = s.album_id
+         WHERE s.kind = ?
          ORDER BY s.sort_order ASC`,
       )
-      .all() as ShelfRow[];
+      .all(kind) as ShelfRow[];
   }
 
   isOnShelf(albumId: string): boolean {
@@ -209,11 +210,11 @@ export class Db {
     return new Set(rows.map((r) => r.uri));
   }
 
-  addToShelf(albumId: string, stackId: string | null = null): void {
+  addToShelf(albumId: string, kind: ShelfKind = 'album', stackId: string | null = null): void {
     const max = (this.db.prepare('SELECT MAX(sort_order) AS m FROM shelf_items').get() as { m: number | null }).m ?? 0;
     this.db
       .prepare('INSERT OR IGNORE INTO shelf_items (album_id, kind, sort_order, stack_id) VALUES (?, ?, ?, ?)')
-      .run(albumId, 'album', max + 1, stackId);
+      .run(albumId, kind, max + 1, stackId);
   }
 
   removeFromShelf(albumId: string): void {
@@ -230,7 +231,11 @@ export class Db {
       sort_order: number;
     }>;
     const user = rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind as ShelfKind, order: r.sort_order }));
-    return [{ id: 'all', name: 'All', kind: 'album', order: -1 }, ...user];
+    return [
+      { id: 'all', name: 'All', kind: 'album' as ShelfKind, order: -1 },
+      { id: 'playlists', name: 'All Playlists', kind: 'playlist' as ShelfKind, order: -1 },
+      ...user,
+    ];
   }
 
   createShelf(id: string, name: string, kind: ShelfKind): Shelf {
