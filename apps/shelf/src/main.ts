@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type InkMode, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type AwayAction, type ReturnAction, type InkMode, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -978,12 +978,37 @@ function renderChoices(): void {
       ['close', 'Close', 'Card closes right away'],
       ['linger', 'Linger', `Stays ~${settings.afterPlayLingerSec}s`],
       ['stay', 'Stay open', 'Until you close it'],
+      ['auto', 'Auto', 'Follows the proximity sensor'],
     ],
     (k) => settings.afterPlay === k,
     (k) => {
       settings.afterPlay = k as AfterPlay;
       renderChoices();
       void client.putSettings({ afterPlay: settings.afterPlay }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'away-choices',
+    [
+      ['close', 'Put away', 'Close the card'],
+      ['keep', 'Keep open', 'Leave it as-is'],
+    ],
+    (k) => settings.awayAction === k,
+    (k) => {
+      settings.awayAction = k as AwayAction;
+      void client.putSettings({ awayAction: settings.awayAction }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'return-choices',
+    [
+      ['reopen', 'Reopen last', 'Show the last-played album'],
+      ['none', 'Nothing', 'Just the shelf'],
+    ],
+    (k) => settings.returnAction === k,
+    (k) => {
+      settings.returnAction = k as ReturnAction;
+      void client.putSettings({ returnAction: settings.returnAction }).catch(() => {});
     },
   );
   updateConditionalRows();
@@ -995,6 +1020,11 @@ function updateConditionalRows(): void {
   const yearOn = settings.yearDisplay !== 'off';
   for (const id of ['yearpos-choices', 'yearemph-choices']) {
     document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !yearOn);
+  }
+  // Sensor presence sub-options only apply to the 'auto' after-play mode.
+  const auto = settings.afterPlay === 'auto';
+  for (const id of ['away-choices', 'return-choices']) {
+    document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !auto);
   }
 }
 

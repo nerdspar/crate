@@ -162,7 +162,10 @@ export type SpineWidthMode = 'uniform' | 'duration';
 /** Spine text reading direction: top→bottom or bottom→top (classic US CD spine). */
 export type SpineTextDir = 'ttb' | 'btt';
 /** What happens to the open album after you hit play. */
-export type AfterPlay = 'close' | 'linger' | 'stay';
+export type AfterPlay = 'close' | 'linger' | 'stay' | 'auto';
+/** Auto (sensor) presence behaviours — only active with a proximity sensor (§7). */
+export type AwayAction = 'close' | 'keep';
+export type ReturnAction = 'reopen' | 'none';
 /** Label ink strategy: guaranteed-contrast (white/black) vs match the album accent. */
 export type InkMode = 'contrast' | 'match';
 /** Album-year catalog imprint: hidden, or shown vertical/horizontal. */
@@ -208,6 +211,10 @@ export interface Settings {
   afterPlay: AfterPlay;
   /** Seconds the card lingers before closing when afterPlay is 'linger'. */
   afterPlayLingerSec: number;
+  /** With afterPlay 'auto' (needs a proximity sensor): what to do when the viewer
+      steps away, and when they walk back up. Inert until the sensor exists (§7). */
+  awayAction: AwayAction;
+  returnAction: ReturnAction;
   idleAutoOpen: boolean;
   idleMinutes: number;
 }
@@ -229,6 +236,8 @@ export const DEFAULT_SETTINGS: Settings = {
   longPressMs: 420,
   afterPlay: 'linger',
   afterPlayLingerSec: 8,
+  awayAction: 'close',
+  returnAction: 'none',
   idleAutoOpen: true,
   idleMinutes: 5,
 };
