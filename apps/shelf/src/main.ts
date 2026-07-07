@@ -1152,9 +1152,15 @@ function updateConditionalRows(): void {
   const idleOn = settings.idleAfterMin > 0 || settings.idleUseSensor;
   const show = (id: string, on: boolean): void =>
     void document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !on);
-  for (const id of ['idle-screen-choices', 'idle-content-choices'])
-    show(id, idleOn);
-  show('idle-dim-slider', idleOn && settings.idleScreen === 'dim');
+  // Screen + dim slider live in one .setting-keep block: hide the whole block when
+  // idle is off; when it's on, keep the dim row's space reserved (visibility only)
+  // so toggling Dim doesn't change column heights and rebalance the other columns.
+  document.querySelector('.setting-keep')?.classList.toggle('hidden-row', !idleOn);
+  document
+    .getElementById('idle-dim-slider')
+    ?.closest('.setting-row')
+    ?.classList.toggle('reserve-off', settings.idleScreen !== 'dim');
+  show('idle-content-choices', idleOn);
   // Target shelf is used by "A shelf" content and by auto-open when its pool is "A shelf".
   const needsShelf =
     settings.idleContent === 'shelf' ||

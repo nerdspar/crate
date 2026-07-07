@@ -493,7 +493,10 @@ button {
 /* Keeps grouped rows (e.g. When-idle-screen + its dim slider) together in one column. */
 .setting-keep { break-inside: avoid; }
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }
-.setting-row.hidden-row { display: none; }
+.hidden-row { display: none; }
+/* Reserve the row's space but hide its contents — keeps column heights (and thus
+   the whole multi-column balance) stable when a conditional control toggles. */
+.setting-row.reserve-off { visibility: hidden; }
 .setting-row .label {
   font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 500;
   display: flex; align-items: center; gap: 1.4vw;
