@@ -137,6 +137,11 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     void service.prewarmPlaylist((req.body as { providerUri: string }).providerUri);
     return { ok: true };
   });
+  // A playlist's tracks, for the play-now overlay.
+  app.get('/api/playlists/tracks', async (req) => {
+    const uri = ((req.query as { uri?: string }).uri ?? '').trim();
+    return uri ? service.providerPlaylistTracks(uri) : [];
+  });
 
   // Per-album overrides: upload custom spine/cover, or set label font/color/spacing.
   app.post('/api/albums/:id/art/:kind', async (req, reply) => {

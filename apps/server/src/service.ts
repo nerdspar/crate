@@ -218,6 +218,11 @@ export class Service {
     return { providerUri: albumUri, title: album.title, artist: album.artist, artworkUrl: album.artworkUrl, tracks, cueIndex, onShelf };
   }
 
+  /** A playlist's tracks (for the play-now overlay). */
+  async providerPlaylistTracks(uri: string): Promise<Track[]> {
+    return this.ma.getTracks(uri).catch((): Track[] => []);
+  }
+
   // --- Shelves (named curated collections) --------------------------------
 
   createShelf(name: string, kind: ShelfKind = 'album'): Shelf {

@@ -396,9 +396,13 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         const current = rec(queue['current_item']);
         const media = rec(current['media_item']);
         const hasNow = str(media['name']) !== undefined || str(current['name']) !== undefined;
+        // Some players (e.g. Sonos via MA) report a *paused* queue as 'idle' while
+        // keeping the loaded track — treat "idle with a current item" as paused so it
+        // stays resumable and survives a reload, instead of reading as "nothing playing".
+        const rawState = mapPlaybackState(str(queue['state']));
         return {
           playerId: id,
-          state: mapPlaybackState(str(queue['state'])),
+          state: rawState === 'idle' && hasNow ? 'paused' : rawState,
           volume: vol.volume,
           muted: vol.muted,
           groupLeader: groupLeaderById.get(id) ?? id,

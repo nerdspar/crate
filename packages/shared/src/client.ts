@@ -17,7 +17,7 @@ import type {
   TransportRequest,
   VolumeRequest,
 } from './api.js';
-import type { Settings, Shelf } from './domain.js';
+import type { Settings, Shelf, Track } from './domain.js';
 
 export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -116,6 +116,10 @@ export class CrateClient {
   }
   addPlaylist(providerUri: string): Promise<{ ok: true }> {
     return this.post('/api/playlists', { providerUri });
+  }
+  /** A playlist's tracks, for the play-now overlay. */
+  getPlaylistTracks(uri: string): Promise<Track[]> {
+    return this.req(`/api/playlists/tracks?uri=${encodeURIComponent(uri)}`);
   }
   /** Start resolving a playlist's track art before opening its song shelf. */
   prewarmPlaylist(providerUri: string): Promise<{ ok: true }> {

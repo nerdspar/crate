@@ -687,10 +687,11 @@ async function play(i: number, trackIndex?: number): Promise<void> {
     showToast('Playback failed');
     return;
   }
-  // Optimistic now-state; the next WS state/progress corrects it.
+  // Optimistic now-state; the next WS state/progress corrects it. Guard the first few
+  // seconds so a stale "not yet playing" frame doesn't flip the controls back to Play.
   userPaused = false;
   pauseGuardUntil = 0;
-  resumeGuardUntil = 0;
+  resumeGuardUntil = performance.now() + 3000;
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   applyNow();
   scheduleAfterPlayClose();
@@ -1242,8 +1243,10 @@ const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
 function openNowPlaying(): void {
   if (now.state === 'idle') return;
   if (playingIdx !== null) {
+    const i = playingIdx;
     closeCC();
-    openAlbum(playingIdx);
+    openAlbum(i);
+    expand(shelf.children[i] as HTMLElement, true); // open the full extended card
     return;
   }
   const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying;
@@ -1361,7 +1364,9 @@ function renderCCNow(): void {
   // metadata so the hero shows ANY room's content, even off the current shelf.
   const it = playingIdx !== null ? items[playingIdx] : null;
   const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying ?? null;
-  const title = it?.title ?? np?.album ?? np?.title ?? '';
+  const song = np?.title ?? null; // the current track
+  const albumName = it?.title ?? np?.album ?? null;
+  const title = song ?? albumName ?? '';
   if (now.state === 'idle' || !title) {
     ccArt.style.backgroundImage = '';
     ccTitle.textContent = 'Nothing playing';
@@ -1372,8 +1377,10 @@ function renderCCNow(): void {
   }
   const art = it?.artworkUrl ?? np?.artworkUrl ?? null;
   ccArt.style.backgroundImage = art ? `url('${art}')` : '';
+  // Show the SONG as the headline, artist + album beneath.
   ccTitle.textContent = title;
-  ccArtistEl.textContent = it?.artist ?? np?.artist ?? '';
+  const artist = it?.artist ?? np?.artist ?? '';
+  ccArtistEl.textContent = [artist, albumName && albumName !== title ? albumName : null].filter(Boolean).join(' · ');
   ccPlayPauseBtn.textContent = now.state === 'playing' ? '❚❚' : '▶';
   updateCCSeek();
 }
@@ -1971,6 +1978,7 @@ const albumModal = document.getElementById('album-modal') as HTMLElement;
 let modalUri: string | null = null; // the uri we asked to open (album or track)
 let modalAlbumUri: string | null = null; // resolved real album uri to play
 let modalCue = -1;
+let modalIsPlaylist = false; // the overlay is showing a playlist (plays the playlist uri)
 
 (albumModal.querySelector('.am-backdrop') as HTMLElement).addEventListener('click', closeAlbumModal);
 (albumModal.querySelector('.am-play') as HTMLElement).addEventListener('click', () => void onModalPlay());
@@ -1987,8 +1995,10 @@ function closeAlbumModal(): void {
   modalAlbumUri = null;
 }
 
-/** Is the album shown in the overlay the one currently playing? */
+/** Is the album shown in the overlay the one currently playing? (Playlists report the
+    current track's album, not the playlist, so we don't track "playing" for them.) */
 function modalIsPlaying(): boolean {
+  if (modalIsPlaylist) return false;
   const id = modalAlbumUri ? albumIdFromUri(modalAlbumUri) : null;
   return !!id && now.state !== 'idle' && now.albumId === id;
 }
@@ -2044,6 +2054,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   modalUri = uri;
   modalAlbumUri = null;
   modalCue = -1;
+  modalIsPlaylist = false;
   const set = (sel: string, text: string): void => {
     (albumModal.querySelector(sel) as HTMLElement).textContent = text;
   };
@@ -2068,21 +2079,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = d.artworkUrl ? `url('${d.artworkUrl}')` : '';
   set('.am-title', d.title);
   set('.am-artist', d.artist);
-  const tw = albumModal.querySelector('.am-tracks') as HTMLElement;
-  tw.innerHTML = '';
-  d.tracks.forEach((t, ti) => {
-    const row = document.createElement('div');
-    row.className = 'track' + (ti === d.cueIndex ? ' cued' : '');
-    const dur = t.duration ? fmtDur(t.duration) : '';
-    row.innerHTML = `<span class="n">${ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
-    // Tap = select/highlight only; the top Play button plays the selected track.
-    row.addEventListener('click', () => {
-      modalCue = ti;
-      tw.querySelectorAll('.track').forEach((r, idx) => r.classList.toggle('cued', idx === ti));
-      updateModalTransport(); // a different track → Play (not Pause)
-    });
-    tw.appendChild(row);
-  });
+  renderModalTracks(d.tracks, d.cueIndex);
   renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reuse the room picker
   const addSlot = albumModal.querySelector('.am-add') as HTMLElement;
   if (d.onShelf) {
@@ -2101,6 +2098,58 @@ async function openProviderAlbum(uri: string): Promise<void> {
   }
   updateModalTransport();
   updateModalNowTrack();
+}
+
+/** Render the overlay's track list (album or playlist). Tap = select/highlight only;
+    the top Play button plays the selected track. Playlist rows show the track artist. */
+function renderModalTracks(tracks: Track[], cueIndex: number, withArtist = false): void {
+  const tw = albumModal.querySelector('.am-tracks') as HTMLElement;
+  tw.innerHTML = '';
+  tracks.forEach((t, ti) => {
+    const row = document.createElement('div');
+    row.className = 'track' + (ti === cueIndex ? ' cued' : '');
+    const dur = t.duration ? fmtDur(t.duration) : '';
+    const label = withArtist && t.artist ? `${escapeHtml(t.title)} · ${escapeHtml(t.artist)}` : escapeHtml(t.title);
+    row.innerHTML = `<span class="n">${ti + 1}</span>${label}<span class="dur">${dur}</span>`;
+    row.addEventListener('click', () => {
+      modalCue = ti;
+      tw.querySelectorAll('.track').forEach((r, idx) => r.classList.toggle('cued', idx === ti));
+      updateModalTransport();
+    });
+    tw.appendChild(row);
+  });
+  updateModalNowTrack();
+}
+
+/** Play-now overlay for a playlist — mirrors the album overlay but plays the playlist
+    uri (from the selected track), and its Add control targets the playlists shelf. */
+async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
+  modalUri = pl.providerUri;
+  modalAlbumUri = pl.providerUri; // playModal plays the playlist uri
+  modalCue = -1;
+  modalIsPlaylist = true;
+  const set = (sel: string, text: string): void => {
+    (albumModal.querySelector(sel) as HTMLElement).textContent = text;
+  };
+  set('.am-eyebrow', 'Playlist');
+  set('.am-title', pl.name);
+  set('.am-artist', pl.owner ?? '');
+  (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = pl.artworkUrl ? `url('${pl.artworkUrl}')` : '';
+  (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
+  (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
+  (albumModal.querySelector('.am-add') as HTMLElement).appendChild(playlistAddControl(pl));
+  albumModal.hidden = false;
+  renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
+  updateModalTransport();
+  let tracks: Track[];
+  try {
+    tracks = await client.getPlaylistTracks(pl.providerUri);
+  } catch {
+    if (modalUri === pl.providerUri) (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
+    return;
+  }
+  if (modalUri !== pl.providerUri) return; // superseded
+  renderModalTracks(tracks, -1, true);
 }
 
 async function playModal(trackIndex?: number): Promise<void> {
@@ -2309,21 +2358,25 @@ function playlistAddControl(pl: LibraryPlaylist): HTMLElement {
     }
   };
 
-  mainBtn.onclick = async () => {
+  // Default action: add the playlist to the All Playlists shelf (or Open if it's there).
+  const addToAll = async (): Promise<void> => {
     if (added) {
-      void openAddedPlaylist(pl.name);
+      showToast('Already on All Playlists');
       return;
     }
     mainBtn.disabled = true;
     caret.disabled = true;
     mainBtn.textContent = 'Adding…';
-    if (await ensureAdded()) {
-      mainBtn.textContent = 'Added';
-    } else {
+    if (await ensureAdded()) mainBtn.textContent = 'Added';
+    else {
       mainBtn.disabled = false;
       caret.disabled = false;
       mainBtn.textContent = 'Add';
     }
+  };
+  mainBtn.onclick = () => {
+    if (added) void openAddedPlaylist(pl.name);
+    else void addToAll();
   };
   caret.onclick = (e) => {
     e.stopPropagation();
@@ -2331,7 +2384,10 @@ function playlistAddControl(pl: LibraryPlaylist): HTMLElement {
       closeAddMenu();
       return;
     }
-    openAddMenu(caret, [{ label: 'New song shelf', fn: () => void makeSongShelfFromPlaylist(pl) }]);
+    openAddMenu(caret, [
+      { label: 'Add to all playlists shelf', fn: () => void addToAll() },
+      { label: 'Create song shelf', fn: () => void makeSongShelfFromPlaylist(pl) },
+    ]);
   };
   ctrl.append(mainBtn, caret);
   return ctrl;
@@ -2642,6 +2698,8 @@ async function openPlaylistPicker(): Promise<void> {
 function playlistCard(pl: LibraryPlaylist): HTMLElement {
   const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, '');
   card.querySelector('.find-card-add')?.remove();
+  card.classList.add('find-card-tap'); // tap → play-now overlay (like albums/songs)
+  card.addEventListener('click', () => void openPlaylistOverlay(pl));
   card.appendChild(playlistAddControl(pl));
   return card;
 }
