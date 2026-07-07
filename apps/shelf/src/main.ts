@@ -1242,6 +1242,9 @@ const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
     it's there, otherwise open the play-now overlay for it. */
 function openNowPlaying(): void {
   if (now.state === 'idle') return;
+  // Pin the hero/now-state to the player we're opening, so the card reflects its live
+  // track + pause state (not another room that's also playing).
+  if (now.playerId) focusedPlayerId = now.playerId;
   if (playingIdx !== null) {
     const i = playingIdx;
     closeCC();
@@ -1540,13 +1543,14 @@ function roomIsPlaying(id: string): boolean {
 function roomCell(r: Player): HTMLElement {
   const armed = r.id === pendingGroup;
   const playing = roomIsPlaying(r.id);
+  const selected = r.id === activePlayerId; // where Play will send music
   const row = document.createElement('div');
   row.className =
-    'cc-room' + (r.id === focusedPlayerId ? ' focused' : '') + (armed ? ' pending' : '') + (playing ? ' playing' : '');
+    'cc-room' + (selected ? ' selected' : '') + (r.id === focusedPlayerId ? ' focused' : '') + (armed ? ' pending' : '') + (playing ? ' playing' : '');
   const isAdd = !armed && pendingGroup;
   row.innerHTML =
     `<div class="cc-room-top">` +
-    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}</span>` +
+    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}${selected ? ' <span class="cc-room-sel">selected</span>' : ''}</span>` +
     `<button class="cc-room-join${isAdd ? ' is-add' : ''}">${armed ? 'Cancel' : pendingGroup ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
@@ -1572,13 +1576,14 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   // button drops it here (Add). Otherwise the button arms/cancels this whole group.
   const canAdd = pendingGroup !== null && leaderOf(pendingGroup) !== leader;
   const groupArmed = pendingGroup === leader;
-  const playing = roomIsPlaying(leader); // the group plays through its leader
+  const playing = members.some((m) => roomIsPlaying(m.id)); // group plays if any member is
+  const selected = members.some((m) => m.id === activePlayerId); // Play target is in this group
   const cell = document.createElement('div');
-  cell.className = 'cc-room grouped cc-group' + (groupArmed ? ' pending' : '') + (playing ? ' playing' : '');
+  cell.className = 'cc-room grouped cc-group' + (selected ? ' selected' : '') + (groupArmed ? ' pending' : '') + (playing ? ' playing' : '');
   cell.innerHTML =
     `<div class="cc-room-top">` +
     `<button class="cc-group-toggle" aria-label="Show rooms">${expanded ? '▴' : '▾'}</button>` +
-    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
+    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}${selected ? ' <span class="cc-room-sel">selected</span>' : ''}</span>` +
     `<button class="cc-room-join${canAdd ? ' is-add' : ''}">${groupArmed ? 'Cancel' : canAdd ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +
@@ -1611,9 +1616,9 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   });
   const memWrap = cell.querySelector('.cc-group-members') as HTMLElement;
   for (const r of members) {
-    const mPlaying = playing || roomIsPlaying(r.id); // whole group plays through the leader
+    const mPlaying = playing; // a group plays as one unit → every member shows the EQ
     const m = document.createElement('div');
-    m.className = 'cc-group-member' + (r.id === focusedPlayerId ? ' focused' : '') + (mPlaying ? ' playing' : '');
+    m.className = 'cc-group-member' + (mPlaying ? ' playing' : '');
     m.innerHTML =
       `<div class="cc-room-top">` +
       `<span class="cc-room-name">${mPlaying ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}${r.id === leader ? ' <span class="cc-room-tag">leader</span>' : ''}</span>` +
@@ -1621,7 +1626,8 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
       `</div>` +
       `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
     wireVolume(m.querySelector('input') as HTMLInputElement, r.id);
-    (m.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
+    // Members are NOT individually selectable — the group is the player unit. Only
+    // the volume slider and Leave act per-room.
     (m.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', (e) => {
       e.stopPropagation();
       ungroupRoom(r.id);
