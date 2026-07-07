@@ -395,14 +395,23 @@ const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> 
   ['yearEmphasis', 'Year emphasis', [['thin', 'Thin'], ['bold', 'Bold']]],
   ['openMode', 'Opening an album', [['cover', 'Cover only'], ['card', 'Full card']]],
   ['sortBy', 'Shelf sort', [['artist', 'Artist'], ['title', 'Title'], ['added', 'Recently added'], ['played', 'Most played'], ['year', 'Year'], ['color', 'Color'], ['custom', 'Custom order']]],
-  ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open'], ['auto', 'Auto (sensor)']]],
-  ['awayAction', 'Step away (sensor)', [['close', 'Put away'], ['keep', 'Keep open']]],
-  ['returnAction', 'Return (sensor)', [['reopen', 'Reopen last'], ['none', 'Nothing']]],
+  ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open']]],
+  ['idleScreen', 'When idle — screen', [['on', 'Stay on'], ['dim', 'Dim'], ['off', 'Screen off']]],
+  ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['shelf', 'A shelf'], ['autoOpen', 'Auto-open']]],
+  ['autoOpenPool', 'Auto-open from', [['all', 'All albums'], ['current', 'Current shelf'], ['shelf', 'A specific shelf']]],
 ];
 const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
   ['afterPlayLingerSec', 'Linger seconds', 1, 60],
   ['longPressMs', 'Long-press (ms)', 100, 1500],
-  ['idleMinutes', 'Idle auto-open (min)', 1, 120],
+  ['idleAfterMin', 'Go idle after (min, 0=never)', 0, 240],
+  ['idleDimPercent', 'Idle dim brightness (%)', 1, 100],
+  ['autoOpenEverySec', 'Auto-open every (sec)', 5, 300],
+];
+const SETTING_TOGGLES: Array<[keyof Settings, string]> = [
+  ['autoOpenRandom', 'Auto-open in random order'],
+  ['idleUseSensor', 'Idle from proximity sensor (needs sensor)'],
+  ['wakeOnSensor', 'Wake from proximity sensor (needs sensor)'],
+  ['autoBrightness', 'Auto-brightness from ambient light (needs sensor)'],
 ];
 
 async function loadSettingsPanel(): Promise<void> {
@@ -460,17 +469,67 @@ function renderSettingsForm(): void {
     field.appendChild(inp);
     form.appendChild(field);
   }
-  const tf = document.createElement('div');
-  tf.className = 'field field-toggle';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = !!settings.idleAutoOpen;
-  cb.addEventListener('change', () => void saveSetting('idleAutoOpen', cb.checked));
-  const lab = document.createElement('label');
-  lab.appendChild(cb);
-  lab.append(' Idle auto-open');
-  tf.appendChild(lab);
-  form.appendChild(tf);
+  // Idle shelf (for content 'A shelf' and auto-open 'A specific shelf').
+  const isf = document.createElement('div');
+  isf.className = 'field';
+  const issel = document.createElement('select');
+  const optAll = document.createElement('option');
+  optAll.value = '';
+  optAll.textContent = 'All';
+  if (!settings.idleShelf) optAll.selected = true;
+  issel.appendChild(optAll);
+  for (const sh of shelves.filter((s) => s.id !== 'all')) {
+    const o = document.createElement('option');
+    o.value = sh.id;
+    o.textContent = sh.name;
+    if (settings.idleShelf === sh.id) o.selected = true;
+    issel.appendChild(o);
+  }
+  issel.addEventListener('change', () => void saveSetting('idleShelf', issel.value || null));
+  isf.innerHTML = '<label>Idle / auto-open shelf</label>';
+  isf.appendChild(issel);
+  form.appendChild(isf);
+  // Toggles
+  for (const [key, label] of SETTING_TOGGLES) {
+    const tf = document.createElement('div');
+    tf.className = 'field field-toggle';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!settings[key];
+    cb.addEventListener('change', () => void saveSetting(key, cb.checked as Settings[typeof key]));
+    const lab = document.createElement('label');
+    lab.appendChild(cb);
+    lab.append(' ' + label);
+    tf.appendChild(lab);
+    form.appendChild(tf);
+  }
+  renderSchedule();
+}
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function renderSchedule(): void {
+  const el = document.getElementById('schedule-editor');
+  if (!el || !settings) return;
+  el.innerHTML = '<h3 class="sched-h">Sleep schedule <span class="hint">(screen off; touch wakes it briefly)</span></h3>';
+  DAYS.forEach((name, i) => {
+    const day = settings!.sleepSchedule?.[i] ?? { on: false, sleep: '23:00', wake: '07:00' };
+    const row = document.createElement('div');
+    row.className = 'sched-row';
+    row.innerHTML =
+      `<label class="sched-day"><input type="checkbox" ${day.on ? 'checked' : ''}> ${name}</label>` +
+      `<span class="sched-t">sleep <input type="time" class="sched-sleep" value="${day.sleep}"></span>` +
+      `<span class="sched-t">wake <input type="time" class="sched-wake" value="${day.wake}"></span>`;
+    const save = (): void => {
+      const on = (row.querySelector('.sched-day input') as HTMLInputElement).checked;
+      const sleep = (row.querySelector('.sched-sleep') as HTMLInputElement).value || '23:00';
+      const wake = (row.querySelector('.sched-wake') as HTMLInputElement).value || '07:00';
+      const next = [...(settings!.sleepSchedule ?? DAYS.map(() => ({ on: false, sleep: '23:00', wake: '07:00' })))];
+      next[i] = { on, sleep, wake };
+      void saveSetting('sleepSchedule', next);
+    };
+    row.querySelectorAll('input').forEach((inp) => inp.addEventListener('change', save));
+    el.appendChild(row);
+  });
 }
 
 async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {

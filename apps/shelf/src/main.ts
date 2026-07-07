@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type AwayAction, type ReturnAction, type InkMode, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -978,7 +978,6 @@ function renderChoices(): void {
       ['close', 'Close', 'Card closes right away'],
       ['linger', 'Linger', `Stays ~${settings.afterPlayLingerSec}s`],
       ['stay', 'Stay open', 'Until you close it'],
-      ['auto', 'Auto', 'Follows the proximity sensor'],
     ],
     (k) => settings.afterPlay === k,
     (k) => {
@@ -988,27 +987,31 @@ function renderChoices(): void {
     },
   );
   choiceRow(
-    'away-choices',
-    [
-      ['close', 'Put away', 'Close the card'],
-      ['keep', 'Keep open', 'Leave it as-is'],
-    ],
-    (k) => settings.awayAction === k,
+    'idle-after-choices',
+    [['0', 'Never', ''], ['1', '1 min', ''], ['5', '5 min', ''], ['10', '10 min', ''], ['30', '30 min', '']],
+    (k) => String(settings.idleAfterMin) === k,
     (k) => {
-      settings.awayAction = k as AwayAction;
-      void client.putSettings({ awayAction: settings.awayAction }).catch(() => {});
+      settings.idleAfterMin = Number(k);
+      void client.putSettings({ idleAfterMin: settings.idleAfterMin }).catch(() => {});
+      restartIdleWatch();
     },
   );
   choiceRow(
-    'return-choices',
-    [
-      ['reopen', 'Reopen last', 'Show the last-played album'],
-      ['none', 'Nothing', 'Just the shelf'],
-    ],
-    (k) => settings.returnAction === k,
+    'idle-screen-choices',
+    [['on', 'Stay on', ''], ['dim', 'Dim', ''], ['off', 'Screen off', '']],
+    (k) => settings.idleScreen === k,
     (k) => {
-      settings.returnAction = k as ReturnAction;
-      void client.putSettings({ returnAction: settings.returnAction }).catch(() => {});
+      settings.idleScreen = k as IdleScreen;
+      void client.putSettings({ idleScreen: settings.idleScreen }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'idle-content-choices',
+    [['nothing', 'Nothing', ''], ['nowPlaying', 'Now playing', ''], ['shelf', 'A shelf', ''], ['autoOpen', 'Auto-open', '']],
+    (k) => settings.idleContent === k,
+    (k) => {
+      settings.idleContent = k as IdleContent;
+      void client.putSettings({ idleContent: settings.idleContent }).catch(() => {});
     },
   );
   updateConditionalRows();
@@ -1021,10 +1024,10 @@ function updateConditionalRows(): void {
   for (const id of ['yearpos-choices', 'yearemph-choices']) {
     document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !yearOn);
   }
-  // Sensor presence sub-options only apply to the 'auto' after-play mode.
-  const auto = settings.afterPlay === 'auto';
-  for (const id of ['away-choices', 'return-choices']) {
-    document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !auto);
+  // Idle content/screen only matter if idle is enabled (idleAfterMin > 0).
+  const idleOn = settings.idleAfterMin > 0;
+  for (const id of ['idle-screen-choices', 'idle-content-choices']) {
+    document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !idleOn);
   }
 }
 
@@ -2720,10 +2723,114 @@ function markActive(): void {
   document.body.classList.remove('idle');
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => document.body.classList.add('idle'), IDLE_MS);
+  // A touch during scheduled sleep wakes the screen for a couple of minutes.
+  if (scheduledAsleep) {
+    tempWakeUntil = Date.now() + 120000;
+    checkSchedule(); // wake immediately, don't wait for the 30s tick
+  }
+  if (isIdle) exitIdle();
+  restartIdleWatch();
 }
 window.addEventListener('pointerdown', markActive, { passive: true });
 window.addEventListener('pointermove', markActive, { passive: true });
 window.addEventListener('keydown', markActive);
+
+/* ---------- Idle actions + attract mode + sleep schedule (unified §7) ----------
+   Timer-based idle (dim/screen-off + now-playing/shelf/auto-open) and the per-day
+   sleep schedule work now; the sensor + ambient-light options are settings-only
+   until that hardware exists. */
+let isIdle = false;
+let idleActionTimer: ReturnType<typeof setTimeout> | null = null;
+let attractTimer: ReturnType<typeof setInterval> | null = null;
+let preIdleBrightness: number | null = null;
+let attractIdx = -1;
+
+function restartIdleWatch(): void {
+  if (idleActionTimer) clearTimeout(idleActionTimer);
+  const min = settings.idleAfterMin;
+  if (min > 0) idleActionTimer = setTimeout(() => void enterIdle(), min * 60000);
+}
+
+async function enterIdle(): Promise<void> {
+  if (isIdle) return;
+  isIdle = true;
+  // Screen
+  if (settings.idleScreen === 'off') {
+    void client.setDisplaySleep(true).catch(() => {});
+  } else if (settings.idleScreen === 'dim') {
+    preIdleBrightness = system?.brightness ?? 100;
+    void client.setBrightness(settings.idleDimPercent).then(applySystemStatus).catch(() => {});
+  }
+  // Content
+  if (settings.idleContent === 'nowPlaying') {
+    if (playingIdx !== null) openCover(playingIdx);
+  } else if (settings.idleContent === 'shelf') {
+    await switchShelf(settings.idleShelf ?? 'all', true);
+  } else if (settings.idleContent === 'autoOpen') {
+    await startAttract();
+  }
+}
+
+function exitIdle(): void {
+  if (!isIdle) return;
+  isIdle = false;
+  stopAttract();
+  if (settings.idleScreen === 'off') void client.setDisplaySleep(false).catch(() => {});
+  else if (settings.idleScreen === 'dim' && preIdleBrightness != null) {
+    void client.setBrightness(preIdleBrightness).then(applySystemStatus).catch(() => {});
+    preIdleBrightness = null;
+  }
+}
+
+/** Open an album showing just its cover (no expanded details) — for idle display. */
+function openCover(i: number): void {
+  openAlbum(i, false);
+  (shelf.children[i] as HTMLElement | undefined)?.classList.remove('expanded');
+}
+
+async function startAttract(): Promise<void> {
+  stopAttract();
+  // Point the wall at the auto-open pool so `items` is the right set.
+  if (settings.autoOpenPool === 'all') await switchShelf('all', true);
+  else if (settings.autoOpenPool === 'shelf' && settings.idleShelf) await switchShelf(settings.idleShelf, true);
+  const step = (): void => {
+    if (!items.length) return;
+    if (settings.autoOpenRandom) attractIdx = Math.floor(Math.random() * items.length);
+    else attractIdx = (attractIdx + 1) % items.length;
+    openCover(attractIdx);
+  };
+  step();
+  attractTimer = setInterval(step, Math.max(5, settings.autoOpenEverySec) * 1000);
+}
+function stopAttract(): void {
+  if (attractTimer) clearInterval(attractTimer);
+  attractTimer = null;
+}
+
+/* Per-day sleep schedule — screen off during the window; touch wakes it briefly. */
+let scheduledAsleep = false;
+let tempWakeUntil = 0;
+function checkSchedule(): void {
+  const d = new Date();
+  const day = settings.sleepSchedule?.[d.getDay()];
+  let inWindow = false;
+  if (day?.on) {
+    const cur = d.getHours() * 60 + d.getMinutes();
+    const [sh, sm] = day.sleep.split(':').map(Number);
+    const [wh, wm] = day.wake.split(':').map(Number);
+    const s = (sh ?? 0) * 60 + (sm ?? 0);
+    const w = (wh ?? 0) * 60 + (wm ?? 0);
+    inWindow = s <= w ? cur >= s && cur < w : cur >= s || cur < w; // handles overnight
+  }
+  const shouldSleep = inWindow && Date.now() > tempWakeUntil;
+  if (shouldSleep && !scheduledAsleep) {
+    scheduledAsleep = true;
+    void client.setDisplaySleep(true).catch(() => {});
+  } else if (!shouldSleep && scheduledAsleep) {
+    scheduledAsleep = false;
+    void client.setDisplaySleep(false).catch(() => {});
+  }
+}
 
 /* Only #shelf-viewport should ever scroll. Focusing an input (e.g. the Find
    search) can still nudge the document itself, which shifts the absolute
@@ -2763,6 +2870,9 @@ async function boot(): Promise<void> {
   connectWs();
   requestAnimationFrame(tick);
   markActive(); // start the idle countdown
+  restartIdleWatch(); // start the idle-action timer from settings
+  checkSchedule();
+  setInterval(checkSchedule, 30000); // per-day sleep window
 }
 
 void boot();

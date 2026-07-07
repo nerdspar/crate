@@ -162,10 +162,18 @@ export type SpineWidthMode = 'uniform' | 'duration';
 /** Spine text reading direction: top→bottom or bottom→top (classic US CD spine). */
 export type SpineTextDir = 'ttb' | 'btt';
 /** What happens to the open album after you hit play. */
-export type AfterPlay = 'close' | 'linger' | 'stay' | 'auto';
-/** Auto (sensor) presence behaviours — only active with a proximity sensor (§7). */
-export type AwayAction = 'close' | 'keep';
-export type ReturnAction = 'reopen' | 'none';
+export type AfterPlay = 'close' | 'linger' | 'stay';
+/** Unified idle / presence / sleep (§7). Timer + schedule work today; the sensor +
+    ambient-light options are wired but dormant until that hardware exists. */
+export type IdleScreen = 'on' | 'dim' | 'off'; // what the display does when idle
+export type IdleContent = 'nothing' | 'nowPlaying' | 'shelf' | 'autoOpen'; // what it shows
+export type AutoOpenPool = 'all' | 'current' | 'shelf';
+/** One weekday's lights-out window (index 0 = Sunday). */
+export interface DaySchedule {
+  on: boolean;
+  sleep: string; // 'HH:MM'
+  wake: string; // 'HH:MM'
+}
 /** Label ink strategy: guaranteed-contrast (white/black) vs match the album accent. */
 export type InkMode = 'contrast' | 'match';
 /** Album-year catalog imprint: hidden, or shown vertical/horizontal. */
@@ -211,12 +219,30 @@ export interface Settings {
   afterPlay: AfterPlay;
   /** Seconds the card lingers before closing when afterPlay is 'linger'. */
   afterPlayLingerSec: number;
-  /** With afterPlay 'auto' (needs a proximity sensor): what to do when the viewer
-      steps away, and when they walk back up. Inert until the sensor exists (§7). */
-  awayAction: AwayAction;
-  returnAction: ReturnAction;
-  idleAutoOpen: boolean;
-  idleMinutes: number;
+
+  // --- Idle / presence / sleep (unified §7) ---
+  /** Go idle after this many minutes of no touch (0 = never). */
+  idleAfterMin: number;
+  /** Also trigger idle from the proximity sensor seeing nobody (inert until hardware). */
+  idleUseSensor: boolean;
+  /** What the display does when idle. */
+  idleScreen: IdleScreen;
+  /** Brightness % when idleScreen is 'dim'. */
+  idleDimPercent: number;
+  /** What the shelf shows when idle. */
+  idleContent: IdleContent;
+  /** Shelf id for idleContent 'shelf' (and autoOpen pool 'shelf'); null = All. */
+  idleShelf: string | null;
+  /** Auto-open (attract) cadence, source pool, and order. */
+  autoOpenEverySec: number;
+  autoOpenPool: AutoOpenPool;
+  autoOpenRandom: boolean;
+  /** Wake from the proximity sensor too (touch always wakes). Inert until hardware. */
+  wakeOnSensor: boolean;
+  /** Drive brightness from an ambient-light sensor (inert until hardware). */
+  autoBrightness: boolean;
+  /** Per-weekday lights-out windows (index 0 = Sunday). */
+  sleepSchedule: DaySchedule[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -236,8 +262,16 @@ export const DEFAULT_SETTINGS: Settings = {
   longPressMs: 420,
   afterPlay: 'linger',
   afterPlayLingerSec: 8,
-  awayAction: 'close',
-  returnAction: 'none',
-  idleAutoOpen: true,
-  idleMinutes: 5,
+  idleAfterMin: 5,
+  idleUseSensor: false,
+  idleScreen: 'dim',
+  idleDimPercent: 20,
+  idleContent: 'nowPlaying',
+  idleShelf: null,
+  autoOpenEverySec: 25,
+  autoOpenPool: 'all',
+  autoOpenRandom: true,
+  wakeOnSensor: false,
+  autoBrightness: false,
+  sleepSchedule: [0, 1, 2, 3, 4, 5, 6].map(() => ({ on: false, sleep: '23:00', wake: '07:00' })),
 };

@@ -139,6 +139,18 @@ button:disabled { opacity: 0.5; cursor: default; }
 #shelf-list.draggable .card { cursor: grab; }
 #shelf-list.draggable .card:active { cursor: grabbing; }
 .card.dragging { opacity: 0.45; }
+/* Sleep schedule editor */
+#schedule-editor { margin-top: 1.8rem; max-width: 620px; }
+.sched-h { font-family: 'Newsreader Variable', serif; font-weight: 500; font-size: 1.15rem; margin-bottom: 0.8rem; }
+.sched-h .hint { font-family: 'Archivo Narrow', sans-serif; font-weight: 400; }
+.sched-row { display: flex; align-items: center; gap: 1.2rem; padding: 0.5rem 0; border-top: 1px solid var(--line); }
+.sched-day { display: flex; align-items: center; gap: 0.5rem; width: 5rem; cursor: pointer; }
+.sched-day input { width: 1.1rem; height: 1.1rem; }
+.sched-t { color: var(--ink-dim); font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
+.sched-t input[type='time'] {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); font: inherit; padding: 0.35rem 0.5rem;
+}
 
 #toast {
   position: fixed; bottom: 4vh; left: 50%; transform: translate(-50%, 200%);
