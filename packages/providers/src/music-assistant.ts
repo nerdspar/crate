@@ -412,6 +412,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 trackIndex: num(queue['current_index']) ?? null,
                 duration: num(current['duration']) ?? num(media['duration']) ?? null,
                 elapsed: num(queue['elapsed_time']) ?? null,
+                artworkUrl: this.artworkUrl(media) ?? this.artworkUrl(current) ?? this.artworkUrl(rec(media['album'])),
               }
             : null,
         };

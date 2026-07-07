@@ -68,6 +68,9 @@ export interface NowPlaying {
   trackIndex: number | null;
   duration: number | null;
   elapsed: number | null;
+  /** Cover art for the now-playing item (so the CC hero can show any room's
+      content, even one not on the current shelf). */
+  artworkUrl: string | null;
 }
 
 export interface PlayerState {

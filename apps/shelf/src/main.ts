@@ -1116,8 +1116,12 @@ ccSeekEl.addEventListener('click', (e) => {
 /* ---- Now-playing render ---- */
 function renderCCNow(): void {
   if (!ccIsOpen()) return;
+  // Prefer the shelf item (has cover art); fall back to the player's now-playing
+  // metadata so the hero shows ANY room's content, even off the current shelf.
   const it = playingIdx !== null ? items[playingIdx] : null;
-  if (!it || now.state === 'idle') {
+  const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying ?? null;
+  const title = it?.title ?? np?.album ?? np?.title ?? '';
+  if (now.state === 'idle' || !title) {
     ccArt.style.backgroundImage = '';
     ccTitle.textContent = 'Nothing playing';
     ccArtistEl.textContent = '';
@@ -1125,15 +1129,16 @@ function renderCCNow(): void {
     updateCCSeek();
     return;
   }
-  ccArt.style.backgroundImage = it.artworkUrl ? `url('${it.artworkUrl}')` : '';
-  ccTitle.textContent = it.title;
-  ccArtistEl.textContent = it.artist;
+  const art = it?.artworkUrl ?? np?.artworkUrl ?? null;
+  ccArt.style.backgroundImage = art ? `url('${art}')` : '';
+  ccTitle.textContent = title;
+  ccArtistEl.textContent = it?.artist ?? np?.artist ?? '';
   ccPlayPauseBtn.textContent = now.state === 'playing' ? '❚❚' : '▶';
   updateCCSeek();
 }
 function updateCCSeek(): void {
   if (!ccIsOpen()) return;
-  if (now.duration > 0 && playingIdx !== null) {
+  if (now.duration > 0 && now.state !== 'idle') {
     const e = liveElapsed();
     ccSeekFill.style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
     ccCur.textContent = fmtDur(e);
@@ -1169,6 +1174,7 @@ function groupSig(): string {
   return rooms.map((r) => leaderOf(r.id)).join(',');
 }
 let lastGroupSig = '';
+let lastPlayingSig = ''; // which rooms are playing — re-render the grid when it changes
 /** Optimistically set a player's leader locally (before MA confirms). */
 function setLeaderLocal(playerId: string, leader: string): void {
   const s = lastStates.find((x) => x.playerId === playerId);
@@ -1275,20 +1281,31 @@ function renderCCRooms(): void {
 
 /** A solo speaker: tap the name to control it; "Group" arms it, then a second
     room's "Group" joins them ("Cancel" while armed). */
+/** Is this player actively playing something right now? */
+function roomIsPlaying(id: string): boolean {
+  return lastStates.some((s) => s.playerId === id && s.state === 'playing' && !!s.nowPlaying);
+}
+
 function roomCell(r: Player): HTMLElement {
   const armed = r.id === pendingGroup;
+  const playing = roomIsPlaying(r.id);
   const row = document.createElement('div');
-  row.className = 'cc-room' + (r.id === focusedPlayerId ? ' focused' : '') + (armed ? ' pending' : '');
+  row.className =
+    'cc-room' + (r.id === focusedPlayerId ? ' focused' : '') + (armed ? ' pending' : '') + (playing ? ' playing' : '');
   const isAdd = !armed && pendingGroup;
   row.innerHTML =
     `<div class="cc-room-top">` +
-    `<span class="cc-room-name">${escapeHtml(r.name)}</span>` +
+    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}</span>` +
     `<button class="cc-room-join${isAdd ? ' is-add' : ''}">${armed ? 'Cancel' : pendingGroup ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
   wireVolume(row.querySelector('input') as HTMLInputElement, r.id);
-  (row.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
-  (row.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', () => groupRoom(r.id));
+  // Tap the row (name / blank area) → make the now-playing hero follow this room.
+  (row.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
+  (row.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', (e) => {
+    e.stopPropagation();
+    groupRoom(r.id);
+  });
   return row;
 }
 
@@ -1301,19 +1318,21 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   // button drops it here (Add). Otherwise the button arms/cancels this whole group.
   const canAdd = pendingGroup !== null && leaderOf(pendingGroup) !== leader;
   const groupArmed = pendingGroup === leader;
+  const playing = roomIsPlaying(leader); // the group plays through its leader
   const cell = document.createElement('div');
-  cell.className = 'cc-room grouped cc-group' + (groupArmed ? ' pending' : '');
+  cell.className = 'cc-room grouped cc-group' + (groupArmed ? ' pending' : '') + (playing ? ' playing' : '');
   cell.innerHTML =
     `<div class="cc-room-top">` +
     `<button class="cc-group-toggle" aria-label="Show rooms">${expanded ? '▴' : '▾'}</button>` +
-    `<span class="cc-room-name">${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
+    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
     `<button class="cc-room-join${canAdd ? ' is-add' : ''}">${groupArmed ? 'Cancel' : canAdd ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +
     `<div class="cc-group-members"${expanded ? '' : ' hidden'}></div>`;
-  (cell.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', () =>
-    canAdd ? addToGroup(leader) : groupRoom(leader),
-  );
+  (cell.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', (e) => {
+    e.stopPropagation();
+    canAdd ? addToGroup(leader) : groupRoom(leader);
+  });
   (cell.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
     const level = +(e.target as HTMLInputElement).value;
     for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
@@ -1323,21 +1342,29 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     else expandedGroups.add(leader);
     renderCCRooms();
   };
-  (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', toggleGroup);
-  (cell.querySelector('.cc-room-top > .cc-room-name') as HTMLElement).addEventListener('click', toggleGroup);
+  // Caret expands; tapping the row (name / blank area) focuses the hero on the group.
+  (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleGroup();
+  });
+  (cell.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => focusRoom(leader));
   const memWrap = cell.querySelector('.cc-group-members') as HTMLElement;
   for (const r of members) {
+    const mPlaying = roomIsPlaying(r.id);
     const m = document.createElement('div');
-    m.className = 'cc-group-member' + (r.id === focusedPlayerId ? ' focused' : '');
+    m.className = 'cc-group-member' + (r.id === focusedPlayerId ? ' focused' : '') + (mPlaying ? ' playing' : '');
     m.innerHTML =
       `<div class="cc-room-top">` +
-      `<span class="cc-room-name">${escapeHtml(r.name)}${r.id === leader ? ' <span class="cc-room-tag">leader</span>' : ''}</span>` +
+      `<span class="cc-room-name">${mPlaying ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}${r.id === leader ? ' <span class="cc-room-tag">leader</span>' : ''}</span>` +
       `<button class="cc-room-join">Leave</button>` +
       `</div>` +
       `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
     wireVolume(m.querySelector('input') as HTMLInputElement, r.id);
-    (m.querySelector('.cc-room-name') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
-    (m.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', () => ungroupRoom(r.id));
+    (m.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
+    (m.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', (e) => {
+      e.stopPropagation();
+      ungroupRoom(r.id);
+    });
     memWrap.appendChild(m);
   }
   return cell;
@@ -1829,6 +1856,24 @@ async function makeSongShelfFromPlaylist(pl: LibraryPlaylist): Promise<void> {
   await openAsSongShelf(media.albumId, pl.name);
 }
 
+/** Deterministic album id from a provider uri (mirrors the server's albumIdFromUri). */
+function albumIdFromUri(uri: string): string {
+  return uri
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+/** After adding an album to a named shelf, switch the wall to it and scroll to the
+    album — leaving the Find bar open so you can keep adding (#7). */
+async function revealAddedAlbum(shelfId: string, providerUri: string): Promise<void> {
+  closeAlbumModal();
+  const albumId = albumIdFromUri(providerUri);
+  await switchShelf(shelfId, false); // keep the Find bar open
+  const idx = items.findIndex((it) => it.albumId === albumId);
+  if (idx >= 0) requestAnimationFrame(() => smoothScrollTo(vp, settledLeft(idx) - vp.clientWidth * 0.12));
+}
+
 /** A provider album match — the button adds to the open shelf (or library on All);
     a ▾ dropdown picks a different destination (or a new shelf). */
 function addCard(al: SearchAlbum): HTMLElement {
@@ -1870,6 +1915,9 @@ function addAlbumControl(providerUri: string): HTMLElement {
       await client.addToShelf({ providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
       const n = nameOf(shelfId);
       mainBtn.textContent = n ? `Added to ${n}` : 'Added';
+      // Added to a named shelf → switch the wall to it and reveal the album, but
+      // keep the Find bar open so you can add more (#7).
+      if (shelfId !== 'all') void revealAddedAlbum(shelfId, providerUri);
     } catch {
       mainBtn.disabled = false;
       caret.disabled = false;
@@ -2460,11 +2508,20 @@ function handleState(states: PlayerState[]): void {
   applyNow();
   // Reflect real grouping changes live (confirms optimistic updates, or reverts
   // if a group/ungroup didn't take) — without re-rendering on volume/progress frames.
+  // Re-render the room grid on group changes (confirm/revert optimistic grouping)
+  // OR when the set of *playing* rooms changes (keep the EQ / bold markers live).
   const sig = groupSig();
-  if (sig !== lastGroupSig) {
+  const psig = lastStates
+    .filter((s) => s.state === 'playing' && s.nowPlaying)
+    .map((s) => s.playerId)
+    .sort()
+    .join(',');
+  if (sig !== lastGroupSig || psig !== lastPlayingSig) {
+    const groupChanged = sig !== lastGroupSig;
     lastGroupSig = sig;
+    lastPlayingSig = psig;
     if (ccIsOpen()) renderCCRooms();
-    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    if (groupChanged && openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
   }
 }
 
