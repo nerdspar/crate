@@ -273,15 +273,15 @@ function buildShelf(): void {
         <h1>${escapeHtml(a.title)}</h1>
         <h2>${escapeHtml(a.artist)}</h2>
         <div class="nowbar" hidden>
-          <div class="np-controls">
-            <button class="np-btn np-prev" aria-label="Previous track">⏮</button>
-            <button class="np-btn np-next" aria-label="Next track">⏭</button>
-          </div>
           <div class="seek"><div class="seek-fill"></div></div>
           <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
         </div>
         <div class="actions">
-          <button class="play">Play</button>
+          <div class="transport">
+            <button class="np-btn np-prev" aria-label="Previous track" hidden>⏮</button>
+            <button class="play">Play</button>
+            <button class="np-btn np-next" aria-label="Next track" hidden>⏭</button>
+          </div>
           ${isPlaylistCase ? '<button class="songs">Songs</button>' : ''}
           <div class="rooms"></div>
           <div class="vol">
@@ -2939,6 +2939,8 @@ function updatePlayButton(): void {
   const panel = shelf.children[openIdx] as HTMLElement;
   const btn = panel.querySelector('.play') as HTMLButtonElement | null;
   const eyebrow = panel.querySelector('.eyebrow') as HTMLElement | null;
+  const prev = panel.querySelector('.np-prev') as HTMLElement | null;
+  const next = panel.querySelector('.np-next') as HTMLElement | null;
   const isThis = playingIdx === openIdx; // this album is the focused now-playing
   // Pause/Resume only when this album plays and nothing's changed; otherwise it's the
   // "play my selection" trigger (a different room or track) — always visible.
@@ -2946,7 +2948,11 @@ function updatePlayButton(): void {
   if (btn) {
     btn.hidden = false;
     btn.textContent = pureToggle ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
+    btn.classList.toggle('compact', pureToggle); // shrink to make room for the flanking skips
   }
+  // Skip ⏮/⏭ flank the button only while it's the live play/pause control.
+  if (prev) prev.hidden = !pureToggle;
+  if (next) next.hidden = !pureToggle;
   if (eyebrow) eyebrow.textContent = isThis ? 'Now playing' : 'From your library';
 }
 
