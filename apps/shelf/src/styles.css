@@ -175,10 +175,10 @@ body {
   position: absolute;
   z-index: -1; pointer-events: none;
   background-size: cover; background-position: center;
-  filter: blur(1.6vh) saturate(1.6);
+  filter: blur(6vh) saturate(1.8);
   opacity: 0; transition: opacity 0.5s ease;
 }
-.shelf-glow.on { opacity: 0.9; }
+.shelf-glow.on { opacity: 0.95; }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 

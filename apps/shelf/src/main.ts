@@ -172,11 +172,11 @@ function positionGlow(i: number): void {
   const a = items[i];
   const el = shelf.children[i] as HTMLElement | undefined;
   if (!a || !el) return;
-  const d = 0.015 * window.innerWidth; // the 1.5vw margin .spine.open adds on each side
+  const d = 0.05 * window.innerWidth; // halo spread — a soft backlight beyond the cover
   const cw = coverW();
-  // x from settledLeft (stable; the open album's own left margin == d), y from the
-  // element (top/height don't animate, unlike the margin/width).
-  shelfGlow.style.left = `${settledLeft(i)}px`;
+  // Centre a square-ish halo on the open cover (which sits ~a spine-width right of
+  // the settled position). y from the element (top/height don't animate).
+  shelfGlow.style.left = `${settledLeft(i) - d}px`;
   shelfGlow.style.width = `${cw + 2 * d}px`;
   shelfGlow.style.top = `${el.offsetTop - d}px`;
   shelfGlow.style.height = `${el.offsetHeight + 2 * d}px`;
