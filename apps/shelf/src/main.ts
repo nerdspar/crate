@@ -34,6 +34,7 @@ let activeShelf = 'all';
 let shelfTab: ShelfKind = 'album';
 let shelfAdding = false; // showing the inline "name this shelf" box
 let shelfDeleteArmed: string | null = null; // shelf id whose ✕ is armed for confirm
+let shelfRenaming: string | null = null; // shelf id whose name is being edited
 
 type ResolvedLayout = 'split' | 'center' | 'top' | 'bottom';
 /** Resolve the artist/title layout for an album; 'varied' picks one deterministically. */
@@ -1493,11 +1494,11 @@ async function searchProvider(): Promise<void> {
   if (!q) return;
   const seq = ++searchSeq;
   if (shelfTab === 'playlist') {
+    // Search playlists across your library AND provider-curated (Apple Music).
     try {
-      if (!libPlaylistsCache) libPlaylistsCache = await client.listLibraryPlaylists();
+      const res = await client.searchPlaylists(q);
       if (seq !== searchSeq) return;
-      const ql = q.toLowerCase();
-      playlistResults = libPlaylistsCache.filter((p) => p.name.toLowerCase().includes(ql));
+      playlistResults = res;
     } catch {
       if (seq !== searchSeq) return;
       playlistResults = [];
@@ -1531,9 +1532,9 @@ function renderResults(): void {
   // Playlists tab: a unified list of your library playlists — added ones Open,
   // the rest Add. (Apple Music search is album-only, so it doesn't apply here.)
   if (shelfTab === 'playlist') {
-    for (const pl of playlistResults) findResults.appendChild(playlistResultCard(pl));
+    for (const pl of playlistResults) findResults.appendChild(playlistCard(pl));
     if (!playlistResults.length) {
-      findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching your library…' : 'No playlists found.'}</div>`;
+      findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching playlists…' : 'No playlists found.'}</div>`;
     }
     return;
   }
@@ -1544,6 +1545,43 @@ function renderResults(): void {
   if (!locals.length && !adds.length) {
     findResults.innerHTML = `<div class="find-empty">${providerSearching ? 'Searching Apple Music…' : 'Nothing found.'}</div>`;
   }
+}
+
+/** A fixed-position dropdown anchored to a button, on <body> so the results
+    strip's overflow can't clip it. One menu open at a time. */
+let activeAddMenu: HTMLElement | null = null;
+function closeAddMenu(): void {
+  if (!activeAddMenu) return;
+  const out = (activeAddMenu as unknown as { _out?: (e: Event) => void })._out;
+  if (out) document.removeEventListener('pointerdown', out, true);
+  activeAddMenu.remove();
+  activeAddMenu = null;
+}
+function openAddMenu(anchor: HTMLElement, options: Array<{ label: string; on?: boolean; fn: () => void }>): void {
+  closeAddMenu();
+  const menu = document.createElement('div');
+  menu.className = 'find-add-menu';
+  for (const o of options) {
+    const b = document.createElement('button');
+    b.className = 'find-add-opt' + (o.on ? ' on' : '');
+    b.textContent = o.label;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      closeAddMenu();
+      o.fn();
+    };
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+  const out = (e: Event): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) closeAddMenu();
+  };
+  (menu as unknown as { _out: (e: Event) => void })._out = out;
+  activeAddMenu = menu;
+  setTimeout(() => document.addEventListener('pointerdown', out, true), 0);
 }
 
 function cardShell(title: string, artist: string, artUrl: string | null, action: string): HTMLElement {
@@ -1570,39 +1608,88 @@ function shelfCard(it: ShelfItem): HTMLElement {
   return card;
 }
 
-/** A playlist-tab search hit: added → Open (jump to All Playlists + open it),
-    not added → Add to your library. */
-function playlistResultCard(pl: LibraryPlaylist): HTMLElement {
-  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, pl.onShelf ? 'Open' : 'Add');
-  const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
-  if (pl.onShelf) {
-    const open = (): void => void openAddedPlaylist(pl.name);
-    btn.onclick = open;
-    card.addEventListener('click', open);
-  } else {
-    btn.onclick = async () => {
-      btn.disabled = true;
-      btn.textContent = 'Adding…';
-      try {
-        await client.addPlaylist(pl.providerUri);
-        btn.textContent = 'Added';
-        libPlaylistsCache = null; // onShelf flags are now stale
-      } catch {
-        btn.disabled = false;
-        btn.textContent = 'Add';
-        showToast('Add failed');
-      }
-    };
-  }
-  return card;
-}
-
 /** Jump to the All Playlists shelf and open the named playlist's card. */
 async function openAddedPlaylist(name: string): Promise<void> {
   clearSearch();
   await switchShelf('playlists'); // closes the Find bar
   const idx = items.findIndex((it) => it.title === name);
   if (idx >= 0) openAlbum(idx);
+}
+
+/** Add control shared by the picker and playlist search: the button adds to All
+    Playlists (or Opens it if already added); the ▾ makes it its own song shelf. */
+function playlistAddControl(pl: LibraryPlaylist): HTMLElement {
+  const ctrl = document.createElement('div');
+  ctrl.className = 'find-add-ctrl';
+  const mainBtn = document.createElement('button');
+  mainBtn.className = 'find-card-add';
+  const caret = document.createElement('button');
+  caret.className = 'find-card-caret';
+  caret.textContent = '▾';
+  let added = pl.onShelf;
+  mainBtn.textContent = added ? 'Open' : 'Add';
+
+  const ensureAdded = async (): Promise<boolean> => {
+    if (added) return true;
+    try {
+      await client.addPlaylist(pl.providerUri);
+      added = true;
+      libPlaylistsCache = null;
+      return true;
+    } catch {
+      showToast('Add failed');
+      return false;
+    }
+  };
+
+  mainBtn.onclick = async () => {
+    if (added) {
+      void openAddedPlaylist(pl.name);
+      return;
+    }
+    mainBtn.disabled = true;
+    caret.disabled = true;
+    mainBtn.textContent = 'Adding…';
+    if (await ensureAdded()) {
+      mainBtn.textContent = 'Added';
+    } else {
+      mainBtn.disabled = false;
+      caret.disabled = false;
+      mainBtn.textContent = 'Add';
+    }
+  };
+  caret.onclick = (e) => {
+    e.stopPropagation();
+    if (activeAddMenu) {
+      closeAddMenu();
+      return;
+    }
+    openAddMenu(caret, [{ label: 'New song shelf', fn: () => void makeSongShelfFromPlaylist(pl) }]);
+  };
+  ctrl.append(mainBtn, caret);
+  return ctrl;
+}
+
+/** Make (or reuse) a single-playlist song shelf from a picker/search playlist,
+    prewarming album-cover resolution first for a rendering head start. */
+async function makeSongShelfFromPlaylist(pl: LibraryPlaylist): Promise<void> {
+  void client.prewarmPlaylist(pl.providerUri); // head start on album art
+  try {
+    await client.addPlaylist(pl.providerUri); // ensure it exists as media (idempotent)
+    libPlaylistsCache = null;
+  } catch {
+    showToast('Add failed');
+    return;
+  }
+  const res = await client.getShelf('playlists');
+  shelves = res.shelves;
+  const media = res.items.find((it) => it.title === pl.name);
+  if (!media) {
+    showToast('Could not open shelf');
+    return;
+  }
+  clearSearch();
+  await openAsSongShelf(media.albumId, pl.name);
 }
 
 /** A provider match not on the shelf — Add it. The button adds to the currently
@@ -1623,16 +1710,6 @@ function addCard(al: SearchAlbum): HTMLElement {
   const caret = document.createElement('button');
   caret.className = 'find-card-caret';
   caret.textContent = '▾';
-  // The menu lives on <body> (fixed) so the results strip's overflow can't clip it.
-  const menu = document.createElement('div');
-  menu.className = 'find-add-menu';
-  const closeMenu = (): void => {
-    menu.remove();
-    document.removeEventListener('pointerdown', onOutside, true);
-  };
-  const onOutside = (ev: Event): void => {
-    if (!menu.contains(ev.target as Node) && ev.target !== caret) closeMenu();
-  };
 
   const setIdle = (): void => {
     const n = nameOf(defaultDest);
@@ -1641,7 +1718,7 @@ function addCard(al: SearchAlbum): HTMLElement {
   setIdle();
 
   const doAdd = async (shelfId: string): Promise<void> => {
-    closeMenu();
+    closeAddMenu();
     mainBtn.disabled = true;
     caret.disabled = true;
     mainBtn.textContent = 'Adding…';
@@ -1660,28 +1737,14 @@ function addCard(al: SearchAlbum): HTMLElement {
   mainBtn.onclick = () => void doAdd(defaultDest);
   caret.onclick = (e) => {
     e.stopPropagation();
-    if (menu.parentElement) {
-      closeMenu();
+    if (activeAddMenu) {
+      closeAddMenu();
       return;
     }
-    menu.innerHTML = '';
-    const opt = (label: string, id: string): void => {
-      const b = document.createElement('button');
-      b.className = 'find-add-opt' + (id === defaultDest ? ' on' : '');
-      b.textContent = label;
-      b.onclick = (ev) => {
-        ev.stopPropagation();
-        void doAdd(id);
-      };
-      menu.appendChild(b);
-    };
-    opt('Library (All)', 'all');
-    for (const s of albumShelves()) opt(s.name, s.id);
-    document.body.appendChild(menu);
-    const r = caret.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-    menu.style.bottom = `${window.innerHeight - r.top + 6}px`; // open upward (control sits low)
-    setTimeout(() => document.addEventListener('pointerdown', onOutside, true), 0);
+    openAddMenu(caret, [
+      { label: 'Library (All)', on: defaultDest === 'all', fn: () => void doAdd('all') },
+      ...albumShelves().map((s) => ({ label: s.name, on: s.id === defaultDest, fn: () => void doAdd(s.id) })),
+    ]);
   };
 
   ctrl.append(mainBtn, caret);
@@ -1709,6 +1772,7 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     shelfTab = tab.dataset['kind'] as ShelfKind;
     shelfAdding = false;
     shelfDeleteArmed = null;
+    shelfRenaming = null;
     clearSearch(); // search behaves differently per tab; reset it
     document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', t === tab));
     renderShelfList();
@@ -1718,24 +1782,59 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
 function renderShelfList(): void {
   findShelfList.innerHTML = '';
   for (const s of shelves.filter((sh) => sh.kind === shelfTab)) {
+    const selected = s.id === activeShelf;
+    const editable = selected && s.id !== 'all' && s.id !== 'playlists';
     const chip = document.createElement('div');
-    chip.className = 'find-shelf chip' + (s.id === activeShelf ? ' on' : '');
-    const name = document.createElement('span');
-    name.className = 'find-shelf-name';
-    name.textContent = s.name;
-    name.onclick = () => void switchShelf(s.id);
-    chip.appendChild(name);
-    // Delete ✕ only on the *selected* user shelf (never the virtual All/All Playlists).
-    if (s.id === activeShelf && s.id !== 'all' && s.id !== 'playlists') {
-      const x = document.createElement('button');
-      const armed = shelfDeleteArmed === s.id;
-      x.className = 'find-shelf-x' + (armed ? ' armed' : '');
-      x.textContent = armed ? 'Delete?' : '✕';
-      x.onclick = (e) => {
-        e.stopPropagation();
-        void onDeleteShelf(s.id);
+    chip.className = 'find-shelf chip' + (selected ? ' on' : '') + (editable ? ' has-actions' : '');
+    if (editable && shelfRenaming === s.id) {
+      // Inline rename box + ✓/✕ (wall has no Enter key).
+      const input = document.createElement('input');
+      input.className = 'find-shelf-input';
+      input.value = s.name;
+      const ok = document.createElement('button');
+      ok.className = 'find-shelf-ok';
+      ok.textContent = '✓';
+      ok.onclick = () => void doRename(s.id, input.value);
+      const cancelRename = (): void => {
+        shelfRenaming = null;
+        renderShelfList();
       };
-      chip.appendChild(x);
+      const no = document.createElement('button');
+      no.className = 'find-shelf-cancel';
+      no.textContent = '✕';
+      no.onclick = cancelRename;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void doRename(s.id, input.value);
+        else if (e.key === 'Escape') cancelRename();
+      });
+      chip.append(input, ok, no);
+      requestAnimationFrame(() => input.focus({ preventScroll: true }));
+    } else {
+      const name = document.createElement('span');
+      name.className = 'find-shelf-name';
+      name.textContent = s.name;
+      name.onclick = () => void switchShelf(s.id);
+      chip.appendChild(name);
+      if (editable) {
+        const edit = document.createElement('button');
+        edit.className = 'find-shelf-edit';
+        edit.textContent = '✎';
+        edit.onclick = (e) => {
+          e.stopPropagation();
+          shelfRenaming = s.id;
+          shelfDeleteArmed = null;
+          renderShelfList();
+        };
+        const x = document.createElement('button');
+        const armed = shelfDeleteArmed === s.id;
+        x.className = 'find-shelf-x' + (armed ? ' armed' : '');
+        x.textContent = armed ? 'Delete?' : '✕';
+        x.onclick = (e) => {
+          e.stopPropagation();
+          void onDeleteShelf(s.id);
+        };
+        chip.append(edit, x);
+      }
     }
     findShelfList.appendChild(chip);
   }
@@ -1758,6 +1857,19 @@ function renderShelfList(): void {
     };
     findShelfList.appendChild(add);
   }
+}
+
+async function doRename(id: string, name: string): Promise<void> {
+  const nm = name.trim();
+  shelfRenaming = null;
+  if (!nm) {
+    renderShelfList();
+    return;
+  }
+  await client.renameShelf(id, nm).catch(() => {});
+  const s = shelves.find((x) => x.id === id);
+  if (s) s.name = nm;
+  renderShelfList();
 }
 
 /** Two-tap delete: first tap arms (✕ → "Delete?"), second confirms. */
@@ -1802,31 +1914,16 @@ async function openPlaylistPicker(): Promise<void> {
 }
 
 function playlistCard(pl: LibraryPlaylist): HTMLElement {
-  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, pl.onShelf ? 'Added' : 'Add');
-  const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
-  if (pl.onShelf) {
-    btn.disabled = true;
-    return card;
-  }
-  btn.onclick = async () => {
-    btn.disabled = true;
-    btn.textContent = 'Adding…';
-    try {
-      await client.addPlaylist(pl.providerUri);
-      btn.textContent = 'Added';
-      libPlaylistsCache = null; // onShelf flags are now stale
-    } catch {
-      btn.disabled = false;
-      btn.textContent = 'Add';
-      showToast('Add failed');
-    }
-  };
+  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, '');
+  card.querySelector('.find-card-add')?.remove();
+  card.appendChild(playlistAddControl(pl));
   return card;
 }
 
 async function switchShelf(id: string, close = true): Promise<void> {
   shelfAdding = false;
   shelfDeleteArmed = null;
+  shelfRenaming = null;
   const res = await client.getShelf(id === 'all' ? undefined : id);
   activeShelf = id;
   items = res.items;

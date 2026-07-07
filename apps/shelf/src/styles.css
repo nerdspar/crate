@@ -747,10 +747,17 @@ body.idle #find-grip::after { opacity: 0; }
 }
 .find-shelf.on { color: #131114; background: var(--ink); border-color: var(--ink); }
 .find-shelf.chip { display: inline-flex; align-items: center; gap: 1.2vw; }
+/* Selected user shelf: name on the left, edit/delete right-justified. */
+.find-shelf.chip.has-actions { min-width: 13vw; padding-right: 1.4vw; }
+.find-shelf.chip.has-actions .find-shelf-name { flex: 1; }
 .find-shelf-name { cursor: pointer; }
+.find-shelf-edit {
+  flex-shrink: 0; background: transparent; border: none; color: rgba(19,17,20,0.55);
+  font-size: 1.9vh; padding: 0 0.4vw; line-height: 1; cursor: pointer;
+}
 /* Delete ✕ on the selected user shelf; two-tap (turns to "Delete?"). */
 .find-shelf-x {
-  background: transparent; border: none; color: rgba(19,17,20,0.55);
+  flex-shrink: 0; background: transparent; border: none; color: rgba(19,17,20,0.55);
   font-size: 1.9vh; font-weight: 700; padding: 0 0.4vw; line-height: 1; cursor: pointer;
 }
 .find-shelf-x.armed { color: #c0392b; background: rgba(255,255,255,0.85); border-radius: 999px; padding: 0.2vh 1.4vw; }

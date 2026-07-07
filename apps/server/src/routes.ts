@@ -107,9 +107,18 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
 
   // Playlists: list the provider-library playlists for the add picker, and add one.
   app.get('/api/playlists/library', () => service.listLibraryPlaylists());
+  app.get('/api/playlists/search', async (req) => {
+    const q = ((req.query as { q?: string }).q ?? '').trim();
+    return q ? service.searchPlaylists(q) : [];
+  });
   app.post('/api/playlists', async (req) => {
     const b = req.body as AddPlaylistRequest;
     await service.addPlaylist(b.providerUri);
+    return { ok: true };
+  });
+  // Fire-and-forget: start resolving a playlist's track art before its shelf opens.
+  app.post('/api/playlists/prewarm', (req) => {
+    void service.prewarmPlaylist((req.body as { providerUri: string }).providerUri);
     return { ok: true };
   });
 

@@ -294,6 +294,27 @@ export class Service {
     }));
   }
 
+  /** Search playlists (your library + provider-curated, e.g. Apple Music editorial). */
+  async searchPlaylists(query: string): Promise<LibraryPlaylist[]> {
+    const [pls, shelved] = [await this.ma.searchPlaylists(query), this.db.shelfedUris()];
+    return pls.map((p) => ({
+      providerUri: p.providerUri,
+      provider: p.provider,
+      name: p.name,
+      owner: p.owner,
+      artworkUrl: p.artworkUrl,
+      onShelf: shelved.has(p.providerUri),
+    }));
+  }
+
+  /** Kick off track enrichment (artist + album art) for a playlist before its
+      song shelf is opened, so covers are already resolving by the time you switch. */
+  async prewarmPlaylist(providerUri: string): Promise<void> {
+    const tracks = await this.ma.getTracks(providerUri).catch((): Track[] => []);
+    const misses = tracks.filter((t) => t.uri && !this.db.getSongCache(t.uri));
+    if (misses.length) void this.enrichSongsInBackground(misses);
+  }
+
   /** Ingest a playlist as a `kind='playlist'` media row (reuses the album store
       and artwork pipeline; its "tracks" are the playlist's songs). */
   async addPlaylist(providerUri: string): Promise<void> {

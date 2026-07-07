@@ -102,8 +102,16 @@ export class CrateClient {
   listLibraryPlaylists(): Promise<LibraryPlaylist[]> {
     return this.req('/api/playlists/library');
   }
+  /** Search playlists (library + provider-curated). */
+  searchPlaylists(query: string): Promise<LibraryPlaylist[]> {
+    return this.req(`/api/playlists/search?q=${encodeURIComponent(query)}`);
+  }
   addPlaylist(providerUri: string): Promise<{ ok: true }> {
     return this.post('/api/playlists', { providerUri });
+  }
+  /** Start resolving a playlist's track art before opening its song shelf. */
+  prewarmPlaylist(providerUri: string): Promise<{ ok: true }> {
+    return this.post('/api/playlists/prewarm', { providerUri });
   }
 
   removeFromShelf(albumId: string): Promise<{ ok: true }> {

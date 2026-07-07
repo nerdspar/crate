@@ -245,6 +245,20 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return items.map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null);
   }
 
+  async searchPlaylists(query: string, limit = 20): Promise<ProviderPlaylist[]> {
+    const result = rec(
+      await this.client.command('music/search', {
+        search_query: query,
+        media_types: ['playlist'],
+        limit,
+        library_only: false,
+      }),
+    );
+    return arr(result['playlists'])
+      .map((p) => this.toProviderPlaylist(rec(p)))
+      .filter((p): p is ProviderPlaylist => p !== null);
+  }
+
   async getPlaylist(providerUri: string): Promise<ProviderPlaylist | null> {
     const item = rec(await this.client.command('music/item_by_uri', { uri: providerUri }));
     return this.toProviderPlaylist(item);

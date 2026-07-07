@@ -41,6 +41,8 @@ export interface MusicSource {
   getTracks(providerUri: string): Promise<Track[]>;
   /** The user's saved playlists (Apple Music library + MA-local), for the add picker. */
   listLibraryPlaylists(limit?: number): Promise<ProviderPlaylist[]>;
+  /** Search playlists (library + provider-curated, e.g. Apple Music editorial). */
+  searchPlaylists(query: string, limit?: number): Promise<ProviderPlaylist[]>;
   /** Resolve one playlist (title, curator, artwork) for ingestion. */
   getPlaylist(providerUri: string): Promise<ProviderPlaylist | null>;
 }
