@@ -689,11 +689,16 @@ async function onPlayButton(i: number): Promise<void> {
     now.state = pausing ? 'paused' : 'playing';
     userPaused = pausing;
     pauseGuardUntil = pausing ? performance.now() + 3000 : 0;
-    resumeGuardUntil = pausing ? 0 : performance.now() + 3000;
-    // Resuming a room that was paused on this album is still a "move" — stop any OTHER
-    // room playing this same album (e.g. the one you switched away from), unless it's
-    // grouped with this one. (Pausing never stops anyone else.)
+    resumeGuardUntil = pausing ? 0 : performance.now() + 8000;
     if (!pausing) {
+      // Resume gets the same protection as a fresh play: latch the controls in the
+      // transport state so they don't flash to the big Play button while MA propagates
+      // the resume (Sonos briefly reports the queue idle before it lands).
+      playPendingIdx = i;
+      playPendingUntil = performance.now() + 8000;
+      // Resuming a room that was paused on this album is still a "move" — stop any OTHER
+      // room playing this same album (e.g. the one you switched away from), unless it's
+      // grouped with this one. (Pausing never stops anyone else.)
       const keep = new Set(groupMembers(leaderOf(playerId)).map((r) => r.id));
       keep.add(playerId);
       stopOtherRoomsPlayingAlbum(now.albumId ?? '', openCardAlbumUri() ?? undefined, keep);
