@@ -889,6 +889,14 @@ body.idle #find-grip::after { opacity: 0; }
   font-size: 1.7vh; font-weight: 600; padding: 0.6vh 1.6vw; letter-spacing: 0.03em;
 }
 .find-card-add:disabled { color: var(--ink-dim); border-color: rgba(236,231,221,0.2); }
+/* ▶ Play button on a song result — plays the song without opening the album. */
+.find-card-play {
+  flex-shrink: 0; width: 4.6vh; height: 4.6vh; border-radius: 50%;
+  background: transparent; color: var(--ink); border: 1px solid var(--ink);
+  font-size: 1.7vh; line-height: 1; padding-left: 0.2vh; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.find-card-play:active { background: rgba(255,255,255,0.08); }
 /* Album add: "Add to ‹shelf›" + ▾ destination dropdown. */
 .find-add-ctrl { flex-shrink: 0; display: inline-flex; align-items: center; }
 .find-add-ctrl .find-card-add { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }

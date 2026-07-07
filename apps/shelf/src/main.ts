@@ -498,9 +498,13 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       row.className = 'track' + (isNow ? ' now' : ti === cueIdx ? ' cued' : '');
       const dur = t.duration ? fmtDur(t.duration) : '';
       row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
+      // Tap = select/highlight only; the card's Play button plays the selected track.
       row.addEventListener('click', (e) => {
         e.stopPropagation();
-        void play(i, ti);
+        songCue.set(item.albumId, ti);
+        wrap.querySelectorAll('.track').forEach((r, idx) => {
+          if (!r.classList.contains('now')) r.classList.toggle('cued', idx === ti);
+        });
       });
       wrap.appendChild(row);
     });
@@ -527,15 +531,16 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
     }
     return;
   }
+  const selected = songCue.get(item.albumId) ?? -1; // keep any tapped selection on re-render
   const cached = trackCache.get(item.albumId);
   if (cached) {
-    draw(cached, -1);
+    draw(cached, selected);
     return;
   }
   try {
     const detail = await client.getAlbum(item.albumId);
     trackCache.set(item.albumId, detail.tracks);
-    if (openIdx === i) draw(detail.tracks, -1);
+    if (openIdx === i) draw(detail.tracks, selected);
   } catch {
     /* leave empty */
   }
@@ -605,7 +610,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   // the track uri) and cue either the explicitly-tapped row or the song's index.
   const song = !!item.albumUri;
   let providerUri: string | undefined;
-  let cue = trackIndex ?? 0;
+  let cue = trackIndex ?? songCue.get(item.albumId) ?? 0; // the tapped/selected track
   if (song) {
     let d = albumDetailCache.get(item.albumUri as string);
     if (!d) {
@@ -1838,13 +1843,41 @@ function pickSource(id: string): void {
   void runGlobalSearch();
 }
 
-/** A song result — tap to open its album with the track cued. */
+/** A song result — tap the card to open its album with the track cued; the ▶ button
+    plays the song straight away (search song cards are the one place a tap-to-play
+    lives; inside album/playlist track lists, tapping only selects — see the top Play). */
 function songResultCard(s: SearchSong): HTMLElement {
   const card = cardShell(s.title, s.artist + (s.album ? ` · ${s.album}` : ''), s.artworkUrl, '');
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap');
   card.addEventListener('click', () => void openProviderAlbum(s.trackUri));
+  const playBtn = document.createElement('button');
+  playBtn.className = 'find-card-play';
+  playBtn.setAttribute('aria-label', 'Play');
+  playBtn.textContent = '▶';
+  playBtn.onclick = (e) => {
+    e.stopPropagation(); // don't also open the album
+    void playSong(s.trackUri);
+  };
+  card.appendChild(playBtn);
   return card;
+}
+
+/** Play a searched song now: resolve its album + track index, play from that track. */
+async function playSong(trackUri: string): Promise<void> {
+  if (activePlayerId && activeSolo) await ungroupActiveSoloIfNeeded();
+  try {
+    const d = await client.getProviderAlbum(trackUri); // track uri → album + cueIndex
+    await client.play({
+      albumId: d.providerUri,
+      providerUri: d.providerUri,
+      ...(activePlayerId ? { playerId: activePlayerId } : {}),
+      ...(d.cueIndex > 0 ? { trackIndex: d.cueIndex } : {}),
+    });
+    showToast(`Playing on ${roomName(activePlayerId)}`);
+  } catch {
+    showToast('Playback failed');
+  }
 }
 
 /* =====================================================================
@@ -1902,7 +1935,11 @@ async function openProviderAlbum(uri: string): Promise<void> {
     row.className = 'track' + (ti === d.cueIndex ? ' cued' : '');
     const dur = t.duration ? fmtDur(t.duration) : '';
     row.innerHTML = `<span class="n">${ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
-    row.addEventListener('click', () => void playModal(ti));
+    // Tap = select/highlight only; the top Play button plays the selected track.
+    row.addEventListener('click', () => {
+      modalCue = ti;
+      tw.querySelectorAll('.track').forEach((r, idx) => r.classList.toggle('cued', idx === ti));
+    });
     tw.appendChild(row);
   });
   renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reuse the room picker
@@ -1974,17 +2011,81 @@ function cardShell(title: string, artist: string, artUrl: string | null, action:
   return card;
 }
 
-/** A shelf match — tap anywhere to clear the search and open that album. */
+/** A shelf match — tap anywhere to open the album; the Open button carries a ▾ that
+    adds this already-in-library album to other shelves too. */
 function shelfCard(it: ShelfItem): HTMLElement {
-  const card = cardShell(it.title, it.artist, it.artworkUrl, 'Open');
+  const card = cardShell(it.title, it.artist, it.artworkUrl, '');
+  card.querySelector('.find-card-add')?.remove();
   const open = (): void => {
     const idx = items.findIndex((x) => x.albumId === it.albumId);
     clearSearch();
     closeFind();
     if (idx >= 0) openAlbum(idx);
   };
+  card.classList.add('find-card-tap');
   card.addEventListener('click', open);
+  card.appendChild(addedAlbumControl(it.albumId, open));
   return card;
+}
+
+/** "Open" + a ▾ that adds an already-in-library album (by id) to other album shelves
+    or a new one. Used on search cards for albums that are already on a shelf. */
+function addedAlbumControl(albumId: string, open: () => void): HTMLElement {
+  const ctrl = document.createElement('div');
+  ctrl.className = 'find-add-ctrl';
+  const mainBtn = document.createElement('button');
+  mainBtn.className = 'find-card-add';
+  mainBtn.textContent = 'Open';
+  mainBtn.onclick = (e) => {
+    e.stopPropagation();
+    open();
+  };
+  const caret = document.createElement('button');
+  caret.className = 'find-card-caret';
+  caret.textContent = '▾';
+  caret.onclick = (e) => {
+    e.stopPropagation();
+    if (activeAddMenu) {
+      closeAddMenu();
+      return;
+    }
+    const albumShelves = shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
+    openAddMenu(caret, [
+      ...albumShelves.map((s) => ({ label: `Add to ${s.name}`, fn: () => void addExistingToShelf(albumId, s.id) })),
+      { label: '+ New shelf', fn: () => void addExistingToNewShelf(albumId) },
+    ]);
+  };
+  ctrl.append(mainBtn, caret);
+  return ctrl;
+}
+
+/** Add an existing library album to a shelf by id, then reveal it there. */
+async function addExistingToShelf(albumId: string, shelfId: string): Promise<void> {
+  closeAddMenu();
+  try {
+    await client.addAlbumToShelf(shelfId, albumId);
+    const n = shelves.find((s) => s.id === shelfId)?.name;
+    showToast(n ? `Added to ${n}` : 'Added');
+    void revealAddedAlbumById(shelfId, albumId);
+  } catch {
+    showToast('Add failed');
+  }
+}
+
+/** Create a new album shelf, add the existing album to it, switch + rename. */
+async function addExistingToNewShelf(albumId: string): Promise<void> {
+  closeAddMenu();
+  const sh = await client.createShelf({ name: 'New shelf', kind: 'album' }).catch(() => null);
+  if (!sh) {
+    showToast('Could not create shelf');
+    return;
+  }
+  shelves.push(sh);
+  clearSearch();
+  await switchShelf(sh.id, false); // auto-select the new shelf, keep Find open
+  shelfRenaming = sh.id;
+  renderShelfList();
+  await client.addAlbumToShelf(sh.id, albumId).catch(() => {});
 }
 
 /** Jump to the All Playlists shelf and open the named playlist's card. */
@@ -2083,7 +2184,11 @@ function albumIdFromUri(uri: string): string {
     album — leaving the Find bar open so you can keep adding (#7). */
 async function revealAddedAlbum(shelfId: string, providerUri: string): Promise<void> {
   closeAlbumModal();
-  const albumId = albumIdFromUri(providerUri);
+  await revealAddedAlbumById(shelfId, albumIdFromUri(providerUri));
+}
+
+/** Switch the wall to a shelf and scroll to an album by id, leaving the Find bar open. */
+async function revealAddedAlbumById(shelfId: string, albumId: string): Promise<void> {
   await switchShelf(shelfId, false); // keep the Find bar open
   const idx = items.findIndex((it) => it.albumId === albumId);
   if (idx >= 0) requestAnimationFrame(() => smoothScrollTo(vp, settledLeft(idx) - vp.clientWidth * 0.12));
