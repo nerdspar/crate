@@ -495,8 +495,11 @@ function renderRooms(el: HTMLElement): void {
   // only pulled out of its group when you actually hit Play (so a mis-tap is safe).
   rooms.forEach((r) => {
     const b = document.createElement('button');
-    b.className = 'room' + (activeSolo && r.id === activePlayerId ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
-    b.textContent = r.name;
+    // The current Play target is always highlighted — including the default the wall
+    // follows before you pick anything (inActiveGroup is only set when a GROUP is targeted).
+    const isTarget = r.id === activePlayerId && inActiveGroup.size === 0;
+    b.className = 'room' + (isTarget ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
+    b.innerHTML = escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
     b.onclick = (e) => {
       e.stopPropagation();
       activePlayerId = r.id;
@@ -3095,6 +3098,14 @@ function restartIdleWatch(): void {
 async function enterIdle(): Promise<void> {
   if (isIdle) return;
   isIdle = true;
+  // Play-target is sticky per session, then reverts to the admin default on idle so
+  // the next person starts fresh at home base.
+  if (userPickedPlayer) {
+    userPickedPlayer = false;
+    activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? activePlayerId;
+    activeSolo = false;
+    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+  }
   // Screen
   if (settings.idleScreen === 'off') {
     void client.setDisplaySleep(true).catch(() => {});
