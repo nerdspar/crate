@@ -274,9 +274,8 @@ function buildShelf(): void {
         <h2>${escapeHtml(a.artist)}</h2>
         <div class="nowbar" hidden>
           <div class="np-controls">
-            <button class="np-btn np-prev" aria-label="Previous">⏮</button>
-            <button class="np-btn np-play" aria-label="Play or pause">⏸</button>
-            <button class="np-btn np-next" aria-label="Next">⏭</button>
+            <button class="np-btn np-prev" aria-label="Previous track">⏮</button>
+            <button class="np-btn np-next" aria-label="Next track">⏭</button>
           </div>
           <div class="seek"><div class="seek-fill"></div></div>
           <div class="times"><span class="cur">0:00</span><span class="dur">0:00</span></div>
@@ -311,11 +310,7 @@ function buildShelf(): void {
       stop(e);
       void onPlayButton(i);
     });
-    // Now-playing transport (only interactive while this album plays).
-    el.querySelector('.np-play')!.addEventListener('click', (e) => {
-      stop(e);
-      void onPlayButton(i);
-    });
+    // Now-playing transport (skip only; play/pause + retarget is the big Play button).
     el.querySelector('.np-prev')!.addEventListener('click', (e) => {
       stop(e);
       if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'previous' }).catch(() => {});
@@ -413,6 +408,14 @@ function openAlbum(i: number, autoscroll = true): void {
   closeAlbum();
   const el = shelf.children[i] as HTMLElement;
   openIdx = i;
+  // Opening the album that's actually playing → snap the picker + cued track to where
+  // it's really playing (overrides any sticky room pick), so the card reflects reality.
+  const it = items[i];
+  if (it && now.playerId && now.state !== 'idle' && now.albumId === it.albumId) {
+    activePlayerId = now.playerId;
+    activeSolo = groupMembers(leaderOf(now.playerId)).length < 2;
+    songCue.set(it.albumId, now.trackIndex);
+  }
   renderRooms(el);
   void renderTracks(el, i);
   (el.querySelector('.vol input') as HTMLInputElement).value = String(volume);
@@ -485,6 +488,7 @@ function renderRooms(el: HTMLElement): void {
       activeSolo = false;
       userPickedPlayer = true;
       renderRooms(el);
+      updatePlayButton();
     };
     wrap.appendChild(b);
   }
@@ -506,6 +510,7 @@ function renderRooms(el: HTMLElement): void {
       activeSolo = true;
       userPickedPlayer = true;
       renderRooms(el);
+      updatePlayButton(); // label flips to "Play" when this differs from what's playing
     };
     wrap.appendChild(b);
   });
@@ -529,6 +534,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
         wrap.querySelectorAll('.track').forEach((r, idx) => {
           if (!r.classList.contains('now')) r.classList.toggle('cued', idx === ti);
         });
+        updatePlayButton(); // a different track than what's playing → Play (not Pause)
       });
       wrap.appendChild(row);
     });
@@ -592,10 +598,22 @@ function fmtDur(seconds: number): string {
 }
 
 /* ---------- Playback ---------- */
-/** Panel Play button: toggles pause/resume when this album is loaded, else plays it.
-   Full transport (prev/next) lives in the control center (§6, Phase 3). */
+/** Has the user picked a different room or track than what's currently playing? Then
+    the Play button commits that change (plays the selection) instead of pausing. */
+function selectionChanged(i: number): boolean {
+  const item = items[i];
+  if (!item) return false;
+  const cued = songCue.get(item.albumId);
+  const roomChanged = activePlayerId != null && activePlayerId !== now.playerId;
+  const trackChanged = cued != null && cued !== now.trackIndex;
+  return roomChanged || trackChanged;
+}
+
+/** Panel Play button: plays the current selection (cued track on the chosen room) —
+    this is how you retarget the speaker or jump songs. Only when this album is already
+    playing AND nothing's changed does it toggle pause/resume. Skip lives in the nowbar. */
 async function onPlayButton(i: number): Promise<void> {
-  if (playingIdx === i && now.playerId && now.state !== 'idle') {
+  if (playingIdx === i && now.playerId && now.state !== 'idle' && !selectionChanged(i)) {
     const playerId = now.playerId;
     const pausing = now.state === 'playing';
     // Freeze at the displayed (interpolated) position so pause doesn't jump back.
@@ -2921,11 +2939,13 @@ function updatePlayButton(): void {
   const panel = shelf.children[openIdx] as HTMLElement;
   const btn = panel.querySelector('.play') as HTMLButtonElement | null;
   const eyebrow = panel.querySelector('.eyebrow') as HTMLElement | null;
-  const isThis = playingIdx === openIdx;
-  // While this album plays, the nowbar transport handles play/pause — hide the big Play.
+  const isThis = playingIdx === openIdx; // this album is the focused now-playing
+  // Pause/Resume only when this album plays and nothing's changed; otherwise it's the
+  // "play my selection" trigger (a different room or track) — always visible.
+  const pureToggle = isThis && !selectionChanged(openIdx);
   if (btn) {
-    btn.hidden = isThis;
-    btn.textContent = 'Play';
+    btn.hidden = false;
+    btn.textContent = pureToggle ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
   }
   if (eyebrow) eyebrow.textContent = isThis ? 'Now playing' : 'From your library';
 }
@@ -2954,7 +2974,6 @@ function updateNowbar(): void {
   const show = playingIdx === openIdx; // transport shows whenever this album is the one playing
   bar.hidden = !show;
   if (!show) return;
-  (bar.querySelector('.np-play') as HTMLElement).textContent = now.state === 'playing' ? '⏸' : '▶';
   if (now.duration > 0) {
     const e = liveElapsed();
     (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
