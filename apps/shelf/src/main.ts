@@ -2302,6 +2302,11 @@ async function playModal(trackIndex?: number): Promise<void> {
     pauseGuardUntil = 0;
     resumeGuardUntil = performance.now() + 8000;
     if (activePlayerId) focusedPlayerId = activePlayerId;
+    // Selection is committed to playback — clear the cue so it doesn't read as a pending
+    // change. The queue index MA reports (0 after start_item) won't match the tapped index,
+    // which otherwise kept modalSelectionChanged() true and flipped the button back to Play
+    // (leaving no way to pause). Mirrors songCue.delete in the card's play().
+    modalCue = -1;
     now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
     applyNow();
     renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's EQ now
