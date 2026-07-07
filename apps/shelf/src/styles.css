@@ -50,7 +50,10 @@ body {
 .flap {
   position: absolute; inset: 0;
   transform-style: preserve-3d;
-  transform-origin: left center;
+  /* Pivot the whole case (rigid prism) about the spine↔cover seam = the spine's
+     right edge, so opening rotates it 90° to the left: the spine turns away and
+     disappears while the cover turns to face you. */
+  transform-origin: var(--spine-w) center;
   transition: transform var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
 }
 
@@ -108,10 +111,9 @@ body {
 
 .face-cover {
   width: var(--cover-w);
-  left: var(--spine-w); /* hinge on the spine's RIGHT edge — the spine stays put */
-  transform: rotateY(90deg);
+  left: var(--spine-w); /* the case's side face, meeting the spine at the seam */
+  transform: rotateY(90deg); /* perpendicular; the flap rotates the whole case */
   transform-origin: left center;
-  transition: transform var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
   display: flex; align-items: flex-end;
   background-size: cover; background-position: center;
   box-shadow: 0 14px 40px rgba(0,0,0,0.55);
@@ -158,9 +160,8 @@ body {
 .face-cover.has-art .cover-type { display: none; }
 
 .spine.open { z-index: 3; margin: 0 1.5vw; }
-/* Open = swing the front cover out from the spine's right edge (the spine stays as
-   the binding), rather than flipping the whole spine over its left edge. */
-.spine.open .face-cover { transform: rotateY(0deg); }
+/* Open = rotate the whole case 90° left about the seam: spine turns away, cover faces you. */
+.spine.open .flap { transform: rotateY(-90deg); }
 
 /* Blurred cover glow behind an opened album — bleeds its colors out around the
    cover to accentuate the artwork. Invisible until the album opens. */
