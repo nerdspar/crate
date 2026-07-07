@@ -108,8 +108,10 @@ body {
 
 .face-cover {
   width: var(--cover-w);
+  left: var(--spine-w); /* hinge on the spine's RIGHT edge — the spine stays put */
   transform: rotateY(90deg);
   transform-origin: left center;
+  transition: transform var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
   display: flex; align-items: flex-end;
   background-size: cover; background-position: center;
   box-shadow: 0 14px 40px rgba(0,0,0,0.55);
@@ -156,7 +158,9 @@ body {
 .face-cover.has-art .cover-type { display: none; }
 
 .spine.open { z-index: 3; margin: 0 1.5vw; }
-.spine.open .flap { transform: rotateY(-90deg); }
+/* Open = swing the front cover out from the spine's right edge (the spine stays as
+   the binding), rather than flipping the whole spine over its left edge. */
+.spine.open .face-cover { transform: rotateY(0deg); }
 
 /* Blurred cover glow behind an opened album — bleeds its colors out around the
    cover to accentuate the artwork. Invisible until the album opens. */
@@ -219,7 +223,7 @@ body {
 /* meta panel: shown when expanded */
 .panel {
   position: absolute; top: 0; bottom: 0;
-  left: var(--cover-w);
+  left: calc(var(--spine-w) + var(--cover-w));
   width: var(--panel-w);
   /* Own opaque backdrop so the glow doesn't wash over the card content. */
   background: linear-gradient(90deg, rgba(19,17,20,0.9), rgba(19,17,20,0.97));

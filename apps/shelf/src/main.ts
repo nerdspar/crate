@@ -383,7 +383,9 @@ function sizeFaces(): void {
 window.addEventListener('resize', sizeFaces);
 
 function openWidth(el: HTMLElement): number {
-  return coverW() + (el.classList.contains('expanded') ? panelW() : 0);
+  // spine (binding, stays) + cover swung out to its right + optional details panel
+  const sw = parseFloat(el.style.getPropertyValue('--spine-w')) || 0;
+  return sw + coverW() + (el.classList.contains('expanded') ? panelW() : 0);
 }
 
 /* ---------- Open / close / expand ---------- */
