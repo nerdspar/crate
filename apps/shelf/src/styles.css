@@ -488,20 +488,8 @@ button {
 
 /* Each pane is multi-column so it fits the wide, short kiosk; rows never split. */
 .set-pane { display: none; }
-.set-pane.on { display: block; columns: 3 24vw; column-gap: 5vw; }
+.set-pane.on { display: block; columns: 20vw; column-gap: 4vw; }
 .set-pane > * { break-inside: avoid; }
-
-/* Section header inside a pane: spans all columns so its controls balance beneath it. */
-.set-group {
-  column-span: all;
-  font-family: 'Archivo Narrow', sans-serif; text-transform: uppercase;
-  letter-spacing: 0.22em; font-size: 2.2vh; font-weight: 600;
-  color: var(--brass);
-  margin: 1vh 0 2.4vh; padding-bottom: 1vh;
-  border-bottom: 1px solid rgba(236, 231, 221, 0.14);
-}
-.set-group:first-child { margin-top: 0; }
-.set-group .hint { color: var(--ink-dim); letter-spacing: 0.04em; text-transform: none; }
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }
 .setting-row.hidden-row { display: none; }
 .setting-row .label {

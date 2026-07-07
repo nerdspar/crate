@@ -142,7 +142,6 @@
       </div>
     </div>
     <div class="set-pane" data-pane="device">
-      <div class="set-group">Display</div>
       <div class="setting-row">
         <div class="label">Brightness</div>
         <input id="cc-brightness" type="range" min="8" max="100" value="100">
@@ -151,8 +150,6 @@
         <div class="label">Auto-brightness <span class="hint">(needs sensor)</span></div>
         <div class="choices" id="autobright-choices"></div>
       </div>
-
-      <div class="set-group">Idle</div>
       <div class="setting-row">
         <div class="label">Go idle after</div>
         <div class="choices" id="idle-after-choices"></div>
@@ -185,23 +182,18 @@
         <div class="label">Auto-open order</div>
         <div class="choices" id="autoopen-random-choices"></div>
       </div>
-
-      <div class="set-group">Presence <span class="hint">(needs sensor)</span></div>
       <div class="setting-row">
-        <div class="label">Proximity — go idle</div>
+        <div class="label">Proximity — go idle <span class="hint">(needs sensor)</span></div>
         <div class="choices" id="sensor-idle-choices"></div>
       </div>
       <div class="setting-row">
-        <div class="label">Proximity — wake</div>
+        <div class="label">Proximity — wake <span class="hint">(needs sensor)</span></div>
         <div class="choices" id="sensor-wake-choices"></div>
       </div>
-
-      <div class="set-group">Sleep schedule</div>
       <div class="setting-row set-schedule-row">
+        <div class="label">Sleep schedule</div>
         <div id="wall-schedule"></div>
       </div>
-
-      <div class="set-group">System</div>
       <div class="setting-row">
         <div class="label">Display &amp; system</div>
         <div class="cc-syscols">
