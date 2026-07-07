@@ -690,6 +690,14 @@ async function onPlayButton(i: number): Promise<void> {
     userPaused = pausing;
     pauseGuardUntil = pausing ? performance.now() + 3000 : 0;
     resumeGuardUntil = pausing ? 0 : performance.now() + 3000;
+    // Resuming a room that was paused on this album is still a "move" — stop any OTHER
+    // room playing this same album (e.g. the one you switched away from), unless it's
+    // grouped with this one. (Pausing never stops anyone else.)
+    if (!pausing) {
+      const keep = new Set(groupMembers(leaderOf(playerId)).map((r) => r.id));
+      keep.add(playerId);
+      stopOtherRoomsPlayingAlbum(now.albumId ?? '', openCardAlbumUri() ?? undefined, keep);
+    }
     applyNow();
     await client.transport({ playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
     return;
@@ -713,6 +721,20 @@ async function ungroupActiveSoloIfNeeded(): Promise<void> {
   // The speakers we left behind keep the old queue playing — stop them, since we're
   // redirecting playback to the pulled-out speaker.
   if (remaining[0]) void client.transport({ playerId: remaining[0], cmd: 'pause' }).catch(() => {});
+}
+
+/** "Move" semantics: starting an album on the selected room/group stops any OTHER
+    room that was playing this SAME album, so playback moves rather than duplicating.
+    Grouping (the +1 chips) stays the way to play in several rooms at once; rooms on a
+    DIFFERENT album are left alone (that's independent playback, not a move). */
+function stopOtherRoomsPlayingAlbum(albumId: string, albumUri: string | undefined, keep: Set<string>): void {
+  for (const s of lastStates) {
+    if (keep.has(s.playerId) || (s.state !== 'playing' && s.state !== 'paused')) continue;
+    const np = s.nowPlaying;
+    if (!np) continue;
+    const onAlbum = (!!np.albumId && np.albumId === albumId) || (!!albumUri && !!np.albumUri && np.albumUri === albumUri);
+    if (onAlbum) void client.transport({ playerId: s.playerId, cmd: 'pause' }).catch(() => {});
+  }
 }
 
 async function play(i: number, trackIndex?: number): Promise<void> {
@@ -758,6 +780,14 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   // is still on the old track doesn't read as a pending change (flipping Pause→Play).
   songCue.delete(item.albumId);
   now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+  // Move, don't duplicate: stop other rooms already on this album that aren't part of
+  // the target group (its EQ then clears once the pause lands — background paused rooms
+  // show no marker). Grouped members stay, so a group keeps playing together.
+  if (activePlayerId) {
+    const keep = new Set(groupMembers(leaderOf(activePlayerId)).map((r) => r.id));
+    keep.add(activePlayerId);
+    stopOtherRoomsPlayingAlbum(item.albumId, providerUri ?? item.providerUri ?? undefined, keep);
+  }
   applyNow();
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement); // target room EQ now
   scheduleAfterPlayClose();
