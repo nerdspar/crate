@@ -326,55 +326,22 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   async play(playerId: string, providerUri: string, opts?: { trackIndex?: number }): Promise<void> {
     const idx = opts?.trackIndex ?? 0;
-    // Queue the album as an EXPLICIT list of its track uris in the SAME order the UI shows
-    // (`getTracks`). This keeps the queue order and the tapped index in lockstep — the old
-    // play_media(album) let MA use its own album order, which for special/anniversary
-    // editions differs from the displayed order, so play_index(idx) played the WRONG song.
-    const tracks = await this.getTracks(providerUri).catch((): Track[] => []);
-    const uris = tracks.map((t) => t.uri).filter((u): u is string => !!u);
-    const haveList = uris.length > 0 && uris.length === tracks.length;
-
-    // Fast path: if this player is already on THIS album, jump within the existing queue
-    // instead of replacing it. A `replace` with the same album is either ignored or reloads
-    // and briefly replays track 0 — the audible "wrong song for a few seconds" on a jump.
-    if (haveList) {
-      const queues = arr(await this.client.command('player_queues/all').catch(() => []));
-      const q = queues.map(rec).find((x) => str(x['queue_id']) === playerId);
-      const curUri = q ? str(rec(rec(q['current_item'])['media_item'])['uri']) : undefined;
-      const curIdx = q ? (num(q['current_index']) ?? -1) : -1;
-      // Only take the fast path if the live queue is in OUR (display) order — confirmed by
-      // the current track sitting at its displayed index. A queue built the old way (or by
-      // another app) is in MA's own order, so a play_index would jump wrong; fall through to
-      // a clean rebuild instead.
-      if (curUri && curIdx >= 0 && uris[curIdx] === curUri) {
-        if (curIdx !== idx) await this.client.command('player_queues/play_index', { queue_id: playerId, index: idx }).catch(() => {});
-        else await this.client.command('player_queues/resume', { queue_id: playerId }).catch(() => {});
-        return;
-      }
+    // Start the album on the tapped track via `start_item` = the track's URI. We pass the
+    // ALBUM uri as the media (MA resolves it in one shot) rather than an explicit list of
+    // every track uri — that list forced MA to resolve each track's stream up front, which
+    // took 15-20s on real hardware while the old queue kept playing. `start_item` picks the
+    // track by uri, so it plays the RIGHT song regardless of MA's internal album ordering
+    // (no more wrong-track jump from play_index).
+    let startItem: string | undefined;
+    if (idx > 0) {
+      startItem = (await this.getTracks(providerUri).catch((): Track[] => []))[idx]?.uri ?? undefined;
     }
-
-    // Fresh album: replace the queue with the explicit list and start ON the tapped track via
-    // `start_item` (its uri) — MA begins playback right there, so track 0 never sounds while
-    // the queue loads, and current_index matches the tapped index (card highlights correctly).
     await this.client.command('player_queues/play_media', {
       queue_id: playerId,
-      media: haveList ? uris : providerUri,
+      media: providerUri,
       option: 'replace',
-      ...(idx > 0 && haveList ? { start_item: uris[idx] } : {}),
+      ...(startItem ? { start_item: startItem } : {}),
     });
-    if (idx <= 0 || !haveList) return;
-    // Safety net for an MA that ignores start_item: once the queue has loaded onto the wrong
-    // track, nudge with play_index. The queue order equals the displayed order, so this lands
-    // on the correct song (no more wrong-track jump).
-    for (let attempt = 0; attempt < 12; attempt++) {
-      await new Promise((r) => setTimeout(r, 300));
-      const queues = arr(await this.client.command('player_queues/all').catch(() => []));
-      const q = queues.map(rec).find((x) => str(x['queue_id']) === playerId);
-      if (!q) continue;
-      if ((num(q['current_index']) ?? -1) === idx) return;
-      const loaded = str(rec(rec(q['current_item'])['media_item'])['uri']) !== undefined;
-      if (loaded) await this.client.command('player_queues/play_index', { queue_id: playerId, index: idx }).catch(() => {});
-    }
   }
 
   async transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void> {
@@ -455,6 +422,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 artist: firstArtistName(media),
                 album: str(rec(media['album'])['name']) ?? null,
                 trackIndex: num(queue['current_index']) ?? null,
+                trackUri: str(media['uri']) ?? str(current['uri']) ?? null,
                 duration: num(current['duration']) ?? num(media['duration']) ?? null,
                 elapsed: num(queue['elapsed_time']) ?? null,
                 artworkUrl: this.artworkUrl(media) ?? this.artworkUrl(current) ?? this.artworkUrl(rec(media['album'])),

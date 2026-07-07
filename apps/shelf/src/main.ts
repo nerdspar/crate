@@ -92,12 +92,21 @@ interface NowState {
   playerId: string | null;
   albumId: string | null;
   trackIndex: number;
+  /** Uri of the playing track — highlight rows by this, since the queue index can differ
+      from the displayed track order (MA reorders when starting mid-album via start_item). */
+  trackUri: string | null;
   elapsed: number;
   duration: number;
   state: 'playing' | 'paused' | 'idle';
   at: number; // performance.now() at last elapsed sample
 }
-let now: NowState = { playerId: null, albumId: null, trackIndex: 0, elapsed: 0, duration: 0, state: 'idle', at: performance.now() };
+let now: NowState = { playerId: null, albumId: null, trackIndex: 0, trackUri: null, elapsed: 0, duration: 0, state: 'idle', at: performance.now() };
+/** Is the track at row `ti` (uri `uri`) the one playing? Match by uri when we have it —
+    the queue index can differ from the displayed order (MA reorders on start_item) — else
+    fall back to the index. */
+function isNowTrack(uri: string | null | undefined, ti: number): boolean {
+  return now.trackUri && uri ? uri === now.trackUri : ti === now.trackIndex;
+}
 /** Latch: the user paused. Some MA player providers report a paused queue as
     'idle', so we hold the now-playing paused until resume / a new play. */
 let userPaused = false;
@@ -590,8 +599,9 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
     wrap.innerHTML = '';
     tracks.forEach((t, ti) => {
       const row = document.createElement('div');
-      const isNow = playingIdx === i && playingTrack === ti;
+      const isNow = playingIdx === i && isNowTrack(t.uri, ti);
       row.className = 'track' + (isNow ? ' now' : ti === cueIdx ? ' cued' : '');
+      if (t.uri) row.dataset.uri = t.uri;
       const dur = t.duration ? fmtDur(t.duration) : '';
       row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
       // Tap = select/highlight only; the card's Play button plays the selected track.
@@ -784,7 +794,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   // Selection is now committed to playback — clear it so the transient where the player
   // is still on the old track doesn't read as a pending change (flipping Pause→Play).
   songCue.delete(item.albumId);
-  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
   // Move, don't duplicate: stop other rooms already on this album that aren't part of
   // the target group (its EQ then clears once the pause lands — background paused rooms
   // show no marker). Grouped members stay, so a group keeps playing together.
@@ -2170,7 +2180,7 @@ function updateModalNowTrack(): void {
   if (albumModal.hidden) return;
   const playing = modalIsPlaying();
   albumModal.querySelectorAll('.am-tracks .track').forEach((row, ti) => {
-    const isNow = playing && ti === now.trackIndex;
+    const isNow = playing && isNowTrack((row as HTMLElement).dataset.uri, ti);
     row.classList.toggle('now', isNow);
     const n = row.querySelector('.n');
     if (n) n.innerHTML = isNow ? TRACK_EQ : String(ti + 1);
@@ -2235,6 +2245,7 @@ function renderModalTracks(tracks: Track[], cueIndex: number, withArtist = false
   tracks.forEach((t, ti) => {
     const row = document.createElement('div');
     row.className = 'track' + (ti === cueIndex ? ' cued' : '');
+    if (t.uri) row.dataset.uri = t.uri;
     const dur = t.duration ? fmtDur(t.duration) : '';
     const label = withArtist && t.artist ? `${escapeHtml(t.title)} · ${escapeHtml(t.artist)}` : escapeHtml(t.title);
     row.innerHTML = `<span class="n">${ti + 1}</span>${label}<span class="dur">${dur}</span>`;
@@ -2291,7 +2302,7 @@ async function playModal(trackIndex?: number): Promise<void> {
     pauseGuardUntil = 0;
     resumeGuardUntil = performance.now() + 8000;
     if (activePlayerId) focusedPlayerId = activePlayerId;
-    now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+    now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
     applyNow();
     renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's EQ now
   }
@@ -3245,6 +3256,7 @@ function handleState(states: PlayerState[]): void {
       playerId: cand.playerId,
       albumId: nextAlbumId,
       trackIndex: nextTrackIndex,
+      trackUri: cand.nowPlaying.trackUri ?? (samePlayer ? now.trackUri : null),
       elapsed: nextElapsed,
       duration: cand.nowPlaying.duration ?? (samePlayer ? now.duration : 0),
       state: st,
@@ -3371,7 +3383,7 @@ function updateOpenTrackIndicator(): void {
   if (openIdx === null) return;
   const panel = shelf.children[openIdx] as HTMLElement;
   panel.querySelectorAll('.track').forEach((row, ti) => {
-    const isNow = playingIdx === openIdx && ti === playingTrack;
+    const isNow = playingIdx === openIdx && isNowTrack((row as HTMLElement).dataset.uri, ti);
     row.classList.toggle('now', isNow);
     const n = row.querySelector('.n');
     if (n) n.innerHTML = isNow ? TRACK_EQ : String(ti + 1);

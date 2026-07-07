@@ -66,6 +66,9 @@ export interface NowPlaying {
   artist: string | null;
   album: string | null;
   trackIndex: number | null;
+  /** Provider uri of the current track — lets the UI highlight the right row even when
+      the queue index differs from the displayed track order (MA reorders on start_item). */
+  trackUri: string | null;
   duration: number | null;
   elapsed: number | null;
   /** Cover art for the now-playing item (so the CC hero can show any room's
