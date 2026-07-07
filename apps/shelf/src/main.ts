@@ -473,6 +473,16 @@ function smoothScrollTo(el: HTMLElement, target: number, dur = 380): void {
   })(t0);
 }
 
+/** If the picked room is playing the OPEN album, follow it so the card shows THAT
+    room's current track — several rooms can play one album at different points. */
+function followIfPlayingOpenAlbum(id: string): void {
+  const openAlbumId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
+  if (openAlbumId && lastStates.some((s) => s.playerId === id && s.state !== 'idle' && s.nowPlaying?.albumId === openAlbumId)) {
+    focusedPlayerId = id;
+    handleState(lastStates); // re-derive `now` from the new focus → card shows its track
+  }
+}
+
 /** Album-card play-target picker: chips for each real group AND every individual
     speaker. Group management + volume live in the control center; here you just
     choose where this album plays. */
@@ -492,6 +502,7 @@ function renderRooms(el: HTMLElement): void {
       activePlayerId = leader;
       activeSolo = false;
       userPickedPlayer = true;
+      followIfPlayingOpenAlbum(leader);
       renderRooms(el);
       updatePlayButton();
     };
@@ -514,6 +525,7 @@ function renderRooms(el: HTMLElement): void {
       activePlayerId = r.id;
       activeSolo = true;
       userPickedPlayer = true;
+      followIfPlayingOpenAlbum(r.id);
       renderRooms(el);
       updatePlayButton(); // label flips to "Play" when this differs from what's playing
       updateModalTransport();
