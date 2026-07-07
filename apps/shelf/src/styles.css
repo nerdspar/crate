@@ -298,6 +298,10 @@ button {
 .room.room-group.on { color: #131114; background: var(--brass); border-color: var(--brass); }
 /* Members of the targeted group: outlined (not filled) so the group is visible. */
 .room.in-group { color: var(--ink); border-color: var(--ink); }
+/* Play-state markers on picker chips (monochrome): EQ = playing THIS album (safe to
+   view), hollow dot = playing OTHER music (playing here would override it). */
+.room .track-eq { height: 1.5vh; margin-right: 0.7vw; vertical-align: middle; }
+.room-busy { margin-right: 0.7vw; font-size: 1.5vh; opacity: 0.75; vertical-align: middle; }
 /* "default" tag on the admin default speaker (home base for Play). */
 .room-def {
   margin-left: 0.8vh; font-size: 1.2vh; font-weight: 700; letter-spacing: 0.1em;

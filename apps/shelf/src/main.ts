@@ -473,6 +473,36 @@ function smoothScrollTo(el: HTMLElement, target: number, dur = 380): void {
   })(t0);
 }
 
+/** The album currently shown by the card/overlay (shelf spine or play-now overlay). */
+function openCardAlbumId(): string | null {
+  if (openIdx !== null) return items[openIdx]?.albumId ?? null;
+  if (!albumModal.hidden && modalAlbumUri) return albumIdFromUri(modalAlbumUri);
+  return null;
+}
+/** Whether a room is playing THIS album, some OTHER music, or nothing — so the picker
+    can mark which are safe to take over. */
+function roomPlayState(id: string): 'this' | 'other' | 'idle' {
+  const s = lastStates.find((x) => x.playerId === id && x.state === 'playing' && x.nowPlaying);
+  if (!s) return 'idle';
+  const here = openCardAlbumId();
+  return s.nowPlaying?.albumId && s.nowPlaying.albumId === here ? 'this' : 'other';
+}
+/** A group's play state = whatever any member is doing (they share the queue). */
+function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' {
+  let other = false;
+  for (const m of members) {
+    const ps = roomPlayState(m.id);
+    if (ps === 'this') return 'this';
+    if (ps === 'other') other = true;
+  }
+  return other ? 'other' : 'idle';
+}
+/** Prefix for a picker chip: animated EQ if it's playing this album, a hollow dot if
+    it's playing something else (→ playing here would override it), nothing if idle. */
+function playMarker(ps: 'this' | 'other' | 'idle'): string {
+  return ps === 'this' ? TRACK_EQ + ' ' : ps === 'other' ? '<span class="room-busy">○</span> ' : '';
+}
+
 /** If the picked room is playing the OPEN album, follow it so the card shows THAT
     room's current track — several rooms can play one album at different points. */
 function followIfPlayingOpenAlbum(id: string): void {
@@ -496,7 +526,7 @@ function renderRooms(el: HTMLElement): void {
     const name = rooms.find((r) => r.id === leader)?.name ?? 'Group';
     const b = document.createElement('button');
     b.className = 'room room-group' + (!activeSolo && activePlayerId === leader ? ' on' : '');
-    b.textContent = `${name} +${members.length - 1}`;
+    b.innerHTML = playMarker(groupPlayState(members)) + escapeHtml(`${name} +${members.length - 1}`);
     b.onclick = (e) => {
       e.stopPropagation();
       activePlayerId = leader;
@@ -519,7 +549,7 @@ function renderRooms(el: HTMLElement): void {
     // follows before you pick anything (inActiveGroup is only set when a GROUP is targeted).
     const isTarget = r.id === activePlayerId && inActiveGroup.size === 0;
     b.className = 'room' + (isTarget ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
-    b.innerHTML = escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
+    b.innerHTML = playMarker(roomPlayState(r.id)) + escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
     b.onclick = (e) => {
       e.stopPropagation();
       activePlayerId = r.id;
