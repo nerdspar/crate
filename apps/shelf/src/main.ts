@@ -1005,6 +1005,7 @@ function renderChoices(): void {
       settings.idleAfterMin = Number(k);
       void client.putSettings({ idleAfterMin: settings.idleAfterMin }).catch(() => {});
       restartIdleWatch();
+      updateConditionalRows(); // idle rows depend on whether idle can fire at all
     },
   );
   choiceRow(
@@ -1014,6 +1015,7 @@ function renderChoices(): void {
     (k) => {
       settings.idleScreen = k as IdleScreen;
       void client.putSettings({ idleScreen: settings.idleScreen }).catch(() => {});
+      updateConditionalRows(); // show/hide the dim slider for the new screen mode
     },
   );
   // Idle dim brightness is a slider (see idleDimSlider wiring below); just sync it here.
@@ -1152,7 +1154,7 @@ function updateConditionalRows(): void {
     void document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !on);
   for (const id of ['idle-screen-choices', 'idle-content-choices'])
     show(id, idleOn);
-  show('idle-dim-choices', idleOn && settings.idleScreen === 'dim');
+  show('idle-dim-slider', idleOn && settings.idleScreen === 'dim');
   // Target shelf is used by "A shelf" content and by auto-open when its pool is "A shelf".
   const needsShelf =
     settings.idleContent === 'shelf' ||
