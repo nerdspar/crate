@@ -1237,6 +1237,26 @@ const ccCur = document.getElementById('cc-cur') as HTMLElement;
 const ccDur = document.getElementById('cc-dur') as HTMLElement;
 const ccPlayPauseBtn = document.getElementById('cc-playpause') as HTMLElement;
 
+/** Tap the now-playing hero → get back into what's playing: open it on the shelf if
+    it's there, otherwise open the play-now overlay for it. */
+function openNowPlaying(): void {
+  if (now.state === 'idle') return;
+  if (playingIdx !== null) {
+    closeCC();
+    openAlbum(playingIdx);
+    return;
+  }
+  const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying;
+  if (np?.albumUri) {
+    closeCC();
+    void openProviderAlbum(np.albumUri);
+  }
+}
+[ccArt, ccTitle, ccArtistEl].forEach((el) => {
+  el.style.cursor = 'pointer';
+  el.addEventListener('click', openNowPlaying);
+});
+
 /** Which player's playback the now-playing hero follows (for multi-room). Null =
     auto-pick whatever's playing. Set by tapping a room name. */
 let focusedPlayerId: string | null = null;
@@ -1524,8 +1544,11 @@ function roomCell(r: Player): HTMLElement {
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
   wireVolume(row.querySelector('input') as HTMLInputElement, r.id);
-  // Tap the row (name / blank area) → make the now-playing hero follow this room.
-  (row.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => focusRoom(r.id));
+  // Tap the row → focus this room and close any expanded group's sliders.
+  (row.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => {
+    if (expandedGroups.size) expandedGroups.clear();
+    focusRoom(r.id);
+  });
   (row.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', (e) => {
     e.stopPropagation();
     groupRoom(r.id);
@@ -1561,20 +1584,27 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     const level = +(e.target as HTMLInputElement).value;
     for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
   });
+  // Expansion is exclusive — opening one group drops its volume sliders and closes
+  // any other, so only one set of sliders is ever down.
   const toggleGroup = (): void => {
-    if (expandedGroups.has(leader)) expandedGroups.delete(leader);
-    else expandedGroups.add(leader);
+    const open = expandedGroups.has(leader);
+    expandedGroups.clear();
+    if (!open) expandedGroups.add(leader);
     renderCCRooms();
   };
-  // Caret expands; tapping the row (name / blank area) focuses the hero on the group.
   (cell.querySelector('.cc-group-toggle') as HTMLElement).addEventListener('click', (e) => {
     e.stopPropagation();
     toggleGroup();
   });
-  (cell.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => focusRoom(leader));
+  // Tapping the group name focuses the hero on it AND drops its volume sliders down
+  // (so you can adjust quickly without hunting for the small caret).
+  (cell.querySelector('.cc-room-top') as HTMLElement).addEventListener('click', () => {
+    toggleGroup();
+    focusRoom(leader);
+  });
   const memWrap = cell.querySelector('.cc-group-members') as HTMLElement;
   for (const r of members) {
-    const mPlaying = roomIsPlaying(r.id);
+    const mPlaying = playing || roomIsPlaying(r.id); // whole group plays through the leader
     const m = document.createElement('div');
     m.className = 'cc-group-member' + (r.id === focusedPlayerId ? ' focused' : '') + (mPlaying ? ' playing' : '');
     m.innerHTML =
@@ -1998,6 +2028,17 @@ function updateModalTransport(): void {
   next.hidden = !toggle;
   play.textContent = toggle ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
 }
+/** Mark the currently-playing track in the overlay with the EQ (when its album plays). */
+function updateModalNowTrack(): void {
+  if (albumModal.hidden) return;
+  const playing = modalIsPlaying();
+  albumModal.querySelectorAll('.am-tracks .track').forEach((row, ti) => {
+    const isNow = playing && ti === now.trackIndex;
+    row.classList.toggle('now', isNow);
+    const n = row.querySelector('.n');
+    if (n) n.innerHTML = isNow ? TRACK_EQ : String(ti + 1);
+  });
+}
 
 async function openProviderAlbum(uri: string): Promise<void> {
   modalUri = uri;
@@ -2059,6 +2100,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
     addSlot.appendChild(addAlbumControl(d.providerUri));
   }
   updateModalTransport();
+  updateModalNowTrack();
 }
 
 async function playModal(trackIndex?: number): Promise<void> {
@@ -3039,7 +3081,10 @@ function applyNow(): void {
     updateNowbar();
     updatePlayButton();
   }
-  if (!albumModal.hidden) updateModalTransport();
+  if (!albumModal.hidden) {
+    updateModalTransport();
+    updateModalNowTrack();
+  }
   renderCCNow();
 }
 

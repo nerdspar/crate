@@ -694,7 +694,7 @@ body.idle #find-grip::after { opacity: 0; }
 .cc-room input[type=range] { width: 100%; accent-color: var(--ink); }
 
 /* Group cell: combined volume + a dropdown of individual room volumes. */
-.cc-group-members { display: flex; flex-direction: column; gap: 1vh; margin-top: 1vh; padding-top: 1vh; border-top: 1px solid rgba(236,231,221,0.12); }
+.cc-group-members { display: flex; flex-direction: column; gap: 1vh; margin-top: 1vh; padding: 1vh 0 0 1.6vw; border-top: 1px solid rgba(236,231,221,0.12); margin-left: 0.6vw; border-left: 2px solid rgba(236,231,221,0.14); }
 .cc-group-members[hidden] { display: none; }
 .cc-group-member { display: flex; flex-direction: column; gap: 0.4vh; }
 .cc-group-member input[type=range] { width: 100%; accent-color: var(--ink); }
