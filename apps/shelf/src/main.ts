@@ -1819,11 +1819,13 @@ function renderGlobal(loading: boolean): void {
 
   const cats = document.createElement('div');
   cats.className = 'find-cats';
-  const localMatches = items.filter(matchesFilter).map(shelfCard); // your shelf's own hits, in Albums
-  const remoteAlbums = (g?.albums ?? []).filter((a) => !a.onShelf);
+  const remoteAlbums = g?.albums ?? [];
+  const remoteIds = new Set(remoteAlbums.map((a) => albumIdFromUri(a.providerUri)));
+  // Your shelf's own hits that search didn't return (so we don't show them twice).
+  const localOnly = items.filter(matchesFilter).filter((it) => !remoteIds.has(it.albumId));
   const playlists = g?.playlists ?? [];
   const songs = g?.songs ?? [];
-  cats.appendChild(catColumn('Albums', [...localMatches, ...remoteAlbums.map(addCard)], loading, 'albums', remoteAlbums.length));
+  cats.appendChild(catColumn('Albums', [...localOnly.map(shelfCard), ...remoteAlbums.map(albumResultCard)], loading, 'albums', remoteAlbums.length));
   cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', playlists.length));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', songs.length));
   findResults.appendChild(cats);
@@ -1991,7 +1993,21 @@ async function openProviderAlbum(uri: string): Promise<void> {
     tw.appendChild(row);
   });
   renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reuse the room picker
-  (albumModal.querySelector('.am-add') as HTMLElement).appendChild(addAlbumControl(d.providerUri));
+  const addSlot = albumModal.querySelector('.am-add') as HTMLElement;
+  if (d.onShelf) {
+    // Already in the library → offer to jump to it on the shelf instead of an Add control.
+    const albumId = albumIdFromUri(d.providerUri);
+    const openBtn = document.createElement('button');
+    openBtn.className = 'find-card-add am-openshelf';
+    openBtn.textContent = 'Open on shelf';
+    openBtn.onclick = () => {
+      closeAlbumModal();
+      openShelfAlbum(albumId);
+    };
+    addSlot.appendChild(openBtn);
+  } else {
+    addSlot.appendChild(addAlbumControl(d.providerUri));
+  }
 }
 
 async function playModal(trackIndex?: number): Promise<void> {
@@ -2059,26 +2075,34 @@ function cardShell(title: string, artist: string, artUrl: string | null, action:
   return card;
 }
 
-/** A shelf match — tap anywhere to open the album; the Open button carries a ▾ that
-    adds this already-in-library album to other shelves too. */
+/** Switch focus to the shelf album by id and open its spine (from the Find bar). */
+function openShelfAlbum(albumId: string): void {
+  const idx = items.findIndex((x) => x.albumId === albumId);
+  clearSearch();
+  closeFind();
+  if (idx >= 0) openAlbum(idx);
+}
+
+/** A shelf match — tapping the card opens the play-now overlay; the Open button goes
+    to the album on the shelf, and its ▾ adds it to other shelves or removes it. */
 function shelfCard(it: ShelfItem): HTMLElement {
   const card = cardShell(it.title, it.artist, it.artworkUrl, '');
   card.querySelector('.find-card-add')?.remove();
-  const open = (): void => {
-    const idx = items.findIndex((x) => x.albumId === it.albumId);
-    clearSearch();
-    closeFind();
-    if (idx >= 0) openAlbum(idx);
-  };
   card.classList.add('find-card-tap');
-  card.addEventListener('click', open);
-  card.appendChild(addedAlbumControl(it.albumId, open));
+  const openOnShelf = (): void => openShelfAlbum(it.albumId);
+  // Tap the card → play-now overlay (if we have the provider uri); else fall back to
+  // opening it on the shelf. The "Open" button always goes to the shelf.
+  card.addEventListener('click', () => {
+    if (it.providerUri) void openProviderAlbum(it.providerUri);
+    else openOnShelf();
+  });
+  card.appendChild(addedAlbumControl(it.albumId, openOnShelf, it.providerUri ?? undefined));
   return card;
 }
 
-/** "Open" + a ▾ that adds an already-in-library album (by id) to other album shelves
-    or a new one. Used on search cards for albums that are already on a shelf. */
-function addedAlbumControl(albumId: string, open: () => void): HTMLElement {
+/** "Open" + a ▾ for an album already in the library: add it to other album shelves,
+    a new one, or remove it. Used on search cards for albums that are on a shelf. */
+function addedAlbumControl(albumId: string, open: () => void, providerUri?: string): HTMLElement {
   const ctrl = document.createElement('div');
   ctrl.className = 'find-add-ctrl';
   const mainBtn = document.createElement('button');
@@ -2101,10 +2125,32 @@ function addedAlbumControl(albumId: string, open: () => void): HTMLElement {
     openAddMenu(caret, [
       ...albumShelves.map((s) => ({ label: `Add to ${s.name}`, fn: () => void addExistingToShelf(albumId, s.id) })),
       { label: '+ New shelf', fn: () => void addExistingToNewShelf(albumId) },
+      { label: 'Remove from library', fn: () => void removeAddedAlbum(albumId, ctrl, providerUri) },
     ]);
   };
   ctrl.append(mainBtn, caret);
   return ctrl;
+}
+
+/** Remove an album from the library from a search card; revert the control to "Add"
+    (so it can be re-added) when we still have its provider uri. */
+async function removeAddedAlbum(albumId: string, ctrl: HTMLElement, providerUri?: string): Promise<void> {
+  closeAddMenu();
+  try {
+    await client.removeFromShelf(albumId);
+    showToast('Removed from library');
+    if (providerUri) ctrl.replaceWith(addAlbumControl(providerUri));
+    else {
+      ctrl.querySelector('.find-card-caret')?.remove();
+      const b = ctrl.querySelector('.find-card-add') as HTMLButtonElement | null;
+      if (b) {
+        b.textContent = 'Removed';
+        b.disabled = true;
+      }
+    }
+  } catch {
+    showToast('Remove failed');
+  }
 }
 
 /** Add an existing library album to a shelf by id, then reveal it there. */
@@ -2242,14 +2288,17 @@ async function revealAddedAlbumById(shelfId: string, albumId: string): Promise<v
   if (idx >= 0) requestAnimationFrame(() => smoothScrollTo(vp, settledLeft(idx) - vp.clientWidth * 0.12));
 }
 
-/** A provider album match — the button adds to the open shelf (or library on All);
-    a ▾ dropdown picks a different destination (or a new shelf). */
-function addCard(al: SearchAlbum): HTMLElement {
+/** An album search hit (on- or off-shelf). Tapping the card opens the play-now
+    overlay; on-shelf albums get Open + ▾ (with an "Open on shelf" button in the
+    overlay too), off-shelf albums get Add + ▾. */
+function albumResultCard(al: SearchAlbum): HTMLElement {
   const card = cardShell(al.title, al.artist, al.artworkUrl, '');
   card.querySelector('.find-card-add')?.remove();
-  card.classList.add('find-card-tap'); // tap the card → open it (preview / play now)
-  card.addEventListener('click', () => void openProviderAlbum(al.providerUri));
-  card.appendChild(addAlbumControl(al.providerUri));
+  card.classList.add('find-card-tap');
+  const albumId = albumIdFromUri(al.providerUri);
+  const openOnShelf = (): void => openShelfAlbum(albumId);
+  card.addEventListener('click', () => void openProviderAlbum(al.providerUri)); // overlay decides on-shelf
+  card.appendChild(al.onShelf ? addedAlbumControl(albumId, openOnShelf, al.providerUri) : addAlbumControl(al.providerUri));
   return card;
 }
 
@@ -2281,11 +2330,11 @@ function addAlbumControl(providerUri: string): HTMLElement {
     mainBtn.textContent = 'Adding…';
     try {
       await client.addToShelf({ providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
-      const n = nameOf(shelfId);
-      mainBtn.textContent = n ? `Added to ${n}` : 'Added';
-      // Added to a named shelf → switch the wall to it and reveal the album, but
-      // keep the Find bar open so you can add more (#7).
-      if (shelfId !== 'all') void revealAddedAlbum(shelfId, providerUri);
+      const albumId = albumIdFromUri(providerUri);
+      // Morph into the "added" state: Open + ▾ (add-to-other / remove), like the others.
+      ctrl.replaceWith(addedAlbumControl(albumId, () => openShelfAlbum(albumId), providerUri));
+      // Reveal the album on the shelf behind the still-open Find bar (any destination).
+      void revealAddedAlbum(shelfId, providerUri);
     } catch {
       mainBtn.disabled = false;
       caret.disabled = false;

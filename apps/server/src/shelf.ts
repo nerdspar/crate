@@ -41,6 +41,7 @@ export function songShelfItem(
   const dark = darken(primary, 0.5);
   return {
     albumId: `${playlistId}::t${i}`,
+    providerUri: null,
     kind: 'playlist',
     title: track.title,
     artist,
@@ -117,6 +118,7 @@ export function buildShelfItem(row: ShelfRow, artBase: string, artDir: string): 
       : row.artwork_url;
   return {
     albumId: row.id,
+    providerUri: row.provider_uri ?? null,
     kind: row.kind as MediaKind,
     title: row.title,
     artist: row.artist,

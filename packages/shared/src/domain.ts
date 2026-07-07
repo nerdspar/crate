@@ -87,6 +87,8 @@ export interface PlayerState {
 /** Everything the shelf needs to render one spine (derived from Album + palette). */
 export interface ShelfItem {
   albumId: string;
+  /** Provider uri of the album (for opening the play-now overlay off a search match). */
+  providerUri: string | null;
   kind: MediaKind;
   title: string;
   artist: string;

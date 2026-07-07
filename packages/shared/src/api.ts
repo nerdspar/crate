@@ -86,6 +86,8 @@ export interface ProviderAlbumDetail {
   tracks: Track[];
   /** 0-based album track index the source song maps to, or -1 if unknown. */
   cueIndex: number;
+  /** True if this album is already in the library (→ offer "Open on shelf"). */
+  onShelf: boolean;
 }
 
 export type TransportCmd = 'play' | 'pause' | 'next' | 'previous' | 'seek';

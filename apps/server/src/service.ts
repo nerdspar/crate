@@ -214,7 +214,8 @@ export class Service {
       this.ma.getTracks(albumUri).catch((): Track[] => []),
     ]);
     if (!album) return null;
-    return { providerUri: albumUri, title: album.title, artist: album.artist, artworkUrl: album.artworkUrl, tracks, cueIndex };
+    const onShelf = this.db.isOnShelf(albumIdFromUri(albumUri));
+    return { providerUri: albumUri, title: album.title, artist: album.artist, artworkUrl: album.artworkUrl, tracks, cueIndex, onShelf };
   }
 
   // --- Shelves (named curated collections) --------------------------------
