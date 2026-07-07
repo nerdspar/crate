@@ -677,7 +677,18 @@ function openSettings(): void {
 const settingsCard = document.getElementById('settings-card') as HTMLElement;
 (document.getElementById('settings-close') as HTMLElement).onclick = () => settingsEl.classList.remove('open');
 // Tap any black space (the overlay padding or empty areas of the card/panes) to close.
+// But releasing a slider drag off the track fires a click whose target is the pane
+// (the common ancestor of press-on-slider + release-on-pane), which would wrongly
+// close. Track whether the gesture began on a slider and swallow that one click.
+let settingsSliderGesture = false;
+settingsEl.addEventListener('pointerdown', (e) => {
+  settingsSliderGesture = !!(e.target as HTMLElement).closest('input[type="range"]');
+});
 settingsEl.addEventListener('click', (e) => {
+  if (settingsSliderGesture) {
+    settingsSliderGesture = false;
+    return;
+  }
   const t = e.target as HTMLElement;
   if (t === settingsEl || t === settingsCard || t.classList.contains('set-pane')) settingsEl.classList.remove('open');
 });
