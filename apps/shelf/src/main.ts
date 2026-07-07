@@ -1543,22 +1543,87 @@ function shelfCard(it: ShelfItem): HTMLElement {
   return card;
 }
 
-/** A provider match not on the shelf — Add it. */
+/** A provider match not on the shelf — Add it. The button adds to the currently
+    open shelf (or the library on All); a ▾ dropdown picks a different destination. */
 function addCard(al: SearchAlbum): HTMLElement {
-  const card = cardShell(al.title, al.artist, al.artworkUrl, 'Add');
-  const btn = card.querySelector('.find-card-add') as HTMLButtonElement;
-  btn.onclick = async () => {
-    btn.disabled = true;
-    btn.textContent = 'Adding…';
+  const card = cardShell(al.title, al.artist, al.artworkUrl, '');
+  card.querySelector('.find-card-add')?.remove();
+
+  const albumShelves = (): Shelf[] => shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
+  const nameOf = (id: string): string | null => (id === 'all' ? null : (shelves.find((s) => s.id === id)?.name ?? null));
+  // Default destination = the album shelf you're viewing, else the library (All).
+  const defaultDest = activeShelf !== 'all' && shelves.some((s) => s.id === activeShelf && s.kind === 'album') ? activeShelf : 'all';
+
+  const ctrl = document.createElement('div');
+  ctrl.className = 'find-add-ctrl';
+  const mainBtn = document.createElement('button');
+  mainBtn.className = 'find-card-add';
+  const caret = document.createElement('button');
+  caret.className = 'find-card-caret';
+  caret.textContent = '▾';
+  // The menu lives on <body> (fixed) so the results strip's overflow can't clip it.
+  const menu = document.createElement('div');
+  menu.className = 'find-add-menu';
+  const closeMenu = (): void => {
+    menu.remove();
+    document.removeEventListener('pointerdown', onOutside, true);
+  };
+  const onOutside = (ev: Event): void => {
+    if (!menu.contains(ev.target as Node) && ev.target !== caret) closeMenu();
+  };
+
+  const setIdle = (): void => {
+    const n = nameOf(defaultDest);
+    mainBtn.textContent = n ? `Add to ${n}` : 'Add';
+  };
+  setIdle();
+
+  const doAdd = async (shelfId: string): Promise<void> => {
+    closeMenu();
+    mainBtn.disabled = true;
+    caret.disabled = true;
+    mainBtn.textContent = 'Adding…';
     try {
-      await client.addToShelf({ providerUri: al.providerUri });
-      btn.textContent = 'Added';
+      await client.addToShelf({ providerUri: al.providerUri, ...(shelfId !== 'all' ? { shelfId } : {}) });
+      const n = nameOf(shelfId);
+      mainBtn.textContent = n ? `Added to ${n}` : 'Added';
     } catch {
-      btn.disabled = false;
-      btn.textContent = 'Add';
+      mainBtn.disabled = false;
+      caret.disabled = false;
+      setIdle();
       showToast('Add failed');
     }
   };
+
+  mainBtn.onclick = () => void doAdd(defaultDest);
+  caret.onclick = (e) => {
+    e.stopPropagation();
+    if (menu.parentElement) {
+      closeMenu();
+      return;
+    }
+    menu.innerHTML = '';
+    const opt = (label: string, id: string): void => {
+      const b = document.createElement('button');
+      b.className = 'find-add-opt' + (id === defaultDest ? ' on' : '');
+      b.textContent = label;
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        void doAdd(id);
+      };
+      menu.appendChild(b);
+    };
+    opt('Library (All)', 'all');
+    for (const s of albumShelves()) opt(s.name, s.id);
+    document.body.appendChild(menu);
+    const r = caret.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.bottom = `${window.innerHeight - r.top + 6}px`; // open upward (control sits low)
+    setTimeout(() => document.addEventListener('pointerdown', onOutside, true), 0);
+  };
+
+  ctrl.append(mainBtn, caret);
+  card.appendChild(ctrl);
   return card;
 }
 

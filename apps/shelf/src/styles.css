@@ -802,6 +802,27 @@ body.idle #find-grip::after { opacity: 0; }
   font-size: 1.7vh; font-weight: 600; padding: 0.6vh 1.6vw; letter-spacing: 0.03em;
 }
 .find-card-add:disabled { color: var(--ink-dim); border-color: rgba(236,231,221,0.2); }
+/* Album add: "Add to ‹shelf›" + ▾ destination dropdown. */
+.find-add-ctrl { flex-shrink: 0; display: inline-flex; align-items: center; }
+.find-add-ctrl .find-card-add { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
+.find-card-caret {
+  background: transparent; color: var(--ink); border: 1px solid var(--ink);
+  border-top-left-radius: 0; border-bottom-left-radius: 0; border-radius: 0 999px 999px 0;
+  font-size: 1.6vh; padding: 0.6vh 1vw; cursor: pointer;
+}
+.find-card-caret:disabled { color: var(--ink-dim); border-color: rgba(236,231,221,0.2); }
+.find-add-menu {
+  position: fixed; z-index: 200; display: flex; flex-direction: column; gap: 0.2vh;
+  background: #1c1a20; border: 1px solid rgba(236,231,221,0.2); border-radius: 1vh;
+  padding: 0.6vh; min-width: 16vw; max-height: 40vh; overflow-y: auto;
+  box-shadow: 0 1vh 3vh rgba(0,0,0,0.6);
+}
+.find-add-opt {
+  text-align: left; background: transparent; color: var(--ink-dim);
+  border: none; border-radius: 0.7vh; font-size: 1.8vh; padding: 0.9vh 1.4vw; cursor: pointer;
+}
+.find-add-opt.on { color: var(--brass); }
+.find-add-opt:active { background: rgba(255,255,255,0.08); color: var(--ink); }
 .find-empty { color: var(--ink-dim); font-size: 2vh; padding: 0.6vh 0; }
 
 #toast {

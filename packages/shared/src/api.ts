@@ -118,6 +118,8 @@ export interface SearchAlbum {
 
 export interface AddToShelfRequest {
   providerUri: string;
+  /** Also add the album to this named shelf (besides the library). Omit/'all' = library only. */
+  shelfId?: string;
 }
 
 /** A saved playlist from the provider library, plus whether it's already added. */

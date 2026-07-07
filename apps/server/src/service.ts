@@ -187,7 +187,7 @@ export class Service {
     }));
   }
 
-  async addToShelf(providerUri: string): Promise<void> {
+  async addToShelf(providerUri: string, shelfId?: string): Promise<void> {
     const album = await this.ma.getAlbum(providerUri);
     if (!album) throw new Error(`album not found: ${providerUri}`);
     const id = albumIdFromUri(providerUri);
@@ -216,6 +216,8 @@ export class Service {
     };
     this.db.upsertAlbum(row);
     this.db.addToShelf(id);
+    // Optionally also drop it on a specific named shelf (besides the library).
+    if (shelfId && shelfId !== 'all') this.db.addAlbumToShelf(shelfId, id);
     this.hub.broadcast({ type: 'shelf' });
 
     // Build artwork + palette in the background, then push the updated spine.
