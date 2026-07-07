@@ -562,6 +562,7 @@ function renderRooms(el: HTMLElement): void {
     };
     wrap.appendChild(b);
   });
+  syncEqs(); // keep the picker's EQ chips in phase with the track/spine EQs
 }
 
 async function renderTracks(el: HTMLElement, i: number): Promise<void> {
@@ -1373,7 +1374,11 @@ window.addEventListener('pointermove', (e) => {
   }
 });
 window.addEventListener('pointerup', (e) => {
-  if (gripDown) gripDown = false;
+  if (gripDown) {
+    // A tap on the top grip (that didn't drag the CC open) closes an open album.
+    if (!gripOpened && Math.abs(e.clientY - gripY) < 8 && openIdx !== null) closeAlbum();
+    gripDown = false;
+  }
   if (handleDown) {
     handleDown = false;
     if (handleY - e.clientY > 40 || Math.abs(handleY - e.clientY) < 8) closeCC();
@@ -1588,6 +1593,7 @@ function renderCCRooms(): void {
   const cols = Math.min(3, Math.max(2, Math.ceil(cells.length / 6)));
   wrap.style.columnCount = String(cols);
   for (const c of cells) wrap.appendChild(c);
+  syncEqs();
 }
 
 /** A solo speaker: tap the name to control it; "Group" arms it, then a second
@@ -3069,10 +3075,11 @@ window.addEventListener('pointerup', (e) => {
 
   if (stepping) {
     stepping = false;
-    if (Math.abs(e.clientX - startX) <= 8 && downTarget) {
-      // Resolve by layout position (not the visually-hit element) so tapping a
-      // LEFT neighbor opens it instead of hitting the open album's overlapping cover.
-      const j = spineAtX(e.clientX);
+    if (Math.abs(e.clientX - startX) <= 8) {
+      // A tap closes the open album — on empty space (no spine under the finger) or on
+      // the open album itself; tapping a DIFFERENT spine opens that one instead.
+      // (Resolve by layout position so a LEFT neighbor isn't masked by the open cover.)
+      const j = downTarget ? spineAtX(e.clientX) : -1;
       if (j < 0 || j === openIdx) closeAlbum();
       else openAlbum(j);
     }
@@ -3197,6 +3204,22 @@ function markPlayingSpines(): void {
   });
 }
 
+/** Align every equalizer's animation to a shared origin so the picker chips, track
+    list and spines pulse in unison (each otherwise starts when its element renders). */
+function syncEqs(): void {
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.track-eq i, .eq i').forEach((el) => {
+      for (const a of (el as HTMLElement).getAnimations()) {
+        try {
+          a.startTime = 0; // common timeline origin → same phase (per-bar delays preserved)
+        } catch {
+          /* animation not ready yet */
+        }
+      }
+    });
+  });
+}
+
 function applyNow(): void {
   const idx = now.albumId ? items.findIndex((it) => it.albumId === now.albumId) : -1;
   const loaded = idx >= 0 && now.state !== 'idle';
@@ -3214,6 +3237,7 @@ function applyNow(): void {
     updateModalNowTrack();
   }
   renderCCNow();
+  syncEqs();
 }
 
 function updatePlayButton(): void {
