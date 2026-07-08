@@ -255,6 +255,14 @@ function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
     </div>`;
   const actions = card.querySelector('.card-actions') as HTMLElement;
   if (it.onShelf && albumId) {
+    // Tapping the art/meta (not the buttons) jumps to the album in All albums.
+    const nav = card.querySelector('.art') as HTMLElement;
+    const meta = card.querySelector('.meta') as HTMLElement;
+    nav.classList.add('tappable');
+    meta.classList.add('tappable');
+    const go = (): void => void openAlbumInAllShelf(albumId);
+    nav.addEventListener('click', go);
+    meta.addEventListener('click', go);
     const shelvesBtn = mkBtn('Shelves', 'ghost');
     shelvesBtn.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, albumId));
     const rmBtn = mkBtn('Remove', 'ghost');
@@ -270,6 +278,18 @@ function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
     actions.append(b);
   }
   return card;
+}
+
+/** Jump from an Add-tab album to that album inside the All-albums shelf, and flash it. */
+async function openAlbumInAllShelf(albumId: string): Promise<void> {
+  switchTab('shelves');
+  await openShelf('all', 'All albums');
+  const card = shelfListEl.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(albumId)}"]`);
+  if (card) {
+    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card.classList.add('flash');
+    setTimeout(() => card.classList.remove('flash'), 1600);
+  }
 }
 
 async function addAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
