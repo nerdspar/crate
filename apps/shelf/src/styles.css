@@ -455,6 +455,16 @@ button {
 /* Paused → freeze the EQ bars mid-motion (they read as stopped, not playing). */
 body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused; }
 
+/* Magnifier loupe (pinchZoom = 'loupe'): a clipped, magnified clone of the shelf,
+   with a separate un-clipped ring drawn around the lens. */
+#loupe { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+#loupe[hidden], #loupe-ring[hidden] { display: none; }
+#loupe-ring {
+  position: fixed; z-index: 71; pointer-events: none; border-radius: 50%;
+  border: 0.4vh solid rgba(236,231,221,0.5);
+  box-shadow: 0 1vh 4vh rgba(0,0,0,0.5), inset 0 0 3vh rgba(0,0,0,0.35);
+}
+
 /* "Connecting" spinner shown in place of the EQ until the target room actually plays. */
 .np-spin {
   display: inline-block; width: 1.5vh; height: 1.5vh; vertical-align: middle;

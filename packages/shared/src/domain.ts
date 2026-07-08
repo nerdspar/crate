@@ -161,6 +161,9 @@ export type LabelLayout = 'split' | 'center' | 'top' | 'bottom' | 'varied';
 /** Whether every spine shares one type style or varies per artist. */
 export type LabelVary = 'uniform' | 'varied';
 export type OpenMode = 'cover' | 'card';
+/** What a two-finger pinch on the shelf does: resize the spines (density), pop a
+    magnifier loupe over them, or nothing. */
+export type PinchZoom = 'spines' | 'loupe' | 'off';
 export type SortBy = 'artist' | 'title' | 'added' | 'played' | 'year' | 'color' | 'custom';
 export type SpineThickness = 'thin' | 'medium' | 'thick';
 /** How spine widths are sized: one uniform CD width, or scaled by album runtime
@@ -283,6 +286,8 @@ export interface Settings {
   groupPresets: GroupPreset[];
   /** Player ids the wall may target/show; null or empty = expose every player. */
   exposedPlayers: string[] | null;
+  /** What a two-finger pinch does on the shelf. */
+  pinchZoom: PinchZoom;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -322,4 +327,5 @@ export const DEFAULT_SETTINGS: Settings = {
   sleepSchedule: [0, 1, 2, 3, 4, 5, 6].map(() => ({ on: false, sleep: '23:00', wake: '07:00' })),
   groupPresets: [],
   exposedPlayers: null,
+  pinchZoom: 'spines',
 };

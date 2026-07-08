@@ -325,7 +325,7 @@ function buildShelf(): void {
 
     // Split layout puts the artist and title at opposite ends of the spine;
     // the others render them together (positioned by the layout-* class).
-    const labelCss = `font-size:${fontSize}px; font-family:${font}; font-weight:${labelWeight}; text-transform:${ts.transform}; letter-spacing:${tracking}`;
+    const labelCss = `font-size:calc(${fontSize}px * var(--zoom, 1)); font-family:${font}; font-weight:${labelWeight}; text-transform:${ts.transform}; letter-spacing:${tracking}`;
     const artistSpan = `<span class="artist" style="color:${artistCol}">${escapeHtml(a.artist)}</span>`;
     const titleSpan = `<span class="title" style="color:${titleCol}">${escapeHtml(a.title)}</span>`;
     const labelHtml =
@@ -470,6 +470,7 @@ function buildShelf(): void {
   shelf.appendChild(shelfGlow); // last child, but z-index puts it behind the spines
   if (openIdx !== null) positionGlow(openIdx);
   else shelfGlow.classList.remove('on');
+  sizeFaces(); // apply the current spine-zoom to the freshly-built spines
   renderChoices();
 }
 
@@ -477,12 +478,19 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+/** Spine-density zoom factor (pinch, when pinchZoom==='spines'): scales spine widths
+    and — via the --zoom CSS var — their labels. Covers stay height-fit. */
+let spineZoom = 1;
+const SPINE_ZOOM_MIN = 0.55;
+const SPINE_ZOOM_MAX = 2.2;
+
 function sizeFaces(): void {
   const cw = coverW();
   const pw = panelW();
+  shelf.style.setProperty('--zoom', String(spineZoom));
   document.querySelectorAll<HTMLElement>('.spine').forEach((el) => {
     const a = items[+el.dataset['idx']!];
-    const sw = a ? spineWidthPx(a) : spineBaseW();
+    const sw = (a ? spineWidthPx(a) : spineBaseW()) * spineZoom;
     el.style.setProperty('--cover-w', cw + 'px');
     el.style.setProperty('--panel-w', pw + 'px');
     el.style.setProperty('--spine-w', sw + 'px');
@@ -3800,6 +3808,88 @@ let vel = 0,
 let stepping = false,
   stepAccum = 0;
 
+/* ---- Pinch to zoom (§ pinchZoom setting): spine-density resize OR a magnifier loupe.
+   Tracks live pointers; two down => pinch, which suspends scroll/open for those fingers. */
+type Pt = { x: number; y: number };
+const pointers = new Map<number, Pt>();
+let pinching = false;
+let pinchStartDist = 1;
+let pinchStartZoom = 1;
+const dist = (a: Pt, b: Pt): number => Math.hypot(a.x - b.x, a.y - b.y);
+const midpoint = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+function beginPinch(): void {
+  pinching = true;
+  // Cancel the single-finger scroll/hold that the first pointer started.
+  pDown = false;
+  moved = false;
+  stepping = false;
+  if (holdTimer) clearTimeout(holdTimer);
+  if (raf !== null) cancelAnimationFrame(raf);
+  const pts = [...pointers.values()];
+  pinchStartDist = dist(pts[0]!, pts[1]!) || 1;
+  pinchStartZoom = spineZoom;
+  if (settings.pinchZoom === 'loupe') showLoupe(midpoint(pts[0]!, pts[1]!));
+}
+function updatePinch(): void {
+  const pts = [...pointers.values()];
+  if (pts.length < 2) return;
+  const mid = midpoint(pts[0]!, pts[1]!);
+  if (settings.pinchZoom === 'loupe') {
+    moveLoupe(mid);
+    return;
+  }
+  const ratio = dist(pts[0]!, pts[1]!) / pinchStartDist;
+  spineZoom = Math.max(SPINE_ZOOM_MIN, Math.min(SPINE_ZOOM_MAX, pinchStartZoom * ratio));
+  sizeFaces();
+}
+function endPinch(): void {
+  pinching = false;
+  hideLoupe();
+}
+
+// --- Magnifier loupe: a circular window onto a magnified clone of the shelf ---
+const loupe = document.createElement('div');
+loupe.id = 'loupe';
+loupe.hidden = true;
+const loupeRing = document.createElement('div');
+loupeRing.id = 'loupe-ring';
+loupeRing.hidden = true;
+document.body.append(loupe, loupeRing);
+const LOUPE_MAG = 2.2;
+const loupeD = (): number => window.innerHeight * 0.42;
+let loupeClone: HTMLElement | null = null;
+
+function showLoupe(p: Pt): void {
+  const r = vp.getBoundingClientRect();
+  const clone = vp.cloneNode(true) as HTMLElement;
+  clone.removeAttribute('id');
+  clone.style.cssText = `position:fixed; left:${r.left}px; top:${r.top}px; width:${r.width}px; height:${r.height}px; margin:0; overflow:hidden; pointer-events:none;`;
+  loupe.innerHTML = '';
+  loupe.appendChild(clone);
+  clone.scrollLeft = vp.scrollLeft;
+  loupeClone = clone;
+  loupe.hidden = false;
+  loupeRing.hidden = false;
+  moveLoupe(p);
+}
+function moveLoupe(p: Pt): void {
+  if (!loupeClone) return;
+  const r = vp.getBoundingClientRect();
+  loupeClone.scrollLeft = vp.scrollLeft;
+  loupeClone.style.transformOrigin = `${p.x - r.left}px ${p.y - r.top}px`;
+  loupeClone.style.transform = `scale(${LOUPE_MAG})`;
+  const d = loupeD();
+  loupe.style.clipPath = `circle(${d / 2}px at ${p.x}px ${p.y}px)`;
+  loupeRing.style.cssText = `left:${p.x - d / 2}px; top:${p.y - d / 2}px; width:${d}px; height:${d}px;`;
+}
+function hideLoupe(): void {
+  loupe.hidden = true;
+  loupeRing.hidden = true;
+  loupe.innerHTML = '';
+  loupeClone = null;
+}
+
 function followOpen(): void {
   if (openIdx === null) return;
   smoothScrollTo(vp, settledLeft(openIdx) - vp.clientWidth * 0.12, 320);
@@ -3827,6 +3917,11 @@ function spineAtX(x: number): number {
 }
 
 vp.addEventListener('pointerdown', (e) => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size >= 2 && settings.pinchZoom !== 'off') {
+    beginPinch();
+    return; // second finger drives the pinch, not scroll/open
+  }
   pDown = true;
   moved = false;
   startX = lastX = e.clientX;
@@ -3851,6 +3946,11 @@ vp.addEventListener('pointerdown', (e) => {
 });
 
 window.addEventListener('pointermove', (e) => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinching) {
+    updatePinch();
+    return;
+  }
   if (!pDown) return;
 
   if (stepping) {
@@ -3876,7 +3976,19 @@ window.addEventListener('pointermove', (e) => {
   if (moved) vp.scrollLeft = scrollStart - (e.clientX - startX);
 });
 
+function releasePointer(e: PointerEvent): void {
+  pointers.delete(e.pointerId);
+  if (pinching && pointers.size < 2) {
+    endPinch();
+    pDown = false; // the remaining finger (if any) shouldn't resume scroll/tap
+  }
+}
+window.addEventListener('pointercancel', releasePointer);
+
 window.addEventListener('pointerup', (e) => {
+  const wasPinching = pinching;
+  releasePointer(e);
+  if (wasPinching) return; // a pinch finger lifting isn't a tap
   if (!pDown) return;
   pDown = false;
   if (holdTimer) clearTimeout(holdTimer);
