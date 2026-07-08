@@ -284,11 +284,13 @@ function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
   card.className = 'card';
   const srcName = sources.length > 1 ? it.source : '';
   const src = srcName ? ` · ${esc(srcName)}` : '';
+  const ex = it.explicit ? ` <span class="ex-badge" title="Explicit">E</span>` : '';
+  const ver = it.version && !it.title.toLowerCase().includes(it.version.toLowerCase()) ? ` <span class="ver-tag">${esc(it.version)}</span>` : '';
   card.innerHTML = `
     ${artHtml(it.artworkUrl)}
     <div class="body">
       <div class="meta">
-        <div class="t">${esc(it.title)}</div>
+        <div class="t">${esc(it.title)}${ex}${ver}</div>
         <div class="a">${esc(it.artist)}</div>
         <div class="y">${it.year ?? ''}${src}</div>
       </div>

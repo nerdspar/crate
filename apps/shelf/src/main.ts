@@ -2928,6 +2928,14 @@ async function revealAddedAlbumById(shelfId: string, albumId: string): Promise<v
     overlay too), off-shelf albums get Add + ▾. */
 function albumResultCard(al: SearchAlbum): HTMLElement {
   const card = cardShell(al.title, al.artist, al.artworkUrl, '');
+  // Tell identical-looking versions apart: edition tag + explicit badge.
+  const t = card.querySelector('.find-card-meta .t');
+  if (t) {
+    if (al.explicit) t.insertAdjacentHTML('beforeend', ` <span class="ex-badge" title="Explicit">E</span>`);
+    // Only tag the edition when the title doesn't already spell it out.
+    if (al.version && !al.title.toLowerCase().includes(al.version.toLowerCase()))
+      t.insertAdjacentHTML('beforeend', ` <span class="ver-tag">${escapeHtml(al.version)}</span>`);
+  }
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap');
   const albumId = albumIdFromUri(al.providerUri);
