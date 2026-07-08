@@ -30,6 +30,10 @@ body {
 
 #shelf {
   position: relative; /* containing block for the ambient .shelf-glow */
+  /* Own stacking context so the glow's z-index:-1 stays scoped here (above the shelf's
+     transparent bg, below the spines) instead of escaping to the root — where the opaque
+     body background paints over it and the glow never shows. */
+  isolation: isolate;
   display: flex;
   align-items: flex-end;
   height: 100%;
