@@ -122,6 +122,10 @@ export interface SearchAlbum {
   onShelf: boolean;
   /** Crate album id when already shelved (for managing / removing from search), else null. */
   albumId: string | null;
+  /** Edition label (e.g. "Deluxe Edition") to tell identical-looking versions apart; null if none. */
+  version: string | null;
+  /** Explicit content: true/false, or null when unknown. */
+  explicit: boolean | null;
   /** Display name of the streaming source this hit came from (e.g. "Apple Music").
       For grouping results by source when several accounts/services are connected. */
   source: string;
@@ -161,6 +165,10 @@ export interface LibraryAlbum {
   onShelf: boolean;
   /** Crate album id when it's already shelved (for managing shelves / removing), else null. */
   albumId: string | null;
+  /** Edition label (e.g. "Deluxe Edition"); null if none. */
+  version: string | null;
+  /** Explicit content: true/false, or null when unknown. */
+  explicit: boolean | null;
   /** Display name of the source this album is saved under (e.g. "Apple Music"). */
   source: string;
   /** The source's provider-instance id (for scoping/filtering); null if unknown. */

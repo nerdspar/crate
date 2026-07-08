@@ -135,6 +135,12 @@ const trackCache = new Map<string, Track[]>();
     and the resolved album-track index each song cues to. */
 const albumDetailCache = new Map<string, ProviderAlbumDetail>();
 const songCue = new Map<string, number>();
+/** Drop the cued-track memory for the currently-open album (e.g. after a skip changes the
+    live track) so the transport keeps showing Pause instead of reverting to the Play button. */
+function clearOpenCue(): void {
+  const it = openIdx !== null ? items[openIdx] : undefined;
+  if (it) songCue.delete(it.albumId);
+}
 
 /** Live shelf search (control center). Empty = everything matches; non-matches
     collapse to slivers via spineWidthPx. */
@@ -389,10 +395,12 @@ function buildShelf(): void {
     // Now-playing transport (skip only; play/pause + retarget is the big Play button).
     el.querySelector('.np-prev')!.addEventListener('click', (e) => {
       stop(e);
+      clearOpenCue(); // a skip changes the track — drop the stale cue so the button stays Pause
       if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'previous' }).catch(() => {});
     });
     el.querySelector('.np-next')!.addEventListener('click', (e) => {
       stop(e);
+      clearOpenCue();
       if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
     });
     el.querySelector('.songs')?.addEventListener('click', (e) => {
@@ -636,7 +644,10 @@ function renderRooms(el: HTMLElement): void {
     // follows before you pick anything (inActiveGroup is only set when a GROUP is targeted).
     const isTarget = r.id === activePlayerId && inActiveGroup.size === 0;
     b.className = 'room' + (isTarget ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
-    b.innerHTML = playMarker(roomPlayState(r.id)) + escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
+    // A member of a multi-speaker group doesn't get its own EQ marker — the group chip already
+    // represents it (otherwise the solo leader, e.g. Kitchen, double-shows the EQ).
+    const inGroup = groupMembers(leaderOf(r.id)).length >= 2;
+    b.innerHTML = (inGroup ? '' : playMarker(roomPlayState(r.id))) + escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
     b.onclick = (e) => {
       e.stopPropagation();
       activePlayerId = r.id;
@@ -1508,6 +1519,12 @@ function openNowPlaying(): void {
   const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying;
   if (np?.albumUri) {
     closeCC();
+    // Bind to the playing room (like openAlbum does) so the overlay's volume slider tracks
+    // external Sonos/speaker changes live, not just the extended card.
+    if (now.playerId) {
+      activePlayerId = now.playerId;
+      activeSolo = groupMembers(leaderOf(now.playerId)).length < 2;
+    }
     void openProviderAlbum(np.albumUri);
   }
 }

@@ -10,6 +10,10 @@ export interface ProviderAlbum {
   artist: string;
   year: number | null;
   artworkUrl: string | null;
+  /** Edition/version label from the provider (e.g. "Deluxe Edition", "Taylor's Version"), else null. */
+  version: string | null;
+  /** Explicit content: true/false, or null when the provider doesn't say. */
+  explicit: boolean | null;
 }
 
 export interface ProviderLibraryAlbum extends ProviderAlbum {

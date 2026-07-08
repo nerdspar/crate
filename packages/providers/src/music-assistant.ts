@@ -120,6 +120,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     const uri = str(item['uri']);
     const title = str(item['name']);
     if (!uri || !title) return null;
+    const explicit = rec(item['metadata'])['explicit'];
     return {
       providerUri: uri,
       provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
@@ -127,6 +128,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       artist: firstArtistName(item),
       year: num(item['year']) ?? null,
       artworkUrl: this.artworkUrl(item),
+      version: str(item['version']) || null,
+      explicit: typeof explicit === 'boolean' ? explicit : null,
     };
   }
 
@@ -371,6 +374,9 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   async play(playerId: string, providerUri: string, opts?: { trackIndex?: number }): Promise<void> {
     const idx = opts?.trackIndex ?? 0;
+    // Make end-of-queue deterministic regardless of the player's inherited MA settings — flow
+    // mode can otherwise re-loop the final track. Fire-and-forget.
+    void this.client.command('player_queues/repeat', { queue_id: playerId, repeat_mode: 'off' }).catch(() => {});
     // Whole album from the top: just queue it.
     if (idx <= 0) {
       await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'replace' });

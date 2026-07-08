@@ -20,7 +20,7 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import type { MusicAssistantProvider } from '@crate/providers';
+import type { MusicAssistantProvider, ProviderAlbum } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
@@ -284,7 +284,7 @@ export class Service {
   async search(query: string, source?: string): Promise<SearchAlbum[]> {
     const all = await this.ma.listMusicProviders().catch(() => []);
     const sources = source && source !== 'all' ? all.filter((s) => s.instanceId === source) : all;
-    const toHit = (a: { providerUri: string; provider: string; title: string; artist: string; year: number | null; artworkUrl: string | null }, source: string): SearchAlbum => {
+    const toHit = (a: ProviderAlbum, source: string): SearchAlbum => {
       const row = this.shelvedRow(a.providerUri, a.title, a.artist);
       return {
         providerUri: a.providerUri,
@@ -295,6 +295,8 @@ export class Service {
         artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl,
         onShelf: !!row,
         albumId: row?.id ?? null,
+        version: a.version,
+        explicit: a.explicit,
         source,
       };
     };
@@ -327,7 +329,7 @@ export class Service {
     const songs: SearchSong[] = [];
     for (const { s, r } of results) {
       for (const a of r.albums)
-        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, source: s.name });
+        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, version: a.version, explicit: a.explicit, source: s.name });
       for (const p of r.playlists)
         playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
       for (const t of r.tracks)
@@ -475,6 +477,8 @@ export class Service {
         artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl,
         onShelf: !!row,
         albumId: row?.id ?? null,
+        version: a.version,
+        explicit: a.explicit,
         source: (a.sourceInstanceId ? nameById.get(a.sourceInstanceId) : undefined) ?? 'Library',
         sourceInstanceId: a.sourceInstanceId,
       };
