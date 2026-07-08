@@ -1548,7 +1548,7 @@ function updateCCSeek(): void {
     const e = liveElapsed();
     ccSeekFill.style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
     ccCur.textContent = fmtDur(e);
-    ccDur.textContent = fmtDur(now.duration);
+    ccDur.textContent = '-' + fmtDur(Math.max(0, now.duration - e)); // time remaining
   } else {
     ccSeekFill.style.width = '0';
     ccCur.textContent = '0:00';
@@ -3624,7 +3624,7 @@ function updateNowbar(): void {
     const e = liveElapsed();
     (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
     (bar.querySelector('.cur') as HTMLElement).textContent = fmtDur(e);
-    (bar.querySelector('.dur') as HTMLElement).textContent = fmtDur(now.duration);
+    (bar.querySelector('.dur') as HTMLElement).textContent = '-' + fmtDur(Math.max(0, now.duration - e)); // time remaining
   }
 }
 
@@ -3640,7 +3640,7 @@ function updateModalNowbar(): void {
   const e = liveElapsed();
   (bar.querySelector('.seek-fill') as HTMLElement).style.width = `${Math.min(100, (e / now.duration) * 100)}%`;
   (bar.querySelector('.cur') as HTMLElement).textContent = fmtDur(e);
-  (bar.querySelector('.dur') as HTMLElement).textContent = fmtDur(now.duration);
+  (bar.querySelector('.dur') as HTMLElement).textContent = '-' + fmtDur(Math.max(0, now.duration - e)); // time remaining
 }
 
 function handleProgress(playerId: string, elapsed: number): void {
