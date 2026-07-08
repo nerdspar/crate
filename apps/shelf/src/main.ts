@@ -202,20 +202,33 @@ function positionGlow(i: number): void {
   shelfGlow.style.backgroundImage = a.artworkUrl ? `url('${a.artworkUrl}')` : 'none';
   if (!a.artworkUrl) shelfGlow.style.backgroundColor = a.primaryColor;
   shelfGlow.classList.add('on');
-  const d = 0.015 * window.innerWidth; // halo spread — a soft, contained backlight beyond the cover
-  const place = (): void => {
+  // #shelf-viewport clips vertically (overflow-y:hidden for the horizontal scroller), so the
+  // short wall has only a small vertical gap above/below the cover while the sides have room.
+  const clip = shelf.parentElement ?? shelf;
+  const place = (): string => {
     const sr = shelf.getBoundingClientRect();
+    const clr = clip.getBoundingClientRect();
     const cr = (cover ?? el).getBoundingClientRect();
-    shelfGlow.style.left = `${cr.left - sr.left + shelf.scrollLeft - d}px`;
+    // A uniform square margin on every side, but clamped so the halo (plus its blur) never spills
+    // past the shelf's top/bottom edges — that keeps the top bleed equal to the sides on the wall.
+    const blur = 0.04 * window.innerHeight; // keep in step with the CSS blur (4vh)
+    const room = Math.min(cr.top - clr.top, clr.bottom - cr.bottom) - blur;
+    const d = Math.max(0, Math.min(0.05 * cr.height, room));
+    // The glow's offsetParent is #shelf, whose live rect already reflects the viewport scroll —
+    // so (cr - sr) is the cover's position within it; no scrollLeft term needed.
+    shelfGlow.style.left = `${cr.left - sr.left - d}px`;
     shelfGlow.style.top = `${cr.top - sr.top - d}px`;
     shelfGlow.style.width = `${cr.width + 2 * d}px`;
     shelfGlow.style.height = `${cr.height + 2 * d}px`;
+    return `${Math.round(cr.left)},${Math.round(cr.top)},${Math.round(cr.width)}`;
   };
   cancelAnimationFrame(glowTrackRaf);
-  const start = performance.now();
+  let stable = 0, last = '';
   const step = (): void => {
-    place();
-    if (openIdx === i && performance.now() - start < 650) glowTrackRaf = requestAnimationFrame(step);
+    const key = place();
+    if (key === last) stable++; else { stable = 0; last = key; }
+    // Follow the open + scroll-to-centre animation, then stop once it settles (10 steady frames).
+    if (openIdx === i && stable < 10) glowTrackRaf = requestAnimationFrame(step);
   };
   step();
 }
