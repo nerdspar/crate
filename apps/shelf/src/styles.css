@@ -320,9 +320,9 @@ button {
 .vol-caret.open { transform: rotate(180deg); color: var(--ink); }
 .vol-members {
   position: absolute; top: calc(100% + 0.8vh); left: 0; right: 0; z-index: 6;
-  background: #211e26; border: 1px solid rgba(236,231,221,0.16); border-radius: 1.2vh;
+  background: #1c1a20; border: 1px solid rgba(236,231,221,0.2); border-radius: 1vh;
   padding: 1.2vh 1.6vh; display: flex; flex-direction: column; gap: 1.2vh;
-  box-shadow: 0 2vh 5vh rgba(0,0,0,0.55);
+  box-shadow: 0 1vh 3vh rgba(0,0,0,0.6);
 }
 .vol-members[hidden] { display: none; }
 .vol-member { display: flex; align-items: center; gap: 1.2vh; }
