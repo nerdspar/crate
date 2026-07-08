@@ -5,6 +5,7 @@
  */
 
 import { CrateClient, type LibraryAlbum, type MusicSourceInfo, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import crateMark from './crate-mark.svg';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
@@ -59,8 +60,12 @@ function showToast(msg: string): void {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
 }
 
+// Cover art with the Crate mark as the fallback: shown when there's no artwork, or when the
+// image fails to load (e.g. personal Apple Music uploads whose signed art URLs MA can't re-serve).
+document.documentElement.style.setProperty('--crate-mark', `url("${crateMark}")`);
 function artHtml(url: string | null): string {
-  return `<div class="art">${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : ''}</div>`;
+  const img = url ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  return `<div class="art">${img}</div>`;
 }
 
 /* ================= Tab navigation ================= */

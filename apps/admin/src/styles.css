@@ -76,7 +76,10 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: flex; flex-direction: column; gap: 0.7rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 0.7rem;
 }
-.card .art { width: 100%; aspect-ratio: 1; border-radius: 7px; overflow: hidden; background: #2a262c; flex: 0 0 auto; }
+.card .art {
+  width: 100%; aspect-ratio: 1; border-radius: 7px; overflow: hidden; flex: 0 0 auto;
+  background: #2a262c var(--crate-mark) center / 52% no-repeat; /* Crate mark shows when no image covers it */
+}
 .card .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card .body { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; flex: 1; }
 .card .meta { min-width: 0; }
