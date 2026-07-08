@@ -12,6 +12,12 @@ export interface ProviderAlbum {
   artworkUrl: string | null;
 }
 
+export interface ProviderLibraryAlbum extends ProviderAlbum {
+  /** Streaming provider instance the album is saved under (e.g. a specific Apple
+      Music account), from its MA provider mapping. Null if unknown. */
+  sourceInstanceId: string | null;
+}
+
 export interface ProviderTrackHit {
   /** Resolvable provider track uri (album ref from search is name-based/unresolvable). */
   trackUri: string;
@@ -56,6 +62,15 @@ export interface MusicSource {
   listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>>;
   getAlbum(providerUri: string): Promise<ProviderAlbum | null>;
   getTracks(providerUri: string): Promise<Track[]>;
+  /** The user's saved albums (library), optionally scoped to one source / filtered
+      to favorites / text-searched, paged via limit+offset. */
+  listLibraryAlbums(opts: {
+    source?: string;
+    search?: string;
+    favorite?: boolean;
+    limit: number;
+    offset: number;
+  }): Promise<ProviderLibraryAlbum[]>;
   /** The user's saved playlists (Apple Music library + MA-local), for the add picker. */
   listLibraryPlaylists(limit?: number): Promise<ProviderPlaylist[]>;
   /** Search playlists (library + provider-curated, e.g. Apple Music editorial). */

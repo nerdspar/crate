@@ -1,7 +1,11 @@
 import type {
   AlbumDetail,
   GlobalSearchResponse,
+  LibraryAlbum,
+  LibraryAlbumsResponse,
+  LibraryImportResult,
   LibraryPlaylist,
+  MusicSourceInfo,
   NowPlaying,
   SearchSong,
   PlayerState,
@@ -252,8 +256,9 @@ export class Service {
     return this.db.shelvesForAlbum(albumId);
   }
 
-  async search(query: string): Promise<SearchAlbum[]> {
-    const [sources, shelved] = [await this.ma.listMusicProviders().catch(() => []), this.db.shelfedUris()];
+  async search(query: string, source?: string): Promise<SearchAlbum[]> {
+    const [all, shelved] = [await this.ma.listMusicProviders().catch(() => []), this.db.shelfedUris()];
+    const sources = source && source !== 'all' ? all.filter((s) => s.instanceId === source) : all;
     const toHit = (a: { providerUri: string; provider: string; title: string; artist: string; year: number | null; artworkUrl: string | null }, source: string): SearchAlbum => ({
       providerUri: a.providerUri,
       provider: a.provider,
@@ -302,7 +307,7 @@ export class Service {
     return { albums, playlists, songs, sources };
   }
 
-  async addToShelf(providerUri: string, shelfId?: string): Promise<{ albumId: string; duplicate: boolean }> {
+  async addToShelf(providerUri: string, shelfId?: string, opts?: { quiet?: boolean }): Promise<{ albumId: string; duplicate: boolean }> {
     const album = await this.ma.getAlbum(providerUri);
     if (!album) throw new Error(`album not found: ${providerUri}`);
     const id = albumIdFromUri(providerUri);
@@ -311,7 +316,7 @@ export class Service {
     const dup = this.db.findLibraryAlbumByTitleArtist(album.title, album.artist);
     if (dup && dup.id !== id) {
       if (shelfId && shelfId !== 'all') this.db.addAlbumToShelf(shelfId, dup.id);
-      this.hub.broadcast({ type: 'shelf' });
+      if (!opts?.quiet) this.hub.broadcast({ type: 'shelf' });
       return { albumId: dup.id, duplicate: true };
     }
     const existing = this.db.getAlbum(id);
@@ -341,7 +346,7 @@ export class Service {
     this.db.addToShelf(id);
     // Optionally also drop it on a specific named shelf (besides the library).
     if (shelfId && shelfId !== 'all') this.db.addAlbumToShelf(shelfId, id);
-    this.hub.broadcast({ type: 'shelf' });
+    if (!opts?.quiet) this.hub.broadcast({ type: 'shelf' });
 
     // Build artwork + palette in the background, then push the updated spine.
     if (album.artworkUrl) {
@@ -376,6 +381,80 @@ export class Service {
       artworkUrl: p.artworkUrl,
       onShelf: shelved.has(p.providerUri),
     }));
+  }
+
+  // --- Library import (albums) --------------------------------------------
+
+  /** Connected streaming music sources (Apple Music accounts, later Spotify, …). */
+  async listSources(): Promise<MusicSourceInfo[]> {
+    return this.ma.listMusicProviders().catch(() => []);
+  }
+
+  /** True if this provider album is already represented on a shelf — either by its own
+      uri, or (across Apple's library-vs-catalog ids) by a same title+artist release. */
+  private albumOnShelf(providerUri: string, title: string, artist: string, shelved: Set<string>): boolean {
+    return shelved.has(providerUri) || !!this.db.findLibraryAlbumByTitleArtist(title, artist);
+  }
+
+  /** A page of the user's library albums, marked with whether each is already shelved. */
+  async listLibraryAlbums(opts: {
+    source?: string;
+    search?: string;
+    favorite?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<LibraryAlbumsResponse> {
+    const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const [sources, raw] = await Promise.all([
+      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+      this.ma.listLibraryAlbums({ source: opts.source, search: opts.search, favorite: opts.favorite, limit, offset }),
+    ]);
+    const shelved = this.db.shelfedUris();
+    const nameById = new Map(sources.map((s) => [s.instanceId, s.name]));
+    const items: LibraryAlbum[] = raw.map((a) => ({
+      providerUri: a.providerUri,
+      title: a.title,
+      artist: a.artist,
+      year: a.year,
+      artworkUrl: a.artworkUrl,
+      onShelf: this.albumOnShelf(a.providerUri, a.title, a.artist, shelved),
+      source: (a.sourceInstanceId ? nameById.get(a.sourceInstanceId) : undefined) ?? 'Library',
+      sourceInstanceId: a.sourceInstanceId,
+    }));
+    return { items, offset, hasMore: raw.length >= limit, sources };
+  }
+
+  /** Bulk-add every album in the library (optionally one source) that isn't shelved yet.
+      One shelf broadcast at the end, not per album. */
+  async importLibrary(source?: string): Promise<LibraryImportResult> {
+    const PAGE = 100;
+    const MAX = 5000; // safety cap for very large libraries
+    let offset = 0;
+    let added = 0;
+    let skipped = 0;
+    let total = 0;
+    for (;;) {
+      const page = await this.ma.listLibraryAlbums({ source, limit: PAGE, offset });
+      if (!page.length) break;
+      for (const a of page) {
+        total++;
+        if (this.albumOnShelf(a.providerUri, a.title, a.artist, this.db.shelfedUris())) {
+          skipped++;
+          continue;
+        }
+        try {
+          await this.addToShelf(a.providerUri, undefined, { quiet: true });
+          added++;
+        } catch {
+          skipped++;
+        }
+      }
+      offset += page.length;
+      if (page.length < PAGE || offset >= MAX) break;
+    }
+    if (added > 0) this.hub.broadcast({ type: 'shelf' });
+    return { added, skipped, total };
   }
 
   /** Kick off track enrichment (artist + album art) for a playlist before its

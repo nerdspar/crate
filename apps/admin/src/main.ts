@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, type LibraryAlbum, type MusicSourceInfo, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
@@ -22,6 +22,17 @@ type ShelfView = 'list' | 'tile';
 type ShelfSort = 'custom' | 'added' | 'artist' | 'title' | 'year';
 
 let results: SearchAlbum[] = [];
+// Add tab: "My Library" browse/import vs "Search", both source-aware.
+let addMode: 'library' | 'search' = 'library';
+let sources: MusicSourceInfo[] = [];
+let curSource = 'all';
+let libItems: LibraryAlbum[] = [];
+let libOffset = 0;
+let libHasMore = false;
+let libLoading = false;
+let libSearch = '';
+let libFav = false;
+const LIB_PAGE = 60;
 let shelves: Shelf[] = [];
 let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
@@ -90,7 +101,7 @@ function renderResults(): void {
 async function search(query: string): Promise<void> {
   resultsEl.innerHTML = `<div class="empty">Searching…</div>`;
   try {
-    results = await client.search(query);
+    results = await client.search(query, curSource);
     renderResults();
   } catch (e) {
     resultsEl.innerHTML = `<div class="empty">Search failed: ${esc((e as Error).message)}</div>`;
@@ -118,6 +129,169 @@ form.addEventListener('submit', (e) => {
   const q = qInput.value.trim();
   if (q) void search(q);
 });
+
+/* ================= Add: mode toggle + source filter ================= */
+const sourceSel = document.getElementById('source-sel') as HTMLSelectElement;
+const libraryModeEl = document.getElementById('library-mode') as HTMLElement;
+const searchModeEl = document.getElementById('search-mode') as HTMLElement;
+
+function setAddMode(mode: 'library' | 'search'): void {
+  addMode = mode;
+  document.querySelectorAll<HTMLElement>('.seg-btn').forEach((b) => b.classList.toggle('on', b.dataset['mode'] === mode));
+  libraryModeEl.hidden = mode !== 'library';
+  searchModeEl.hidden = mode !== 'search';
+  if (mode === 'library' && libItems.length === 0) void loadLibrary(true);
+}
+document.querySelectorAll<HTMLElement>('.seg-btn').forEach((b) => b.addEventListener('click', () => setAddMode(b.dataset['mode'] as 'library' | 'search')));
+
+function syncSourceSel(): void {
+  if (sources.length <= 1) {
+    sourceSel.hidden = true;
+    return;
+  }
+  if (sourceSel.options.length !== sources.length + 1) {
+    sourceSel.innerHTML = '';
+    const all = new Option('All sources', 'all');
+    sourceSel.add(all);
+    for (const s of sources) sourceSel.add(new Option(s.name, s.instanceId));
+  }
+  sourceSel.value = curSource;
+  sourceSel.hidden = false;
+}
+async function loadSources(): Promise<void> {
+  try {
+    sources = await client.getSources();
+    syncSourceSel();
+  } catch {
+    /* ignore */
+  }
+}
+sourceSel.addEventListener('change', () => {
+  curSource = sourceSel.value;
+  if (addMode === 'library') void loadLibrary(true);
+  else if (qInput.value.trim()) void search(qInput.value.trim());
+});
+
+/* ================= My Library: browse + bulk import ================= */
+const libraryListEl = document.getElementById('library-list') as HTMLElement;
+const libSearchInput = document.getElementById('lib-search') as HTMLInputElement;
+const libFavCb = document.getElementById('lib-fav') as HTMLInputElement;
+const libImportBtn = document.getElementById('lib-import') as HTMLButtonElement;
+const libMoreBtn = document.getElementById('lib-more') as HTMLButtonElement;
+
+async function loadLibrary(reset: boolean): Promise<void> {
+  if (libLoading) return;
+  libLoading = true;
+  if (reset) {
+    libOffset = 0;
+    libItems = [];
+    libraryListEl.innerHTML = `<div class="empty">Loading…</div>`;
+  } else {
+    libMoreBtn.textContent = 'Loading…';
+  }
+  try {
+    const res = await client.listLibraryAlbums({
+      source: curSource === 'all' ? undefined : curSource,
+      search: libSearch || undefined,
+      favorite: libFav || undefined,
+      limit: LIB_PAGE,
+      offset: libOffset,
+    });
+    sources = res.sources;
+    syncSourceSel();
+    libItems = reset ? res.items : libItems.concat(res.items);
+    libHasMore = res.hasMore;
+    libOffset += res.items.length;
+    renderLibrary();
+  } catch {
+    libraryListEl.innerHTML = `<div class="empty">Could not load your library.</div>`;
+  } finally {
+    libLoading = false;
+    libMoreBtn.textContent = 'Load more';
+  }
+}
+
+function renderLibrary(): void {
+  if (libItems.length === 0) {
+    libraryListEl.innerHTML = `<div class="empty">${libSearch || libFav ? 'No matching albums in your library.' : 'No albums in your library yet.'}</div>`;
+    libMoreBtn.hidden = true;
+    return;
+  }
+  libraryListEl.innerHTML = '';
+  for (const it of libItems) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const src = sources.length > 1 ? ` · ${esc(it.source)}` : '';
+    card.innerHTML = `
+      ${artHtml(it.artworkUrl)}
+      <div class="body">
+        <div class="meta">
+          <div class="t">${esc(it.title)}</div>
+          <div class="a">${esc(it.artist)}</div>
+          <div class="y">${it.year ?? ''}${src}</div>
+        </div>
+        <button ${it.onShelf ? 'disabled' : ''}>${it.onShelf ? 'On shelf' : 'Add'}</button>
+      </div>`;
+    const btn = card.querySelector('button')!;
+    if (!it.onShelf) btn.addEventListener('click', () => void addLibraryAlbum(it, card, btn));
+    libraryListEl.appendChild(card);
+  }
+  libMoreBtn.hidden = !libHasMore;
+}
+
+async function addLibraryAlbum(it: LibraryAlbum, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  card.classList.add('busy');
+  try {
+    await client.addToShelf({ providerUri: it.providerUri });
+    it.onShelf = true;
+    btn.textContent = 'On shelf';
+    showToast(`Added ${it.title}`);
+    void loadShelvesIndex();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Add';
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    card.classList.remove('busy');
+  }
+}
+
+async function importAll(): Promise<void> {
+  const where =
+    curSource !== 'all' ? (sources.find((s) => s.instanceId === curSource)?.name ?? 'this source') : 'your library';
+  if (!confirm(`Add every album in ${where} to Crate? Albums already added are skipped.`)) return;
+  const orig = libImportBtn.textContent;
+  libImportBtn.disabled = true;
+  libImportBtn.textContent = 'Adding…';
+  try {
+    const r = await client.importLibrary(curSource === 'all' ? undefined : curSource);
+    showToast(`Added ${r.added}, skipped ${r.skipped} of ${r.total}`);
+    await loadLibrary(true);
+    void loadShelvesIndex();
+  } catch (e) {
+    showToast(`Import failed: ${(e as Error).message}`);
+  } finally {
+    libImportBtn.disabled = false;
+    libImportBtn.textContent = orig;
+  }
+}
+
+let libSearchTimer: ReturnType<typeof setTimeout> | undefined;
+libSearchInput.addEventListener('input', () => {
+  clearTimeout(libSearchTimer);
+  libSearchTimer = setTimeout(() => {
+    libSearch = libSearchInput.value.trim();
+    void loadLibrary(true);
+  }, 300);
+});
+libFavCb.addEventListener('change', () => {
+  libFav = libFavCb.checked;
+  void loadLibrary(true);
+});
+libImportBtn.addEventListener('click', () => void importAll());
+libMoreBtn.addEventListener('click', () => void loadLibrary(false));
 
 /* ================= Shelves — index ================= */
 const shelvesIndexEl = document.getElementById('shelves-index') as HTMLElement;
@@ -679,5 +853,7 @@ defaultSpeakerSel.addEventListener('change', async () => {
 
 /* ================= Init ================= */
 renderResults();
+void loadSources();
+setAddMode('library'); // loads the library browser
 void loadShelvesIndex();
 void loadSettingsPanel();

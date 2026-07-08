@@ -56,8 +56,9 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.get('/api/players', () => service.getPlayers());
 
   app.get('/api/search', async (req) => {
-    const q = ((req.query as { q?: string }).q ?? '').trim();
-    return q ? service.search(q) : [];
+    const { q, source } = req.query as { q?: string; source?: string };
+    const query = (q ?? '').trim();
+    return query ? service.search(query, source) : [];
   });
 
   // Global search: albums + playlists + songs, optionally scoped to one source.
@@ -119,6 +120,26 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     const b = req.body as { albumIds: string[]; shelf?: string };
     service.reorder(b.albumIds ?? [], b.shelf);
     return { ok: true };
+  });
+
+  // Connected streaming sources (Apple Music accounts, later Spotify, …).
+  app.get('/api/sources', () => service.listSources());
+
+  // Library albums: browse the user's saved albums (source-scoped / searched / favorites,
+  // paged), and bulk-import an entire library.
+  app.get('/api/library/albums', (req) => {
+    const q = req.query as { source?: string; search?: string; favorite?: string; limit?: string; offset?: string };
+    return service.listLibraryAlbums({
+      source: q.source && q.source !== 'all' ? q.source : undefined,
+      search: q.search?.trim() || undefined,
+      favorite: q.favorite === '1' || q.favorite === 'true',
+      limit: q.limit ? Number(q.limit) : undefined,
+      offset: q.offset ? Number(q.offset) : undefined,
+    });
+  });
+  app.post('/api/library/import', (req) => {
+    const b = (req.body ?? {}) as { source?: string };
+    return service.importLibrary(b.source && b.source !== 'all' ? b.source : undefined);
   });
 
   // Playlists: list the provider-library playlists for the add picker, and add one.

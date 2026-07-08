@@ -148,6 +148,38 @@ export interface MusicSourceInfo {
   name: string;
 }
 
+/** An album from the user's provider library (Apple Music, etc.), plus whether it's
+    already on a Crate shelf. `providerUri` is MA's canonical `library://album/N`. */
+export interface LibraryAlbum {
+  providerUri: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  artworkUrl: string | null;
+  onShelf: boolean;
+  /** Display name of the source this album is saved under (e.g. "Apple Music"). */
+  source: string;
+  /** The source's provider-instance id (for scoping/filtering); null if unknown. */
+  sourceInstanceId: string | null;
+}
+
+/** A page of library albums for the admin's "Add from library" browser. */
+export interface LibraryAlbumsResponse {
+  items: LibraryAlbum[];
+  offset: number;
+  /** True when another page likely exists (this page filled the requested limit). */
+  hasMore: boolean;
+  /** Connected sources, for the source filter. */
+  sources: MusicSourceInfo[];
+}
+
+/** Result of bulk-importing a whole library (optionally one source). */
+export interface LibraryImportResult {
+  added: number;
+  skipped: number;
+  total: number;
+}
+
 /** Sonos-style global search: albums, playlists and songs at once, plus the list
     of connected sources for the dropdown. */
 export interface GlobalSearchResponse {

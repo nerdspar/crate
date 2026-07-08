@@ -7,14 +7,36 @@
 </head>
 <body>
 <main id="app">
-  <!-- ============ SEARCH ============ -->
+  <!-- ============ ADD (My Library / Search) ============ -->
   <section class="tab-pane on" data-tab="search">
-    <header class="pane-head"><h1>Search</h1></header>
-    <form id="search-form">
-      <input id="q" type="search" placeholder="Search Apple Music — album or artist…" autocomplete="off">
-      <button type="submit">Search</button>
-    </form>
-    <div id="results" class="grid"></div>
+    <header class="pane-head"><h1>Add albums</h1></header>
+    <div class="add-bar">
+      <div class="seg" id="add-mode">
+        <button class="seg-btn on" data-mode="library">My Library</button>
+        <button class="seg-btn" data-mode="search">Search</button>
+      </div>
+      <select id="source-sel" class="source-sel" hidden></select>
+    </div>
+
+    <!-- My Library: browse + bulk-add your saved albums -->
+    <div id="library-mode">
+      <div class="lib-toolbar">
+        <input id="lib-search" type="search" placeholder="Filter your library…" autocomplete="off">
+        <label class="lib-fav"><input type="checkbox" id="lib-fav"> Favorites</label>
+        <button id="lib-import" class="ghost">Add all</button>
+      </div>
+      <div id="library-list" class="grid"></div>
+      <button id="lib-more" class="ghost load-more" hidden>Load more</button>
+    </div>
+
+    <!-- Search: find any album not already in your library -->
+    <div id="search-mode" hidden>
+      <form id="search-form">
+        <input id="q" type="search" placeholder="Search — album or artist…" autocomplete="off">
+        <button type="submit">Search</button>
+      </form>
+      <div id="results" class="grid"></div>
+    </div>
   </section>
 
   <!-- ============ SHELVES ============ -->

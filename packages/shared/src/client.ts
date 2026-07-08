@@ -6,7 +6,10 @@ import type {
   CreateShelfRequest,
   GlobalSearchResponse,
   GroupRequest,
+  LibraryAlbumsResponse,
+  LibraryImportResult,
   LibraryPlaylist,
+  MusicSourceInfo,
   OverrideRequest,
   PlayRequest,
   PlayersResponse,
@@ -75,8 +78,9 @@ export class CrateClient {
     return this.req('/api/players');
   }
 
-  search(query: string): Promise<SearchAlbum[]> {
-    return this.req(`/api/search?q=${encodeURIComponent(query)}`);
+  search(query: string, source?: string): Promise<SearchAlbum[]> {
+    const s = source && source !== 'all' ? `&source=${encodeURIComponent(source)}` : '';
+    return this.req(`/api/search?q=${encodeURIComponent(query)}${s}`);
   }
   /** Global search: albums + playlists + songs, optionally scoped to one source.
       `limit` is the per-section cap (raised to page in more results). */
@@ -104,6 +108,32 @@ export class CrateClient {
 
   addToShelf(body: AddToShelfRequest): Promise<{ ok: true; albumId: string; duplicate: boolean }> {
     return this.post('/api/shelf/add', body);
+  }
+
+  /** Connected streaming music sources (for the source filter). */
+  getSources(): Promise<MusicSourceInfo[]> {
+    return this.req('/api/sources');
+  }
+  /** A page of the user's library albums (source-scoped / searched / favorites). */
+  listLibraryAlbums(opts: {
+    source?: string;
+    search?: string;
+    favorite?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<LibraryAlbumsResponse> {
+    const q = new URLSearchParams();
+    if (opts.source) q.set('source', opts.source);
+    if (opts.search) q.set('search', opts.search);
+    if (opts.favorite) q.set('favorite', '1');
+    if (opts.limit != null) q.set('limit', String(opts.limit));
+    if (opts.offset != null) q.set('offset', String(opts.offset));
+    const qs = q.toString();
+    return this.req(`/api/library/albums${qs ? `?${qs}` : ''}`);
+  }
+  /** Bulk-add every library album (optionally one source) to the shelf. */
+  importLibrary(source?: string): Promise<LibraryImportResult> {
+    return this.post('/api/library/import', source ? { source } : {});
   }
 
   /** The user's provider-library playlists, for the add picker. */

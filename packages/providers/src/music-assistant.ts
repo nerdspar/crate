@@ -13,6 +13,7 @@ import type {
   MusicSource,
   PlayerTarget,
   ProviderAlbum,
+  ProviderLibraryAlbum,
   ProviderPlayer,
   ProviderPlaylist,
   ProviderTrackHit,
@@ -202,6 +203,37 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       .filter((p) => p['type'] === 'music' && p['is_streaming_provider'] === true && p['available'] !== false)
       .map((p) => ({ instanceId: str(p['instance_id']) ?? '', name: str(p['name']) ?? 'Music' }))
       .filter((p) => p.instanceId);
+  }
+
+  /** The user's saved albums. MA returns `library://album/N` uris (canonical + playable)
+      with a provider mapping that tells us the real source instance (which Apple Music
+      account, later Spotify, etc.). Paged, and optionally scoped/searched/favorites. */
+  async listLibraryAlbums(opts: {
+    source?: string;
+    search?: string;
+    favorite?: boolean;
+    limit: number;
+    offset: number;
+  }): Promise<ProviderLibraryAlbum[]> {
+    const raw = arr(
+      await this.client.command('music/albums/library_items', {
+        limit: opts.limit,
+        offset: opts.offset,
+        order_by: 'sort_name',
+        ...(opts.source ? { provider: opts.source } : {}),
+        ...(opts.search ? { search: opts.search } : {}),
+        ...(opts.favorite ? { favorite: true } : {}),
+      }),
+    );
+    const out: ProviderLibraryAlbum[] = [];
+    for (const r of raw) {
+      const item = rec(r);
+      const base = this.toProviderAlbum(item);
+      if (!base) continue;
+      const mapping = arr(item['provider_mappings']).map(rec)[0] ?? {};
+      out.push({ ...base, sourceInstanceId: str(mapping['provider_instance']) ?? null });
+    }
+    return out;
   }
 
   async getAlbum(providerUri: string): Promise<ProviderAlbum | null> {
