@@ -136,6 +136,17 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .card.dragging { opacity: 0.4; }
 .drag-handle { color: var(--ink-dim); cursor: grab; padding: 0 0.2rem; font-size: 1.1rem; user-select: none; }
 
+/* ---------- Shelves: type toggle + a playlist's songs ---------- */
+#shelves-type { margin-bottom: 1.6vh; }
+#songs-list { display: flex; flex-direction: column; margin-top: 1vh; }
+.song-row { display: flex; align-items: center; gap: 0.9rem; padding: 0.7rem 0.4rem; border-top: 1px solid var(--line); }
+.song-row:first-child { border-top: none; }
+.song-n { color: var(--ink-dim); font-size: 0.85rem; width: 1.7rem; text-align: right; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.song-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.song-t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-a { color: var(--ink-dim); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-d { color: var(--ink-dim); font-size: 0.85rem; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+
 /* ---------- Shelves index ---------- */
 #shelves-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.6vh; }
 .shelf-row {

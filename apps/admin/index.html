@@ -36,6 +36,10 @@
     <!-- Index: the list of shelves (All is just the default one) -->
     <div id="shelves-index">
       <header class="pane-head"><h1>Shelves</h1><img class="pane-logo" alt="Crate" data-logo></header>
+      <div class="seg" id="shelves-type">
+        <button class="seg-btn on" data-type="album">Albums</button>
+        <button class="seg-btn" data-type="playlist">Playlists</button>
+      </div>
       <div id="shelves-list"></div>
       <form id="crate-form">
         <input id="crate-name" type="text" placeholder="New shelf name…" autocomplete="off">
@@ -68,6 +72,15 @@
         </div>
       </div>
       <div id="shelf-list" class="grid"></div>
+    </div>
+    <!-- Songs of a single playlist (read-only) -->
+    <div id="playlist-songs" hidden>
+      <header class="pane-head detail-head">
+        <button id="songs-back" class="ghost">‹ Playlists</button>
+        <h1 id="songs-name">Playlist</h1>
+        <span id="songs-count" class="pane-sub"></span>
+      </header>
+      <div id="songs-list"></div>
     </div>
   </section>
 

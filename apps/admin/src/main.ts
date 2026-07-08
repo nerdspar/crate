@@ -39,6 +39,7 @@ let shelves: Shelf[] = [];
 let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
 let libraryCount = 0; // size of the "All" shelf
+let playlistCount = 0; // size of the "All Playlists" shelf
 
 // Currently open shelf detail: 'all' = the library, else a named shelf id; null = index.
 let openShelfId: string | null = null;
@@ -98,13 +99,20 @@ function updateAddToolbar(): void {
   addSearchInput.placeholder = `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
   importBtn.hidden = addType !== 'album'; // "Add all" only for albums
 }
-function setAddType(type: AddType): void {
+// Albums vs Playlists is one shared choice across Add and Shelves.
+function setContentType(type: AddType): void {
   addType = type;
-  document.querySelectorAll<HTMLElement>('#add-type .seg-btn').forEach((b) => b.classList.toggle('on', b.dataset['type'] === type));
+  document
+    .querySelectorAll<HTMLElement>('#add-type .seg-btn, #shelves-type .seg-btn')
+    .forEach((b) => b.classList.toggle('on', b.dataset['type'] === type));
   updateAddToolbar();
+  backToIndex(); // switching type drops any open shelf detail / songs view
+  renderShelvesIndex();
   void reloadAdd(true);
 }
-document.querySelectorAll<HTMLElement>('#add-type .seg-btn').forEach((b) => b.addEventListener('click', () => setAddType(b.dataset['type'] as AddType)));
+document
+  .querySelectorAll<HTMLElement>('#add-type .seg-btn, #shelves-type .seg-btn')
+  .forEach((b) => b.addEventListener('click', () => setContentType(b.dataset['type'] as AddType)));
 
 function syncSourceSel(): void {
   if (sources.length <= 1) {
@@ -458,10 +466,12 @@ function albumCrates(): Shelf[] {
 
 async function loadShelvesIndex(): Promise<void> {
   try {
-    const res = await client.getShelf();
+    const [res, pl] = [await client.getShelf(), await client.getShelf('playlists').catch(() => ({ items: [] }))];
     shelves = res.shelves;
     libraryCount = res.items.length;
+    playlistCount = pl.items.length;
     if (openShelfId === 'all') detailItems = res.items; // keep the open All detail fresh
+    if (openShelfId === 'playlists') detailItems = pl.items;
   } catch {
     shelvesListEl.innerHTML = `<div class="empty">Could not reach the device service.</div>`;
     return;
@@ -483,19 +493,25 @@ async function loadShelvesIndex(): Promise<void> {
 
 function renderShelvesIndex(): void {
   shelvesListEl.innerHTML = '';
+  if (addType === 'playlist') {
+    crateForm.hidden = true; // no named playlist collections
+    shelvesListEl.appendChild(shelfRow('playlists', 'All Playlists', playlistCount, true, 'playlist'));
+    return;
+  }
+  crateForm.hidden = false;
   // "All albums" is just the default shelf, shown first.
-  shelvesListEl.appendChild(shelfRow('all', 'All albums', libraryCount, true));
+  shelvesListEl.appendChild(shelfRow('all', 'All albums', libraryCount, true, 'album'));
   for (const c of albumCrates()) {
-    shelvesListEl.appendChild(shelfRow(c.id, c.name, crateMembers.get(c.id)?.size ?? 0, false));
+    shelvesListEl.appendChild(shelfRow(c.id, c.name, crateMembers.get(c.id)?.size ?? 0, false, 'album'));
   }
 }
 
-function shelfRow(id: string, name: string, count: number, isDefault: boolean): HTMLElement {
+function shelfRow(id: string, name: string, count: number, isDefault: boolean, unit: 'album' | 'playlist'): HTMLElement {
   const row = document.createElement('button');
   row.className = 'shelf-row' + (isDefault ? ' default' : '');
   row.innerHTML =
     `<span class="sh-name">${esc(name)}</span>` +
-    `<span class="sh-n">${count} album${count === 1 ? '' : 's'}</span>` +
+    `<span class="sh-n">${count} ${unit}${count === 1 ? '' : 's'}</span>` +
     (isDefault ? '' : `<span class="sh-del" role="button" aria-label="Delete shelf">✕</span>`) +
     `<span class="sh-chev">›</span>`;
   row.addEventListener('click', () => void openShelf(id, name));
@@ -537,7 +553,57 @@ const viewTileBtn = document.getElementById('view-tile') as HTMLButtonElement;
 function backToIndex(): void {
   openShelfId = null;
   shelfDetailEl.hidden = true;
+  playlistSongsEl.hidden = true;
   shelvesIndexEl.hidden = false;
+}
+
+/* ---------- A single playlist's songs (read-only) ---------- */
+const playlistSongsEl = document.getElementById('playlist-songs') as HTMLElement;
+const songsNameEl = document.getElementById('songs-name') as HTMLElement;
+const songsCountEl = document.getElementById('songs-count') as HTMLElement;
+const songsListEl = document.getElementById('songs-list') as HTMLElement;
+(document.getElementById('songs-back') as HTMLElement).addEventListener('click', () => {
+  playlistSongsEl.hidden = true;
+  shelfDetailEl.hidden = false;
+});
+
+function fmtDur(s: number | null): string {
+  if (s == null) return '';
+  const m = Math.floor(s / 60);
+  const ss = Math.round(s % 60);
+  return `${m}:${ss.toString().padStart(2, '0')}`;
+}
+
+async function openPlaylistSongs(uri: string, name: string): Promise<void> {
+  shelfDetailEl.hidden = true;
+  playlistSongsEl.hidden = false;
+  songsNameEl.textContent = name;
+  songsCountEl.textContent = '';
+  songsListEl.innerHTML = `<div class="empty">Loading songs…</div>`;
+  if (!uri) {
+    songsListEl.innerHTML = `<div class="empty">This playlist has no source to read.</div>`;
+    return;
+  }
+  try {
+    const tracks = await client.getPlaylistTracks(uri);
+    songsCountEl.textContent = `${tracks.length} song${tracks.length === 1 ? '' : 's'}`;
+    if (!tracks.length) {
+      songsListEl.innerHTML = `<div class="empty">No songs found.</div>`;
+      return;
+    }
+    songsListEl.innerHTML = '';
+    tracks.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'song-row';
+      row.innerHTML =
+        `<span class="song-n">${i + 1}</span>` +
+        `<span class="song-meta"><span class="song-t">${esc(t.title)}</span><span class="song-a">${esc(t.artist || '')}</span></span>` +
+        `<span class="song-d">${fmtDur(t.duration)}</span>`;
+      songsListEl.appendChild(row);
+    });
+  } catch {
+    songsListEl.innerHTML = `<div class="empty">Could not load songs.</div>`;
+  }
 }
 
 const shelfFilterInput = document.getElementById('shelf-filter') as HTMLInputElement;
@@ -593,22 +659,30 @@ function sortedDetail(): ShelfItem[] {
 
 function renderShelfDetail(): void {
   if (!openShelfId) return;
+  const playlists = openShelfId === 'playlists';
+  const unit = playlists ? 'playlist' : 'album';
   const view = viewByShelf.get(openShelfId) ?? 'tile';
   const sort = sortByShelf.get(openShelfId) ?? 'custom';
-  shelfDetailCount.textContent = `${detailItems.length} album${detailItems.length === 1 ? '' : 's'}`;
+  shelfDetailCount.textContent = `${detailItems.length} ${unit}${detailItems.length === 1 ? '' : 's'}`;
   shelfListEl.className = view === 'list' ? 'list' : 'grid';
   if (detailItems.length === 0) {
-    shelfListEl.innerHTML = `<div class="empty">${openShelfId === 'all' ? 'Nothing on the shelf yet — add albums from Search.' : 'No albums in this shelf yet — add them from All albums.'}</div>`;
+    const msg = playlists
+      ? 'No playlists yet — add them from Add › Playlists.'
+      : openShelfId === 'all'
+        ? 'Nothing on the shelf yet — add albums from Add.'
+        : 'No albums in this shelf yet — add them from All albums.';
+    shelfListEl.innerHTML = `<div class="empty">${msg}</div>`;
     return;
   }
   const rows = sortedDetail();
   if (rows.length === 0) {
-    shelfListEl.innerHTML = `<div class="empty">No albums match “${esc(shelfFilter)}”.</div>`;
+    shelfListEl.innerHTML = `<div class="empty">No ${unit}s match “${esc(shelfFilter)}”.</div>`;
     return;
   }
   shelfListEl.innerHTML = '';
-  // Drag-reorder only makes sense on the full, custom-ordered list — not a filtered subset.
-  const draggable = sort === 'custom' && !shelfFilter;
+  // Drag-reorder only makes sense on the full, custom-ordered album list — not a filtered subset,
+  // and not playlists (their order isn't editable here yet).
+  const draggable = sort === 'custom' && !shelfFilter && !playlists;
   shelfListEl.classList.toggle('draggable', draggable);
   for (const it of rows) {
     const card = document.createElement('div');
@@ -622,34 +696,57 @@ function renderShelfDetail(): void {
         void saveShelfOrder();
       });
     }
-    card.innerHTML = `
-      ${artHtml(it.artworkUrl)}
-      <div class="body">
-        <div class="meta">
-          <div class="t">${esc(it.title)}</div>
-          <div class="a">${esc(it.artist)}</div>
-          <div class="y">${it.year ?? ''}</div>
-        </div>
-        <div class="card-actions">
-          <button class="ghost crate-btn">Shelves</button>
-          <button class="ghost edit-btn">Edit</button>
-          <button class="ghost rm-btn">${openShelfId === 'all' ? 'Remove' : 'Take out'}</button>
-        </div>
-      </div>`;
-    card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it.albumId));
-    card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
-    card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
+    if (playlists) {
+      card.innerHTML = `
+        ${artHtml(it.artworkUrl)}
+        <div class="body">
+          <div class="meta">
+            <div class="t">${esc(it.title)}</div>
+            <div class="a">${esc(it.artist)}</div>
+          </div>
+          <div class="card-actions">
+            <button class="ghost rm-btn">Remove</button>
+          </div>
+        </div>`;
+      const nav = (): void => void openPlaylistSongs(it.providerUri ?? '', it.title);
+      const art = card.querySelector('.art') as HTMLElement;
+      const meta = card.querySelector('.meta') as HTMLElement;
+      art.classList.add('tappable');
+      meta.classList.add('tappable');
+      art.addEventListener('click', nav);
+      meta.addEventListener('click', nav);
+      card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
+    } else {
+      card.innerHTML = `
+        ${artHtml(it.artworkUrl)}
+        <div class="body">
+          <div class="meta">
+            <div class="t">${esc(it.title)}</div>
+            <div class="a">${esc(it.artist)}</div>
+            <div class="y">${it.year ?? ''}</div>
+          </div>
+          <div class="card-actions">
+            <button class="ghost crate-btn">Shelves</button>
+            <button class="ghost edit-btn">Edit</button>
+            <button class="ghost rm-btn">${openShelfId === 'all' ? 'Remove' : 'Take out'}</button>
+          </div>
+        </div>`;
+      card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it.albumId));
+      card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
+      card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
+    }
     shelfListEl.appendChild(card);
   }
 }
 
 async function removeFromDetail(albumId: string): Promise<void> {
+  const fromLibrary = openShelfId === 'all' || openShelfId === 'playlists';
   try {
-    if (openShelfId === 'all') await client.removeFromShelf(albumId);
+    if (fromLibrary) await client.removeFromShelf(albumId);
     else if (openShelfId) await client.removeAlbumFromShelf(openShelfId, albumId);
     detailItems = detailItems.filter((it) => it.albumId !== albumId);
     renderShelfDetail();
-    showToast(openShelfId === 'all' ? 'Removed from library' : 'Taken out of shelf');
+    showToast(openShelfId === 'playlists' ? 'Removed playlist' : fromLibrary ? 'Removed from library' : 'Taken out of shelf');
     void loadShelvesIndex();
   } catch (e) {
     showToast(`Failed: ${(e as Error).message}`);
@@ -1031,6 +1128,6 @@ defaultSpeakerSel.addEventListener('change', async () => {
 document.querySelectorAll<HTMLImageElement>('img[data-logo]').forEach((img) => (img.src = crateMarkMono));
 void loadSources();
 updateAddToolbar();
-setAddType('album'); // seeds the Add tab (Albums) via reloadAdd
+setContentType('album'); // seeds Add + Shelves for the shared Albums/Playlists choice
 void loadShelvesIndex();
 void loadSettingsPanel();
