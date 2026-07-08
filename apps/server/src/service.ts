@@ -257,18 +257,22 @@ export class Service {
   }
 
   async search(query: string, source?: string): Promise<SearchAlbum[]> {
-    const [all, shelved] = [await this.ma.listMusicProviders().catch(() => []), this.db.shelfedUris()];
+    const all = await this.ma.listMusicProviders().catch(() => []);
     const sources = source && source !== 'all' ? all.filter((s) => s.instanceId === source) : all;
-    const toHit = (a: { providerUri: string; provider: string; title: string; artist: string; year: number | null; artworkUrl: string | null }, source: string): SearchAlbum => ({
-      providerUri: a.providerUri,
-      provider: a.provider,
-      title: a.title,
-      artist: a.artist,
-      year: a.year,
-      artworkUrl: this.cachedCoverFromRow(this.shelvedRow(a.providerUri, a.title, a.artist)) ?? a.artworkUrl,
-      onShelf: shelved.has(a.providerUri),
-      source,
-    });
+    const toHit = (a: { providerUri: string; provider: string; title: string; artist: string; year: number | null; artworkUrl: string | null }, source: string): SearchAlbum => {
+      const row = this.shelvedRow(a.providerUri, a.title, a.artist);
+      return {
+        providerUri: a.providerUri,
+        provider: a.provider,
+        title: a.title,
+        artist: a.artist,
+        year: a.year,
+        artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl,
+        onShelf: !!row,
+        albumId: row?.id ?? null,
+        source,
+      };
+    };
     // No known sources → one unscoped search. Otherwise search each streaming
     // source so results can be grouped/labelled by source (e.g. two Apple accounts).
     if (sources.length === 0) {
@@ -298,7 +302,7 @@ export class Service {
     const songs: SearchSong[] = [];
     for (const { s, r } of results) {
       for (const a of r.albums)
-        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), source: s.name });
+        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, source: s.name });
       for (const p of r.playlists)
         playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
       for (const t of r.tracks)

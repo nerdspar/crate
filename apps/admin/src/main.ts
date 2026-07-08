@@ -166,16 +166,8 @@ async function reloadAdd(reset: boolean): Promise<void> {
       libAlbums = reset ? res.items : [...libAlbums, ...res.items];
       addHasMore = res.hasMore;
       addOffset += res.items.length;
-      if (q) {
-        const cat = await client.search(q, curSource);
-        if (token !== addToken) return;
-        // Only drop catalog hits that duplicate a library-section row; keep already-shelved
-        // ones (they show "On shelf") so an album you own never silently vanishes from search.
-        const libKeys = new Set(libAlbums.map((a) => taKey(a.title, a.artist)));
-        catAlbums = cat.filter((a) => !libKeys.has(taKey(a.title, a.artist)));
-      } else {
-        catAlbums = [];
-      }
+      catAlbums = q ? await client.search(q, curSource) : [];
+      if (token !== addToken) return;
     } else {
       let pls = await client.listLibraryPlaylists();
       if (token !== addToken) return;
@@ -184,15 +176,8 @@ async function reloadAdd(reset: boolean): Promise<void> {
         pls = pls.filter((p) => p.name.toLowerCase().includes(ql) || (p.owner ?? '').toLowerCase().includes(ql));
       }
       libPlaylists = pls;
-      if (q) {
-        const cat = await client.searchPlaylists(q);
-        if (token !== addToken) return;
-        const libUris = new Set(libPlaylists.map((p) => p.providerUri));
-        const libNames = new Set(libPlaylists.map((p) => p.name.toLowerCase()));
-        catPlaylists = cat.filter((p) => !libUris.has(p.providerUri) && !libNames.has(p.name.toLowerCase()));
-      } else {
-        catPlaylists = [];
-      }
+      catPlaylists = q ? await client.searchPlaylists(q) : [];
+      if (token !== addToken) return;
     }
     renderAdd();
   } catch {
@@ -222,19 +207,67 @@ function addSection(title: string, cards: HTMLElement[]): void {
 function renderAdd(): void {
   const searching = !!addQuery;
   addListEl.className = '';
-  const libCards = addType === 'album' ? libAlbums.map(albumCard) : libPlaylists.map(playlistCard);
-  const catCards = addType === 'album' ? catAlbums.map(albumCard) : catPlaylists.map(playlistCard);
-  if (!libCards.length && !catCards.length) {
-    const kind = addType === 'album' ? 'albums' : 'playlists';
-    addListEl.innerHTML = `<div class="empty">${searching ? 'No matches.' : `No ${kind} in your library yet.`}</div>`;
-    addMoreBtn.hidden = true;
+  addListEl.innerHTML = '';
+  const kind = addType === 'album' ? 'albums' : 'playlists';
+
+  // Browsing (no query): just your library, one flat grid.
+  if (!searching) {
+    const cards = addType === 'album' ? libAlbums.map(albumCard) : libPlaylists.map(playlistCard);
+    if (!cards.length) {
+      addListEl.innerHTML = `<div class="empty">No ${kind} in your library yet.</div>`;
+      addMoreBtn.hidden = true;
+      return;
+    }
+    addSection('', cards);
+    addMoreBtn.hidden = addType !== 'album' || !addHasMore;
     return;
   }
-  addListEl.innerHTML = '';
-  if (libCards.length) addSection(searching ? 'In your library' : '', libCards);
-  if (searching && catCards.length) addSection(catalogLabel(), catCards);
-  // Load-more paginates the browsed library only; searches show all matches at once.
-  addMoreBtn.hidden = searching || addType !== 'album' || !addHasMore;
+
+  // Searching: On your shelf (already added, anywhere) → In your library (owned) → From source.
+  addMoreBtn.hidden = true;
+  if (addType === 'album') {
+    const libKeys = new Set(libAlbums.map((a) => taKey(a.title, a.artist)));
+    // One row per shelved album — many catalog editions can resolve to the same one.
+    const seenId = new Set<string>();
+    const onShelf = [
+      ...libAlbums.filter((a) => a.onShelf),
+      ...catAlbums.filter((a) => a.onShelf && !libKeys.has(taKey(a.title, a.artist))),
+    ].filter((a) => {
+      const id = 'albumId' in a ? a.albumId : null;
+      if (id && seenId.has(id)) return false;
+      if (id) seenId.add(id);
+      return true;
+    });
+    const owned = libAlbums.filter((a) => !a.onShelf);
+    const catalog = catAlbums.filter((a) => !a.onShelf && !libKeys.has(taKey(a.title, a.artist)));
+    if (!onShelf.length && !owned.length && !catalog.length) {
+      addListEl.innerHTML = `<div class="empty">No matches.</div>`;
+      return;
+    }
+    if (onShelf.length) addSection('On your shelf', onShelf.map(albumCard));
+    if (owned.length) addSection('In your library', owned.map(albumCard));
+    if (catalog.length) addSection(catalogLabel(), catalog.map(albumCard));
+  } else {
+    const uris = new Set(libPlaylists.map((p) => p.providerUri));
+    const names = new Set(libPlaylists.map((p) => p.name.toLowerCase()));
+    const dup = (p: LibraryPlaylist): boolean => uris.has(p.providerUri) || names.has(p.name.toLowerCase());
+    const seenName = new Set<string>();
+    const onShelf = [...libPlaylists.filter((p) => p.onShelf), ...catPlaylists.filter((p) => p.onShelf && !dup(p))].filter((p) => {
+      const k = p.name.toLowerCase();
+      if (seenName.has(k)) return false;
+      seenName.add(k);
+      return true;
+    });
+    const owned = libPlaylists.filter((p) => !p.onShelf);
+    const catalog = catPlaylists.filter((p) => !p.onShelf && !dup(p));
+    if (!onShelf.length && !owned.length && !catalog.length) {
+      addListEl.innerHTML = `<div class="empty">No matches.</div>`;
+      return;
+    }
+    if (onShelf.length) addSection('On your shelf', onShelf.map(playlistCard));
+    if (owned.length) addSection('In your library', owned.map(playlistCard));
+    if (catalog.length) addSection(catalogLabel(), catalog.map(playlistCard));
+  }
 }
 
 function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
@@ -392,13 +425,22 @@ async function importAll(): Promise<void> {
   }
 }
 
+const addClearBtn = document.getElementById('add-clear') as HTMLButtonElement;
 let addSearchTimer: ReturnType<typeof setTimeout> | undefined;
 addSearchInput.addEventListener('input', () => {
+  addClearBtn.hidden = !addSearchInput.value;
   clearTimeout(addSearchTimer);
   addSearchTimer = setTimeout(() => {
     addQuery = addSearchInput.value.trim();
     void reloadAdd(true);
   }, 300);
+});
+addClearBtn.addEventListener('click', () => {
+  addSearchInput.value = '';
+  addClearBtn.hidden = true;
+  addQuery = '';
+  addSearchInput.focus();
+  void reloadAdd(true);
 });
 importBtn.addEventListener('click', () => void importAll());
 addMoreBtn.addEventListener('click', () => void reloadAdd(false));

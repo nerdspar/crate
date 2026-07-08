@@ -21,7 +21,10 @@
       <select id="source-sel" class="source-sel" hidden></select>
     </div>
     <div class="lib-toolbar">
-      <input id="add-search" type="search" placeholder="Search your library &amp; Apple Music…" autocomplete="off">
+      <div class="search-wrap">
+        <input id="add-search" type="search" placeholder="Search your library &amp; Apple Music…" autocomplete="off">
+        <button id="add-clear" class="search-clear" type="button" aria-label="Clear search" hidden>×</button>
+      </div>
       <button id="lib-import" class="ghost">Add all</button>
     </div>
     <div id="add-list"></div>

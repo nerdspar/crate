@@ -120,6 +120,8 @@ export interface SearchAlbum {
   year: number | null;
   artworkUrl: string | null;
   onShelf: boolean;
+  /** Crate album id when already shelved (for managing / removing from search), else null. */
+  albumId: string | null;
   /** Display name of the streaming source this hit came from (e.g. "Apple Music").
       For grouping results by source when several accounts/services are connected. */
   source: string;

@@ -65,6 +65,16 @@ button:disabled { opacity: 0.5; cursor: default; }
 .source-sel:focus { border-color: var(--brass); }
 .lib-toolbar { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 0.4vh; }
 .lib-toolbar input[type='search'] { flex: 1; min-width: 140px; font-size: 1rem; padding: 0.65rem 1.1rem; }
+.search-wrap { position: relative; flex: 1; min-width: 140px; display: flex; }
+.search-wrap input[type='search'] { flex: 1; padding-right: 2.5rem; }
+input[type='search']::-webkit-search-cancel-button { display: none; } /* using our own clear button */
+.search-clear {
+  position: absolute; right: 0.45rem; top: 50%; transform: translateY(-50%);
+  width: 1.55rem; height: 1.55rem; padding: 0; border: none; border-radius: 999px;
+  background: rgba(236, 231, 221, 0.14); color: var(--ink); cursor: pointer;
+  font-size: 1.15rem; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.search-clear:hover { background: rgba(236, 231, 221, 0.24); }
 .lib-fav { display: flex; align-items: center; gap: 0.4rem; color: var(--ink-dim); font-size: 0.95rem; cursor: pointer; white-space: nowrap; }
 .lib-fav input { width: 1.1rem; height: 1.1rem; }
 #lib-import { white-space: nowrap; }
