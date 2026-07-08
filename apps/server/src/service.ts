@@ -28,7 +28,7 @@ import type { Config } from './config.js';
 import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
-import { albumIdFromUri, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
+import { albumIdFromUri, artUrl, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
 import { applyBrightness, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower } from './system.js';
 import type { Track } from '@crate/shared';
 
@@ -265,7 +265,7 @@ export class Service {
       title: a.title,
       artist: a.artist,
       year: a.year,
-      artworkUrl: a.artworkUrl,
+      artworkUrl: this.cachedCover(a.providerUri, a.title, a.artist) ?? a.artworkUrl,
       onShelf: shelved.has(a.providerUri),
       source,
     });
@@ -396,6 +396,24 @@ export class Service {
     return shelved.has(providerUri) || !!this.db.findLibraryAlbumByTitleArtist(title, artist);
   }
 
+  /** The shelf's own cached cover for an album we already hold — the same file the wall
+      serves (same-origin, reliable, no expiring provider URLs). Falls back to null so the
+      caller can use the provider's remote URL for albums we haven't ingested yet. */
+  private cachedCover(providerUri: string, title: string, artist: string): string | null {
+    const row = this.db.getAlbum(albumIdFromUri(providerUri)) ?? this.db.findLibraryAlbumByTitleArtist(title, artist);
+    if (!row) return null;
+    let file: string | null = row.artwork_path;
+    if (row.overrides) {
+      try {
+        const ov = JSON.parse(row.overrides) as { coverPath?: string | null };
+        if (ov.coverPath) file = ov.coverPath;
+      } catch {
+        /* ignore bad override json */
+      }
+    }
+    return file ? artUrl(ART_BASE, this.cfg.artDir, file) : null;
+  }
+
   /** A page of the user's library albums, marked with whether each is already shelved. */
   async listLibraryAlbums(opts: {
     source?: string;
@@ -417,7 +435,7 @@ export class Service {
       title: a.title,
       artist: a.artist,
       year: a.year,
-      artworkUrl: a.artworkUrl,
+      artworkUrl: this.cachedCover(a.providerUri, a.title, a.artist) ?? a.artworkUrl,
       onShelf: this.albumOnShelf(a.providerUri, a.title, a.artist, shelved),
       source: (a.sourceInstanceId ? nameById.get(a.sourceInstanceId) : undefined) ?? 'Library',
       sourceInstanceId: a.sourceInstanceId,

@@ -76,7 +76,7 @@ export function songShelfItem(
 }
 
 /** Cache-bust cached art with its mtime so a regenerated strip gets a fresh URL. */
-function artUrl(artBase: string, artDir: string, file: string): string {
+export function artUrl(artBase: string, artDir: string, file: string): string {
   try {
     return `${artBase}/${file}?v=${Math.round(statSync(join(artDir, file)).mtimeMs)}`;
   } catch {
