@@ -120,6 +120,15 @@ let resumeGuardUntil = 0;
     until the real state catches up, so the controls don't flicker to Play. */
 let playPendingIdx = -1;
 let playPendingUntil = 0;
+/** "Open on outside playback": track the last now-playing album so we can tell when a NEW
+    one starts; `lastTouchAt` gates against interrupting active use; `selfPlayUntil` marks a
+    Crate-initiated play so it isn't mistaken for external; `firstStateSeen` skips the first
+    (boot) state so we don't auto-open whatever was already playing at load. */
+let lastNowAlbumId: string | null = null;
+let firstStateSeen = false;
+let lastTouchAt = 0;
+let selfPlayUntil = 0;
+const AUTO_OPEN_TOUCH_GRACE_MS = 20000; // don't auto-open if the wall was touched this recently
 
 const trackCache = new Map<string, Track[]>();
 /** For playlist song spines: cached off-shelf album detail (keyed by album uri)
@@ -795,6 +804,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   userPaused = false;
   pauseGuardUntil = 0;
   resumeGuardUntil = performance.now() + 8000;
+  selfPlayUntil = performance.now() + 8000; // Crate started this — not "external"
   // (focus pin + play latch were set up front, before the awaits above.)
   // Selection is now committed to playback — clear it so the transient where the player
   // is still on the old track doesn't read as a pending change (flipping Pause→Play).
@@ -1293,6 +1303,10 @@ function renderChoices(): void {
   toggleRow('autobright-choices', () => settings.autoBrightness, (v) => {
     settings.autoBrightness = v;
     void client.putSettings({ autoBrightness: v }).catch(() => {});
+  });
+  toggleRow('extopen-choices', () => settings.openOnExternalPlay, (v) => {
+    settings.openOnExternalPlay = v;
+    void client.putSettings({ openOnExternalPlay: v }).catch(() => {});
   });
   renderWallSchedule();
   updateConditionalRows();
@@ -2496,6 +2510,7 @@ async function playModal(trackIndex?: number): Promise<void> {
     userPaused = false;
     pauseGuardUntil = 0;
     resumeGuardUntil = performance.now() + 8000;
+    selfPlayUntil = performance.now() + 8000; // Crate started this — not "external"
     if (activePlayerId) focusedPlayerId = activePlayerId;
     // Selection is committed to playback — clear the cue so it doesn't read as a pending
     // change. The queue index MA reports (0 after start_item) won't match the tapped index,
@@ -3526,6 +3541,31 @@ function handleState(states: PlayerState[]): void {
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
     if (!albumModal.hidden) renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   }
+  maybeAutoOpenExternal();
+}
+
+/** "Open on outside playback" (opt-in setting): when a NEW album starts playing that Crate
+    didn't start itself, flip it open — but never during the sleep window, and not while the
+    wall is in active use. Waking from idle-dim is fine (it restores brightness); after that
+    the normal idle timer runs, so it re-idles on its own. */
+function maybeAutoOpenExternal(): void {
+  const albumId = now.state === 'idle' ? null : now.albumId;
+  const isNewAlbum = !!albumId && albumId !== lastNowAlbumId;
+  lastNowAlbumId = albumId; // always track the current album
+  if (!firstStateSeen) {
+    firstStateSeen = true; // seed on boot — don't open whatever was already playing at load
+    return;
+  }
+  if (!settings.openOnExternalPlay || !isNewAlbum) return;
+  if (performance.now() < selfPlayUntil) return; // Crate started it — the card already reacts
+  if (inSleepWindow()) return; // respect sleep — never wake or open
+  if (performance.now() - lastTouchAt < AUTO_OPEN_TOUCH_GRACE_MS) return; // don't interrupt active use
+  if (openIdx !== null && items[openIdx]?.albumId === albumId) return; // already showing it
+  if (isIdle) {
+    exitIdle(); // wake from idle-dim (restore brightness)…
+    restartIdleWatch(); // …and let it re-idle after idleAfterMin
+  }
+  openNowPlaying();
 }
 
 /** EQ every album that's playing on any player (multi-room), plus an optimistic
@@ -3779,6 +3819,7 @@ function applySettings(s: Settings): void {
 const IDLE_MS = 10000;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 function markActive(): void {
+  lastTouchAt = performance.now();
   document.body.classList.remove('idle');
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => document.body.classList.add('idle'), IDLE_MS);
@@ -3879,19 +3920,20 @@ function stopAttract(): void {
 /* Per-day sleep schedule — screen off during the window; touch wakes it briefly. */
 let scheduledAsleep = false;
 let tempWakeUntil = 0;
-function checkSchedule(): void {
+/** Is the current time inside today's scheduled sleep window? */
+function inSleepWindow(): boolean {
   const d = new Date();
   const day = settings.sleepSchedule?.[d.getDay()];
-  let inWindow = false;
-  if (day?.on) {
-    const cur = d.getHours() * 60 + d.getMinutes();
-    const [sh, sm] = day.sleep.split(':').map(Number);
-    const [wh, wm] = day.wake.split(':').map(Number);
-    const s = (sh ?? 0) * 60 + (sm ?? 0);
-    const w = (wh ?? 0) * 60 + (wm ?? 0);
-    inWindow = s <= w ? cur >= s && cur < w : cur >= s || cur < w; // handles overnight
-  }
-  const shouldSleep = inWindow && Date.now() > tempWakeUntil;
+  if (!day?.on) return false;
+  const cur = d.getHours() * 60 + d.getMinutes();
+  const [sh, sm] = day.sleep.split(':').map(Number);
+  const [wh, wm] = day.wake.split(':').map(Number);
+  const s = (sh ?? 0) * 60 + (sm ?? 0);
+  const w = (wh ?? 0) * 60 + (wm ?? 0);
+  return s <= w ? cur >= s && cur < w : cur >= s || cur < w; // handles overnight
+}
+function checkSchedule(): void {
+  const shouldSleep = inSleepWindow() && Date.now() > tempWakeUntil;
   if (shouldSleep && !scheduledAsleep) {
     scheduledAsleep = true;
     void client.setDisplaySleep(true).catch(() => {});

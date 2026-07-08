@@ -257,6 +257,9 @@ export interface Settings {
   wakeOnSensor: boolean;
   /** Drive brightness from an ambient-light sensor (inert until hardware). */
   autoBrightness: boolean;
+  /** When playback starts from outside Crate, flip that album open (then follow the idle
+      rules; suppressed while the wall is in active use or in the sleep window). */
+  openOnExternalPlay: boolean;
   /** Per-weekday lights-out windows (index 0 = Sunday). */
   sleepSchedule: DaySchedule[];
 }
@@ -291,5 +294,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoOpenRandom: true,
   wakeOnSensor: false,
   autoBrightness: false,
+  openOnExternalPlay: false,
   sleepSchedule: [0, 1, 2, 3, 4, 5, 6].map(() => ({ on: false, sleep: '23:00', wake: '07:00' })),
 };
