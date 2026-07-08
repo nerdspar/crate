@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -227,7 +227,10 @@ function buildShelf(): void {
     const baseW = spineW / 2;
     const font = a.labelFont ?? ts.font;
     const tracking = a.labelTracking ?? ts.tracking;
-    const fontSize = Math.min(baseW * (font.includes('Newsreader') ? 0.66 : 0.6), 19);
+    // Global ink size/weight scale the generated label (per-album overrides still win).
+    const sizeMul = settings.inkSize === 'small' ? 0.8 : settings.inkSize === 'large' ? 1.25 : 1;
+    const fontSize = Math.min(baseW * (font.includes('Newsreader') ? 0.66 : 0.6), 19) * sizeMul;
+    const labelWeight = Math.max(200, Math.min(800, ts.weight + (settings.inkWeight === 'light' ? -150 : settings.inkWeight === 'bold' ? 150 : 0)));
     const baseInk = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
     const artistCol = a.artistColor ?? baseInk;
     const titleCol = a.titleColor ?? (settings.inkMode === 'match' ? matchInk(a) : baseInk);
@@ -251,7 +254,7 @@ function buildShelf(): void {
 
     // Split layout puts the artist and title at opposite ends of the spine;
     // the others render them together (positioned by the layout-* class).
-    const labelCss = `font-size:${fontSize}px; font-family:${font}; font-weight:${ts.weight}; text-transform:${ts.transform}; letter-spacing:${tracking}`;
+    const labelCss = `font-size:${fontSize}px; font-family:${font}; font-weight:${labelWeight}; text-transform:${ts.transform}; letter-spacing:${tracking}`;
     const artistSpan = `<span class="artist" style="color:${artistCol}">${escapeHtml(a.artist)}</span>`;
     const titleSpan = `<span class="title" style="color:${titleCol}">${escapeHtml(a.title)}</span>`;
     const labelHtml =
@@ -1065,6 +1068,30 @@ function renderChoices(): void {
       buildShelf();
       sizeFaces();
       void client.putSettings({ inkMode: settings.inkMode }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'inksize-choices',
+    [['small', 'Small', ''], ['medium', 'Medium', ''], ['large', 'Large', '']],
+    (k) => settings.inkSize === k,
+    (k) => {
+      settings.inkSize = k as InkSize;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ inkSize: settings.inkSize }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'inkweight-choices',
+    [['light', 'Light', ''], ['regular', 'Regular', ''], ['bold', 'Bold', '']],
+    (k) => settings.inkWeight === k,
+    (k) => {
+      settings.inkWeight = k as InkWeight;
+      buildShelf();
+      sizeFaces();
+      void client.putSettings({ inkWeight: settings.inkWeight }).catch(() => {});
     },
   );
 
@@ -3706,6 +3733,8 @@ function applySettings(s: Settings): void {
     s.labelLayout !== prev.labelLayout ||
     s.labelVary !== prev.labelVary ||
     s.inkMode !== prev.inkMode ||
+    s.inkSize !== prev.inkSize ||
+    s.inkWeight !== prev.inkWeight ||
     s.yearDisplay !== prev.yearDisplay ||
     s.yearPos !== prev.yearPos
   ) {

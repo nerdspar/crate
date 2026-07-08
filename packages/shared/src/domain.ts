@@ -182,6 +182,10 @@ export interface DaySchedule {
 }
 /** Label ink strategy: guaranteed-contrast (white/black) vs match the album accent. */
 export type InkMode = 'contrast' | 'match';
+/** Global scale for the spine-label text size. */
+export type InkSize = 'small' | 'medium' | 'large';
+/** Global adjustment to the spine-label font weight. */
+export type InkWeight = 'light' | 'regular' | 'bold';
 /** Album-year catalog imprint: hidden, or shown vertical/horizontal. */
 export type YearDisplay = 'off' | 'vertical' | 'horizontal';
 /** Which end of the spine the year imprint sits at. */
@@ -216,6 +220,8 @@ export interface Settings {
   spineWidthMode: SpineWidthMode;
   spineTextDir: SpineTextDir;
   inkMode: InkMode;
+  inkSize: InkSize;
+  inkWeight: InkWeight;
   yearDisplay: YearDisplay;
   yearPos: YearPos;
   yearEmphasis: YearEmphasis;
@@ -260,6 +266,8 @@ export const DEFAULT_SETTINGS: Settings = {
   spineWidthMode: 'uniform',
   spineTextDir: 'ttb',
   inkMode: 'contrast',
+  inkSize: 'medium',
+  inkWeight: 'regular',
   yearDisplay: 'vertical',
   yearPos: 'bottom',
   yearEmphasis: 'thin',
