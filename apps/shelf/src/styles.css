@@ -975,6 +975,36 @@ body.idle #find-grip::after { opacity: 0; }
 .find-card-tap { cursor: pointer; }
 .find-card-tap:active { background: rgba(255,255,255,0.06); }
 
+/* Artists row (leads the search results) — a horizontal strip of avatars. */
+.find-artists { margin-bottom: 1.4vh; }
+.find-artist-strip { display: flex; gap: 1.6vw; overflow-x: auto; padding: 0.4vh 0 0.6vh; scrollbar-width: none; }
+.find-artist-strip::-webkit-scrollbar { display: none; }
+.find-artist {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0.7vh;
+  width: 12vh; background: transparent; border: none; color: var(--ink); cursor: pointer; padding: 0;
+}
+.find-artist-av {
+  width: 10vh; height: 10vh; border-radius: 50%; background: #26232a center/cover no-repeat;
+  border: 1px solid rgba(236,231,221,0.14);
+}
+.find-artist-av.none { background: #26232a; }
+.find-artist:active .find-artist-av { border-color: var(--ink); }
+.find-artist-name {
+  font-size: 1.7vh; text-align: center; max-width: 100%; line-height: 1.15;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* Artist detail (albums + top songs), shown in place of the results. */
+.artist-head { display: flex; align-items: center; gap: 2vw; margin-bottom: 1vh; }
+.artist-back {
+  flex: 0 0 auto; background: transparent; color: var(--ink-dim); border: 1px solid rgba(236,231,221,0.28);
+  border-radius: 1.2vh; padding: 0.8vh 1.6vh; font: inherit; font-size: 1.8vh; cursor: pointer;
+}
+.artist-back:active { color: var(--ink); border-color: var(--ink); }
+.artist-title { font-family: 'Newsreader Variable', serif; font-weight: 500; font-size: 3vh; margin: 0; }
+.artist-detail { display: grid; grid-template-columns: 1.3fr 1fr; gap: 3vw; }
+.artist-detail .find-cat-list { max-height: 46vh; }
+
 /* Standalone album card (off-shelf album from global search / a tapped song). */
 #album-modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; }
 #album-modal[hidden] { display: none; }

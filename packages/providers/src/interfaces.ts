@@ -44,6 +44,14 @@ export interface ProviderPlaylist {
   artworkUrl: string | null;
 }
 
+export interface ProviderArtist {
+  /** Provider artist ref, e.g. `apple_music://artist/158038`. */
+  providerUri: string;
+  provider: string;
+  name: string;
+  artworkUrl: string | null;
+}
+
 export interface ProviderPlayer {
   id: string;
   name: string;
@@ -59,12 +67,15 @@ export type TransportCommand = 'play' | 'pause' | 'next' | 'previous' | 'seek';
 export interface MusicSource {
   readonly id: string;
   search(query: string, limit?: number, providerInstance?: string): Promise<ProviderAlbum[]>;
-  /** Global search: albums, playlists and tracks in one call (optionally scoped). */
+  /** Global search: artists, albums, playlists and tracks in one call (optionally scoped). */
   searchAll(
     query: string,
     limit?: number,
     providerInstance?: string,
-  ): Promise<{ albums: ProviderAlbum[]; playlists: ProviderPlaylist[]; tracks: ProviderTrackHit[] }>;
+  ): Promise<{ artists: ProviderArtist[]; albums: ProviderAlbum[]; playlists: ProviderPlaylist[]; tracks: ProviderTrackHit[] }>;
+  /** An artist's albums (fast) and their top tracks (slow first call — cache upstream). */
+  getArtistAlbums(providerUri: string): Promise<ProviderAlbum[]>;
+  getArtistTopTracks(providerUri: string): Promise<ProviderTrackHit[]>;
   /** Connected streaming music sources, for per-source search. */
   listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>>;
   getAlbum(providerUri: string): Promise<ProviderAlbum | null>;

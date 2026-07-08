@@ -12,6 +12,7 @@ import type {
   PlayersResponse,
   ProviderAlbumDetail,
   SearchAlbum,
+  SearchArtist,
   Settings,
   Shelf,
   ShelfItem,
@@ -20,7 +21,7 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import type { MusicAssistantProvider, ProviderAlbum, ProviderLibraryAlbum } from '@crate/providers';
+import type { MusicAssistantProvider, ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
@@ -327,7 +328,7 @@ export class Service {
       Promise.all(
         searchIn.map(async (s) => ({
           s,
-          r: await this.ma.searchAll(query, limit, s.instanceId || undefined).catch(() => ({ albums: [], playlists: [], tracks: [] })),
+          r: await this.ma.searchAll(query, limit, s.instanceId || undefined).catch(() => ({ artists: [], albums: [], playlists: [], tracks: [] })),
         })),
       ),
       this.ma.listLibraryAlbums({ search: query, source: scope, limit, offset: 0 }).catch((): ProviderLibraryAlbum[] => []),
@@ -344,7 +345,15 @@ export class Service {
     }
     const playlists: LibraryPlaylist[] = [];
     const songs: SearchSong[] = [];
+    const artists: SearchArtist[] = [];
+    const artistNames = new Set<string>();
     for (const { s, r } of results) {
+      for (const a of r.artists) {
+        const nk = a.name.toLowerCase();
+        if (artistNames.has(nk)) continue; // one card per artist across sources
+        artistNames.add(nk);
+        artists.push({ providerUri: a.providerUri, provider: a.provider, name: a.name, artworkUrl: a.artworkUrl, source: s.name });
+      }
       for (const a of r.albums) {
         if (libKeys.has(key(a.artist, a.title))) continue; // already shown under "in your library"
         albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: s.name });
@@ -354,7 +363,40 @@ export class Service {
       for (const t of r.tracks)
         songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, source: s.name });
     }
-    return { albums, playlists, songs, sources };
+    return { artists, albums, playlists, songs, sources };
+  }
+
+  /** An artist's albums, marked with shelf/library status like search hits. */
+  async artistAlbums(providerUri: string): Promise<SearchAlbum[]> {
+    const [sources, raw] = await Promise.all([
+      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+      this.ma.getArtistAlbums(providerUri).catch((): ProviderAlbum[] => []),
+    ]);
+    const srcName = new Map(sources.map((s) => [s.instanceId, s.name]));
+    const primary = sources[0]?.name ?? 'Music';
+    // Collapse the provider's many editions of the same album to one card.
+    const seen = new Set<string>();
+    const out: SearchAlbum[] = [];
+    for (const a of raw) {
+      const k = `${a.artist}|${a.title}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const row = this.shelvedRow(a.providerUri, a.title, a.artist);
+      out.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: srcName.get(a.provider) ?? primary });
+    }
+    // Newest first — a familiar artist-page ordering.
+    out.sort((x, y) => (y.year ?? 0) - (x.year ?? 0));
+    return out;
+  }
+
+  /** An artist's top songs (slow on the first fetch per artist; the provider caches). */
+  async artistTopSongs(providerUri: string): Promise<SearchSong[]> {
+    const [sources, tracks] = await Promise.all([
+      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+      this.ma.getArtistTopTracks(providerUri).catch((): ProviderTrackHit[] => []),
+    ]);
+    const primary = sources[0]?.name ?? 'Music';
+    return tracks.map((t) => ({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, source: primary }));
   }
 
   async addToShelf(providerUri: string, shelfId?: string, opts?: { quiet?: boolean }): Promise<{ albumId: string; duplicate: boolean }> {

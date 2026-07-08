@@ -61,13 +61,23 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     return query ? service.search(query, source) : [];
   });
 
-  // Global search: albums + playlists + songs, optionally scoped to one source.
+  // Global search: artists + albums + playlists + songs, optionally scoped to one source.
   app.get('/api/search/global', async (req) => {
     const { q, source, limit } = req.query as { q?: string; source?: string; limit?: string };
     const query = (q ?? '').trim();
-    if (!query) return { albums: [], playlists: [], songs: [], sources: [] };
+    if (!query) return { artists: [], albums: [], playlists: [], songs: [], sources: [] };
     const n = Math.min(Math.max(Number(limit) || 20, 20), 200); // clamp 20..200
     return service.globalSearch(query, source, n);
+  });
+
+  // Artist detail: albums (fast) and top songs (slow first fetch per artist, then cached).
+  app.get('/api/artist/albums', async (req) => {
+    const { uri } = req.query as { uri?: string };
+    return uri ? service.artistAlbums(uri) : [];
+  });
+  app.get('/api/artist/songs', async (req) => {
+    const { uri } = req.query as { uri?: string };
+    return uri ? service.artistTopSongs(uri) : [];
   });
 
   app.post('/api/play', async (req) => {

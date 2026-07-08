@@ -150,6 +150,16 @@ export interface SearchSong {
   source: string;
 }
 
+/** An artist hit from global search — tapping opens the artist's albums + top songs. */
+export interface SearchArtist {
+  /** Provider artist ref, e.g. `apple_music://artist/158038`. */
+  providerUri: string;
+  provider: string;
+  name: string;
+  artworkUrl: string | null;
+  source: string;
+}
+
 /** A connected streaming music source (for the search source dropdown). */
 export interface MusicSourceInfo {
   instanceId: string;
@@ -197,6 +207,7 @@ export interface LibraryImportResult {
 /** Sonos-style global search: albums, playlists and songs at once, plus the list
     of connected sources for the dropdown. */
 export interface GlobalSearchResponse {
+  artists: SearchArtist[];
   albums: SearchAlbum[];
   playlists: LibraryPlaylist[];
   songs: SearchSong[];

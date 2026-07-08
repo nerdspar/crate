@@ -15,6 +15,7 @@ import type {
   PlayersResponse,
   ProviderAlbumDetail,
   SearchAlbum,
+  SearchSong,
   ShelfResponse,
   SystemStatus,
   TransportRequest,
@@ -88,6 +89,15 @@ export class CrateClient {
     const s = source && source !== 'all' ? `&source=${encodeURIComponent(source)}` : '';
     const l = limit ? `&limit=${limit}` : '';
     return this.req(`/api/search/global?q=${encodeURIComponent(query)}${s}${l}`);
+  }
+
+  /** An artist's albums (fast). */
+  getArtistAlbums(providerUri: string): Promise<SearchAlbum[]> {
+    return this.req(`/api/artist/albums?uri=${encodeURIComponent(providerUri)}`);
+  }
+  /** An artist's top songs (slow on the first fetch per artist, cached after). */
+  getArtistTopSongs(providerUri: string): Promise<SearchSong[]> {
+    return this.req(`/api/artist/songs?uri=${encodeURIComponent(providerUri)}`);
   }
 
   play(body: PlayRequest): Promise<{ ok: true }> {

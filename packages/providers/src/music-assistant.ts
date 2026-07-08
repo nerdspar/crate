@@ -13,6 +13,7 @@ import type {
   MusicSource,
   PlayerTarget,
   ProviderAlbum,
+  ProviderArtist,
   ProviderLibraryAlbum,
   ProviderPlayer,
   ProviderPlaylist,
@@ -177,25 +178,68 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     };
   }
 
+  private toProviderArtist(item: Record<string, unknown>): ProviderArtist | null {
+    const uri = str(item['uri']);
+    const name = str(item['name']);
+    if (!uri || !name) return null;
+    return {
+      providerUri: uri,
+      provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
+      name,
+      artworkUrl: this.artworkUrl(item),
+    };
+  }
+
   async searchAll(
     query: string,
     limit = 20,
     providerInstance?: string,
-  ): Promise<{ albums: ProviderAlbum[]; playlists: ProviderPlaylist[]; tracks: ProviderTrackHit[] }> {
+  ): Promise<{ artists: ProviderArtist[]; albums: ProviderAlbum[]; playlists: ProviderPlaylist[]; tracks: ProviderTrackHit[] }> {
     const result = rec(
       await this.client.command('music/search', {
         search_query: query,
-        media_types: ['album', 'playlist', 'track'],
+        media_types: ['artist', 'album', 'playlist', 'track'],
         limit,
         library_only: false,
         ...(providerInstance ? { provider: providerInstance } : {}),
       }),
     );
     return {
+      artists: arr(result['artists']).map((a) => this.toProviderArtist(rec(a))).filter((a): a is ProviderArtist => a !== null),
       albums: arr(result['albums']).map((a) => this.toProviderAlbum(rec(a))).filter((a): a is ProviderAlbum => a !== null),
       playlists: arr(result['playlists']).map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null),
       tracks: arr(result['tracks']).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null),
     };
+  }
+
+  /** An artist's albums — fast. */
+  async getArtistAlbums(providerUri: string): Promise<ProviderAlbum[]> {
+    const parsed = parseProviderUri(providerUri);
+    if (!parsed) return [];
+    const raw = await this.client.command('music/artists/artist_albums', {
+      item_id: parsed.id,
+      provider_instance_id_or_domain: parsed.provider,
+    });
+    return arr(raw).map((a) => this.toProviderAlbum(rec(a))).filter((a): a is ProviderAlbum => a !== null);
+  }
+
+  /** An artist's top tracks, in the provider's popularity order. The FIRST call for
+      an artist is slow (MA fetches the full track list ~30–40s) then MA caches it, so
+      we also cache here and give the command a long timeout. Returned already trimmed. */
+  private artistTrackCache = new Map<string, { tracks: ProviderTrackHit[]; at: number }>();
+  async getArtistTopTracks(providerUri: string): Promise<ProviderTrackHit[]> {
+    const parsed = parseProviderUri(providerUri);
+    if (!parsed) return [];
+    const cached = this.artistTrackCache.get(providerUri);
+    if (cached && Date.now() - cached.at < MusicAssistantProvider.TRACK_TTL_MS) return cached.tracks;
+    const raw = await this.client.command(
+      'music/artists/artist_tracks',
+      { item_id: parsed.id, provider_instance_id_or_domain: parsed.provider },
+      60_000,
+    );
+    const tracks = arr(raw).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null).slice(0, 25);
+    this.artistTrackCache.set(providerUri, { tracks, at: Date.now() });
+    return tracks;
   }
 
   /** Connected streaming music sources (e.g. Apple Music accounts) — for searching

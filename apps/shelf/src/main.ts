@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -2369,6 +2369,8 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
 let searchSource = 'all'; // selected global-search source (instance id or 'all')
 let globalResults: GlobalSearchResponse | null = null;
+let artistView: SearchArtist | null = null; // non-null = the artist detail is showing
+let artistSeq = 0; // cancels stale artist-detail fetches
 let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
 /* Search paging: show 20 per section, "Load more" raises the fetch limit + reveals
@@ -2395,6 +2397,7 @@ const findClear = document.getElementById('find-clear') as HTMLButtonElement;
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
   findClear.hidden = !findSearch.value;
+  artistView = null; // typing leaves any open artist detail
   items.forEach((a, i) => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
@@ -2424,6 +2427,8 @@ findSearch.addEventListener('keydown', (e) => {
 
 function clearFindResults(): void {
   searchSeq++; // cancel any in-flight render
+  artistSeq++; // and any in-flight artist detail
+  artistView = null;
   globalResults = null;
   findResults.hidden = true;
   findResults.innerHTML = '';
@@ -2447,6 +2452,7 @@ async function runGlobalSearch(): Promise<void> {
 
 /** Sonos-style results: a source dropdown + three columns (Albums / Playlists / Songs). */
 function renderGlobal(loading: boolean): void {
+  if (artistView) return; // artist detail is showing — don't clobber it
   if (!filterQuery) {
     clearFindResults();
     return;
@@ -2459,6 +2465,10 @@ function renderGlobal(loading: boolean): void {
   bar.className = 'find-srcbar';
   bar.appendChild(sourceDropdown(g?.sources ?? []));
   findResults.appendChild(bar);
+
+  // Artists lead the results (tap → their albums + top songs).
+  const artistsRow = artistsRowEl(g?.artists ?? []);
+  if (artistsRow) findResults.appendChild(artistsRow);
 
   const cats = document.createElement('div');
   cats.className = 'find-cats';
@@ -2541,6 +2551,84 @@ function albumsColumn(
   }
   col.appendChild(list);
   return col;
+}
+
+/** The leading "Artists" row in search results — a horizontal strip of avatars. */
+function artistsRowEl(artists: SearchArtist[]): HTMLElement | null {
+  if (!artists.length) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'find-artists';
+  const h = document.createElement('div');
+  h.className = 'find-cat-h';
+  h.textContent = 'Artists';
+  wrap.appendChild(h);
+  const strip = document.createElement('div');
+  strip.className = 'find-artist-strip';
+  artists.slice(0, 12).forEach((a) => strip.appendChild(artistChip(a)));
+  wrap.appendChild(strip);
+  return wrap;
+}
+function artistChip(a: SearchArtist): HTMLElement {
+  const b = document.createElement('button');
+  b.className = 'find-artist';
+  const art = a.artworkUrl ? ` style="background-image:url('${a.artworkUrl}')"` : '';
+  b.innerHTML = `<span class="find-artist-av${a.artworkUrl ? '' : ' none'}"${art}></span><span class="find-artist-name">${escapeHtml(a.name)}</span>`;
+  b.onclick = () => void openArtist(a);
+  return b;
+}
+
+/** Artist detail: replace the results with the artist's albums (fast) + top songs
+    (loaded lazily — the first fetch per artist is slow, so it spins meanwhile). */
+async function openArtist(a: SearchArtist): Promise<void> {
+  artistView = a;
+  const seq = ++artistSeq;
+  findResults.hidden = false;
+  findResults.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'artist-head';
+  head.innerHTML = `<button class="artist-back">‹ Results</button><h2 class="artist-title">${escapeHtml(a.name)}</h2>`;
+  (head.querySelector('.artist-back') as HTMLElement).onclick = () => {
+    artistView = null;
+    renderGlobal(false);
+  };
+  findResults.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'artist-detail';
+  body.innerHTML =
+    `<div class="find-cat artist-albums"><div class="find-cat-h">Albums</div><div class="find-cat-list"><div class="find-empty">Loading…</div></div></div>` +
+    `<div class="find-cat artist-songs"><div class="find-cat-h">Top songs</div><div class="find-cat-list"><div class="find-empty"><span class="np-spin"></span> Finding top songs…</div></div></div>`;
+  findResults.appendChild(body);
+  const albumsList = body.querySelector('.artist-albums .find-cat-list') as HTMLElement;
+  const songsList = body.querySelector('.artist-songs .find-cat-list') as HTMLElement;
+
+  // Albums — fast.
+  client
+    .getArtistAlbums(a.providerUri)
+    .then((albums) => {
+      if (seq !== artistSeq) return;
+      albumsList.innerHTML = '';
+      if (albums.length) albums.forEach((al) => albumsList.appendChild(albumResultCard(al)));
+      else albumsList.innerHTML = '<div class="find-empty">No albums.</div>';
+    })
+    .catch(() => {
+      if (seq !== artistSeq) return;
+      albumsList.innerHTML = '<div class="find-empty">Couldn’t load albums.</div>';
+    });
+
+  // Top songs — slow on the first fetch per artist (spinner stays until it lands).
+  client
+    .getArtistTopSongs(a.providerUri)
+    .then((songs) => {
+      if (seq !== artistSeq) return;
+      songsList.innerHTML = '';
+      if (songs.length) songs.forEach((s) => songsList.appendChild(songResultCard(s)));
+      else songsList.innerHTML = '<div class="find-empty">No songs.</div>';
+    })
+    .catch(() => {
+      if (seq !== artistSeq) return;
+      songsList.innerHTML = '<div class="find-empty">Couldn’t load top songs.</div>';
+    });
 }
 
 function catColumn(

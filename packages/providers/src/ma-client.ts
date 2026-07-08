@@ -180,7 +180,7 @@ export class MaClient {
     this.pending.clear();
   }
 
-  command<T = unknown>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+  command<T = unknown>(command: string, args: Record<string, unknown> = {}, timeoutMs = 20_000): Promise<T> {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error(`MA not connected (command ${command})`));
@@ -191,7 +191,7 @@ export class MaClient {
       ws.send(JSON.stringify({ message_id, command, args }));
       setTimeout(() => {
         if (this.pending.delete(message_id)) reject(new Error(`MA command ${command} timed out`));
-      }, 20_000);
+      }, timeoutMs);
     });
   }
 
