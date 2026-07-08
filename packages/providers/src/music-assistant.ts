@@ -401,6 +401,9 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
     const volumeById = new Map<string, { volume: number | null; muted: boolean }>();
     const groupLeaderById = new Map<string, string | null>();
+    // The player's OWN state + current media — carries external sources (TV, line-in,
+    // AirPlay) that live outside MA's queue, so we can still show what a speaker is playing.
+    const playerById = new Map<string, { state: string; media: Record<string, unknown> | null }>();
     for (const p of arr(playersRaw)) {
       const item = rec(p);
       const id = str(item['player_id']);
@@ -411,6 +414,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       const syncedTo = str(item['synced_to']);
       const childs = arr(item['group_childs']);
       groupLeaderById.set(id, syncedTo ?? (childs.length ? id : id));
+      playerById.set(id, {
+        state: str(item['state']) ?? str(item['playback_state']) ?? 'idle',
+        media: item['current_media'] ? rec(item['current_media']) : null,
+      });
     }
 
     return arr(queuesRaw)
@@ -422,6 +429,36 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         const current = rec(queue['current_item']);
         const media = rec(current['media_item']);
         const hasNow = str(media['name']) !== undefined || str(current['name']) !== undefined;
+        // External source: MA's queue is empty but the SPEAKER itself is playing something
+        // outside MA — TV audio, line-in, AirPlay, Spotify Connect, etc. Surface it so Crate
+        // still shows "what's playing" (title + any art), even though it's not library
+        // content and has no track controls.
+        if (!hasNow) {
+          const pi = playerById.get(id);
+          const m = pi?.media ?? null;
+          const extTitle = m ? str(m['title']) : undefined;
+          if (pi && extTitle && (pi.state === 'playing' || pi.state === 'paused')) {
+            return {
+              playerId: id,
+              state: pi.state === 'paused' ? 'paused' : 'playing',
+              volume: vol.volume,
+              muted: vol.muted,
+              groupLeader: groupLeaderById.get(id) ?? id,
+              nowPlaying: {
+                albumId: null,
+                albumUri: null,
+                title: extTitle,
+                artist: (m && str(m['artist'])) ?? null,
+                album: (m && str(m['album'])) ?? null,
+                trackIndex: null,
+                trackUri: null,
+                duration: (m && num(m['duration'])) ?? null,
+                elapsed: (m && num(m['elapsed_time'])) ?? null,
+                artworkUrl: (m && str(m['image_url'])) ?? null,
+              },
+            };
+          }
+        }
         // Some players (e.g. Sonos via MA) report a *paused* queue as 'idle' while
         // keeping the loaded track — treat "idle with a current item" as paused so it
         // stays resumable and survives a reload, instead of reading as "nothing playing".
