@@ -3356,9 +3356,14 @@ function syncEqs(): void {
   requestAnimationFrame(() => {
     const paused = document.body.classList.contains('nowpaused');
     document.querySelectorAll('.track-eq i, .eq i').forEach((el) => {
+      // The nowpaused freeze reflects the FOCUSED album being paused — but the CC room list
+      // EQs and the spine EQs are per-source live indicators (only shown for rooms/albums
+      // that are actually playing), so they must keep animating even when another, paused
+      // room is focused. Only freeze the EQs tied to the focused context (card/modal rows).
+      const live = !!(el as HTMLElement).closest('#cc-rooms, .eq');
       for (const a of (el as HTMLElement).getAnimations()) {
         try {
-          if (paused) {
+          if (paused && !live) {
             a.pause(); // frozen while the focused album is paused
           } else {
             a.play();
