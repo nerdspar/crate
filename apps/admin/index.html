@@ -2,68 +2,86 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Crate — Admin</title>
 </head>
 <body>
-<header>
-  <div class="eyebrow">Crate</div>
-  <h1>Admin</h1>
-</header>
-
-<main>
-  <section id="search-section">
-    <h2>Add albums</h2>
+<main id="app">
+  <!-- ============ SEARCH ============ -->
+  <section class="tab-pane on" data-tab="search">
+    <header class="pane-head"><h1>Search</h1></header>
     <form id="search-form">
-      <input id="q" type="search" placeholder="Search Apple Music — album or artist…" autocomplete="off" autofocus>
+      <input id="q" type="search" placeholder="Search Apple Music — album or artist…" autocomplete="off">
       <button type="submit">Search</button>
     </form>
     <div id="results" class="grid"></div>
   </section>
 
-  <section id="shelf-section">
-    <div class="section-head">
-      <h2>On the shelf (<span id="shelf-count">0</span>)</h2>
+  <!-- ============ SHELVES ============ -->
+  <section class="tab-pane" data-tab="shelves">
+    <!-- Index: the list of shelves (All is just the default one) -->
+    <div id="shelves-index">
+      <header class="pane-head"><h1>Shelves</h1></header>
+      <div id="shelves-list"></div>
+      <form id="crate-form">
+        <input id="crate-name" type="text" placeholder="New shelf name…" autocomplete="off">
+        <button type="submit">Create</button>
+      </form>
+    </div>
+    <!-- Detail: one shelf's albums, with its own sort + view -->
+    <div id="shelf-detail" hidden>
+      <header class="pane-head detail-head">
+        <button id="shelf-back" class="ghost">‹ Shelves</button>
+        <h1 id="shelf-detail-name">All albums</h1>
+        <span id="shelf-detail-count" class="pane-sub"></span>
+      </header>
       <div class="toolbar">
-        <label>Sort
+        <label class="sortlabel">Sort
           <select id="shelf-sort">
+            <option value="custom">Custom order (drag)</option>
             <option value="added">Recently added</option>
             <option value="artist">Artist</option>
             <option value="title">Title</option>
             <option value="year">Year</option>
-            <option value="custom">Custom order (drag)</option>
           </select>
         </label>
         <div class="viewtoggle">
-          <button id="view-list" class="ghost">List</button>
-          <button id="view-tile" class="ghost on">Tile</button>
+          <button id="view-list" class="ghost" aria-label="List view">List</button>
+          <button id="view-tile" class="ghost on" aria-label="Tile view">Tile</button>
         </div>
       </div>
+      <div id="shelf-list" class="grid"></div>
     </div>
-    <div id="shelf-list" class="grid"></div>
   </section>
 
-  <section id="crates-section">
-    <div class="section-head"><h2>Shelves</h2></div>
-    <p class="hint">Curated collections the wall can switch between. "All" holds every album.</p>
-    <div id="crates-list"></div>
-    <form id="crate-form">
-      <input id="crate-name" type="text" placeholder="New shelf name…" autocomplete="off">
-      <button type="submit">Create shelf</button>
-    </form>
-  </section>
-
-  <section id="settings-section">
-    <div class="section-head"><h2>Settings</h2></div>
-    <p class="hint">These are the same settings as the wall's on-screen Settings — change them from either place.</p>
+  <!-- ============ SETTINGS ============ -->
+  <section class="tab-pane" data-tab="settings">
+    <header class="pane-head"><h1>Settings</h1></header>
     <div class="field">
       <label>Default speaker <span class="hint">(where albums play when none is picked)</span></label>
       <select id="default-speaker"><option value="">Loading…</option></select>
     </div>
+    <p class="hint">These mirror the wall's on-screen Settings — change them from either place.</p>
     <div id="settings-form" class="settings-grid"></div>
     <div id="schedule-editor"></div>
   </section>
 </main>
+
+<!-- ============ Bottom tab bar (iOS-style) ============ -->
+<nav id="tabbar">
+  <button class="tab-btn on" data-tab="search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+    <span>Search</span>
+  </button>
+  <button class="tab-btn" data-tab="shelves">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="6" width="5" height="14" rx="1" transform="rotate(-10 18.5 13)"/></svg>
+    <span>Shelves</span>
+  </button>
+  <button class="tab-btn" data-tab="settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
 
 <div id="toast"></div>
 

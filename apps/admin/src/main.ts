@@ -1,7 +1,7 @@
 /**
- * Crate admin — Phase 1 scope: just enough to search Apple Music (via the
- * device service → Music Assistant) and add/remove albums on the shelf.
- * The full admin (sources, curation, players, appearance, system) is Phase 4.
+ * Crate admin — a small web app (phone or desktop) with a bottom tab bar:
+ * Search (add albums), Shelves (curate collections; "All" is the default shelf),
+ * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
 import { CrateClient, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
@@ -16,25 +16,23 @@ const client = new CrateClient('');
 const qInput = document.getElementById('q') as HTMLInputElement;
 const form = document.getElementById('search-form') as HTMLFormElement;
 const resultsEl = document.getElementById('results') as HTMLElement;
-const shelfListEl = document.getElementById('shelf-list') as HTMLElement;
-const shelfCountEl = document.getElementById('shelf-count') as HTMLElement;
 const toast = document.getElementById('toast') as HTMLElement;
 
+type ShelfView = 'list' | 'tile';
+type ShelfSort = 'custom' | 'added' | 'artist' | 'title' | 'year';
+
 let results: SearchAlbum[] = [];
-let shelf: ShelfItem[] = [];
-let shelfView: 'list' | 'tile' = 'tile';
-let shelfSort = 'added';
 let shelves: Shelf[] = [];
 let settings: Settings | null = null;
-const crateMembers = new Map<string, Set<string>>(); // album crate id → member album ids
+const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
+let libraryCount = 0; // size of the "All" shelf
 
-const shelfSortSel = document.getElementById('shelf-sort') as HTMLSelectElement;
-const viewListBtn = document.getElementById('view-list') as HTMLButtonElement;
-const viewTileBtn = document.getElementById('view-tile') as HTMLButtonElement;
-const cratesListEl = document.getElementById('crates-list') as HTMLElement;
-const crateForm = document.getElementById('crate-form') as HTMLFormElement;
-const crateNameInput = document.getElementById('crate-name') as HTMLInputElement;
-const defaultSpeakerSel = document.getElementById('default-speaker') as HTMLSelectElement;
+// Currently open shelf detail: 'all' = the library, else a named shelf id; null = index.
+let openShelfId: string | null = null;
+let openShelfName = '';
+let detailItems: ShelfItem[] = [];
+const sortByShelf = new Map<string, ShelfSort>();
+const viewByShelf = new Map<string, ShelfView>();
 
 function esc(s: string): string {
   const d = document.createElement('div');
@@ -50,10 +48,20 @@ function showToast(msg: string): void {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
 }
 
-function artThumb(url: string | null): string {
-  return url ? `<img src="${esc(url)}" alt="">` : `<div class="noart"></div>`;
+function artHtml(url: string | null): string {
+  return `<div class="art">${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : ''}</div>`;
 }
 
+/* ================= Tab navigation ================= */
+function switchTab(name: string): void {
+  document.querySelectorAll<HTMLElement>('.tab-pane').forEach((p) => p.classList.toggle('on', p.dataset['tab'] === name));
+  document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset['tab'] === name));
+}
+document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => {
+  b.addEventListener('click', () => switchTab(b.dataset['tab']!));
+});
+
+/* ================= Search ================= */
 function renderResults(): void {
   if (results.length === 0) {
     resultsEl.innerHTML = `<div class="empty">No results yet — search above.</div>`;
@@ -64,70 +72,19 @@ function renderResults(): void {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      ${artThumb(a.artworkUrl)}
-      <div class="meta">
-        <div class="t">${esc(a.title)}</div>
-        <div class="a">${esc(a.artist)}</div>
-        <div class="y">${a.year ?? ''} · ${esc(a.provider)}</div>
-      </div>
-      <button ${a.onShelf ? 'disabled' : ''} data-i="${i}">${a.onShelf ? 'On shelf' : 'Add'}</button>`;
+      ${artHtml(a.artworkUrl)}
+      <div class="body">
+        <div class="meta">
+          <div class="t">${esc(a.title)}</div>
+          <div class="a">${esc(a.artist)}</div>
+          <div class="y">${a.year ?? ''} · ${esc(a.provider)}</div>
+        </div>
+        <button ${a.onShelf ? 'disabled' : ''} data-i="${i}">${a.onShelf ? 'On shelf' : 'Add'}</button>
+      </div>`;
     const btn = card.querySelector('button')!;
     if (!a.onShelf) btn.addEventListener('click', () => void addToShelf(a, btn));
     resultsEl.appendChild(card);
   });
-}
-
-function sortedShelf(): ShelfItem[] {
-  if (shelfSort === 'custom') return [...shelf]; // as fetched = the manual (sort_order) order
-  const s = [...shelf];
-  s.sort((a, b) => {
-    if (shelfSort === 'artist') return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
-    if (shelfSort === 'title') return a.title.localeCompare(b.title);
-    if (shelfSort === 'year') return (b.year ?? 0) - (a.year ?? 0);
-    return (b.addedAt || '').localeCompare(a.addedAt || ''); // added: newest first
-  });
-  return s;
-}
-
-function renderShelf(): void {
-  shelfCountEl.textContent = String(shelf.length);
-  shelfListEl.className = shelfView === 'list' ? 'list' : 'grid';
-  if (shelf.length === 0) {
-    shelfListEl.innerHTML = `<div class="empty">Nothing on the shelf yet.</div>`;
-    return;
-  }
-  shelfListEl.innerHTML = '';
-  const draggable = shelfSort === 'custom';
-  shelfListEl.classList.toggle('draggable', draggable);
-  for (const it of sortedShelf()) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.dataset.id = it.albumId;
-    if (draggable) {
-      card.draggable = true;
-      card.addEventListener('dragstart', () => card.classList.add('dragging'));
-      card.addEventListener('dragend', () => {
-        card.classList.remove('dragging');
-        void saveShelfOrder();
-      });
-    }
-    card.innerHTML = `
-      ${artThumb(it.artworkUrl)}
-      <div class="meta">
-        <div class="t">${esc(it.title)}</div>
-        <div class="a">${esc(it.artist)}</div>
-        <div class="y">${it.year ?? ''}</div>
-      </div>
-      <div class="card-actions">
-        <button class="ghost crate-btn">Shelves</button>
-        <button class="ghost edit-btn">Edit</button>
-        <button class="ghost rm-btn">Remove</button>
-      </div>`;
-    card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it));
-    card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
-    card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromShelf(it.albumId));
-    shelfListEl.appendChild(card);
-  }
 }
 
 async function search(query: string): Promise<void> {
@@ -148,7 +105,7 @@ async function addToShelf(album: SearchAlbum, btn: HTMLButtonElement): Promise<v
     album.onShelf = true;
     btn.textContent = 'On shelf';
     showToast(`Added ${album.title}`);
-    await loadShelf();
+    await loadShelvesIndex();
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Add';
@@ -156,26 +113,299 @@ async function addToShelf(album: SearchAlbum, btn: HTMLButtonElement): Promise<v
   }
 }
 
-async function removeFromShelf(albumId: string): Promise<void> {
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = qInput.value.trim();
+  if (q) void search(q);
+});
+
+/* ================= Shelves — index ================= */
+const shelvesIndexEl = document.getElementById('shelves-index') as HTMLElement;
+const shelvesListEl = document.getElementById('shelves-list') as HTMLElement;
+const shelfDetailEl = document.getElementById('shelf-detail') as HTMLElement;
+const crateForm = document.getElementById('crate-form') as HTMLFormElement;
+const crateNameInput = document.getElementById('crate-name') as HTMLInputElement;
+
+function albumCrates(): Shelf[] {
+  return shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
+}
+
+async function loadShelvesIndex(): Promise<void> {
   try {
-    await client.removeFromShelf(albumId);
-    showToast('Removed');
-    await loadShelf();
+    const res = await client.getShelf();
+    shelves = res.shelves;
+    libraryCount = res.items.length;
+    if (openShelfId === 'all') detailItems = res.items; // keep the open All detail fresh
+  } catch {
+    shelvesListEl.innerHTML = `<div class="empty">Could not reach the device service.</div>`;
+    return;
+  }
+  crateMembers.clear();
+  await Promise.all(
+    albumCrates().map(async (c) => {
+      try {
+        const m = await client.getShelf(c.id);
+        crateMembers.set(c.id, new Set(m.items.map((i) => i.albumId)));
+      } catch {
+        crateMembers.set(c.id, new Set());
+      }
+    }),
+  );
+  renderShelvesIndex();
+  if (openShelfId) renderShelfDetail();
+}
+
+function renderShelvesIndex(): void {
+  shelvesListEl.innerHTML = '';
+  // "All albums" is just the default shelf, shown first.
+  shelvesListEl.appendChild(shelfRow('all', 'All albums', libraryCount, true));
+  for (const c of albumCrates()) {
+    shelvesListEl.appendChild(shelfRow(c.id, c.name, crateMembers.get(c.id)?.size ?? 0, false));
+  }
+}
+
+function shelfRow(id: string, name: string, count: number, isDefault: boolean): HTMLElement {
+  const row = document.createElement('button');
+  row.className = 'shelf-row' + (isDefault ? ' default' : '');
+  row.innerHTML =
+    `<span class="sh-name">${esc(name)}</span>` +
+    `<span class="sh-n">${count} album${count === 1 ? '' : 's'}</span>` +
+    (isDefault ? '' : `<span class="sh-del" role="button" aria-label="Delete shelf">✕</span>`) +
+    `<span class="sh-chev">›</span>`;
+  row.addEventListener('click', () => void openShelf(id, name));
+  const del = row.querySelector('.sh-del');
+  if (del)
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void deleteCrate(id, name);
+    });
+  return row;
+}
+
+async function deleteCrate(id: string, name: string): Promise<void> {
+  if (!confirm(`Delete shelf "${name}"? Its albums stay in your library.`)) return;
+  await client.deleteShelf(id).catch(() => {});
+  await loadShelvesIndex();
+  showToast('Shelf deleted');
+}
+
+crateForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = crateNameInput.value.trim();
+  if (!name) return;
+  await client.createShelf({ name, kind: 'album' }).catch(() => {});
+  crateNameInput.value = '';
+  await loadShelvesIndex();
+  showToast('Shelf created');
+});
+
+/* ================= Shelves — detail ================= */
+const shelfDetailName = document.getElementById('shelf-detail-name') as HTMLElement;
+const shelfDetailCount = document.getElementById('shelf-detail-count') as HTMLElement;
+const shelfListEl = document.getElementById('shelf-list') as HTMLElement;
+const shelfSortSel = document.getElementById('shelf-sort') as HTMLSelectElement;
+const viewListBtn = document.getElementById('view-list') as HTMLButtonElement;
+const viewTileBtn = document.getElementById('view-tile') as HTMLButtonElement;
+(document.getElementById('shelf-back') as HTMLElement).addEventListener('click', backToIndex);
+
+function backToIndex(): void {
+  openShelfId = null;
+  shelfDetailEl.hidden = true;
+  shelvesIndexEl.hidden = false;
+}
+
+async function openShelf(id: string, name: string): Promise<void> {
+  openShelfId = id;
+  openShelfName = name;
+  shelvesIndexEl.hidden = true;
+  shelfDetailEl.hidden = false;
+  shelfDetailName.textContent = name;
+  // restore this shelf's saved sort/view
+  shelfSortSel.value = sortByShelf.get(id) ?? 'custom';
+  const view = viewByShelf.get(id) ?? 'tile';
+  viewListBtn.classList.toggle('on', view === 'list');
+  viewTileBtn.classList.toggle('on', view === 'tile');
+  shelfListEl.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    detailItems = (await client.getShelf(id === 'all' ? undefined : id)).items;
+  } catch {
+    shelfListEl.innerHTML = `<div class="empty">Could not load this shelf.</div>`;
+    return;
+  }
+  renderShelfDetail();
+}
+
+function sortedDetail(): ShelfItem[] {
+  const sort = sortByShelf.get(openShelfId ?? '') ?? 'custom';
+  if (sort === 'custom') return [...detailItems]; // as fetched = the saved manual order
+  const s = [...detailItems];
+  s.sort((a, b) => {
+    if (sort === 'artist') return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
+    if (sort === 'title') return a.title.localeCompare(b.title);
+    if (sort === 'year') return (b.year ?? 0) - (a.year ?? 0);
+    return (b.addedAt || '').localeCompare(a.addedAt || ''); // added: newest first
+  });
+  return s;
+}
+
+function renderShelfDetail(): void {
+  if (!openShelfId) return;
+  const view = viewByShelf.get(openShelfId) ?? 'tile';
+  const sort = sortByShelf.get(openShelfId) ?? 'custom';
+  shelfDetailCount.textContent = `${detailItems.length} album${detailItems.length === 1 ? '' : 's'}`;
+  shelfListEl.className = view === 'list' ? 'list' : 'grid';
+  if (detailItems.length === 0) {
+    shelfListEl.innerHTML = `<div class="empty">${openShelfId === 'all' ? 'Nothing on the shelf yet — add albums from Search.' : 'No albums in this shelf yet — add them from All albums.'}</div>`;
+    return;
+  }
+  shelfListEl.innerHTML = '';
+  const draggable = sort === 'custom';
+  shelfListEl.classList.toggle('draggable', draggable);
+  for (const it of sortedDetail()) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset['id'] = it.albumId;
+    if (draggable) {
+      card.draggable = true;
+      card.addEventListener('dragstart', () => card.classList.add('dragging'));
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        void saveShelfOrder();
+      });
+    }
+    card.innerHTML = `
+      ${artHtml(it.artworkUrl)}
+      <div class="body">
+        <div class="meta">
+          <div class="t">${esc(it.title)}</div>
+          <div class="a">${esc(it.artist)}</div>
+          <div class="y">${it.year ?? ''}</div>
+        </div>
+        <div class="card-actions">
+          <button class="ghost crate-btn">Shelves</button>
+          <button class="ghost edit-btn">Edit</button>
+          <button class="ghost rm-btn">${openShelfId === 'all' ? 'Remove' : 'Take out'}</button>
+        </div>
+      </div>`;
+    card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it));
+    card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
+    card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
+    shelfListEl.appendChild(card);
+  }
+}
+
+async function removeFromDetail(albumId: string): Promise<void> {
+  try {
+    if (openShelfId === 'all') await client.removeFromShelf(albumId);
+    else if (openShelfId) await client.removeAlbumFromShelf(openShelfId, albumId);
+    detailItems = detailItems.filter((it) => it.albumId !== albumId);
+    renderShelfDetail();
+    showToast(openShelfId === 'all' ? 'Removed from library' : 'Taken out of shelf');
+    void loadShelvesIndex();
   } catch (e) {
     showToast(`Failed: ${(e as Error).message}`);
   }
 }
 
-async function loadShelf(): Promise<void> {
-  try {
-    shelf = (await client.getShelf()).items;
-    renderShelf();
-  } catch {
-    shelfListEl.innerHTML = `<div class="empty">Could not reach the device service.</div>`;
+shelfSortSel.addEventListener('change', () => {
+  if (!openShelfId) return;
+  sortByShelf.set(openShelfId, shelfSortSel.value as ShelfSort);
+  renderShelfDetail();
+});
+viewListBtn.addEventListener('click', () => {
+  if (!openShelfId) return;
+  viewByShelf.set(openShelfId, 'list');
+  viewListBtn.classList.add('on');
+  viewTileBtn.classList.remove('on');
+  renderShelfDetail();
+});
+viewTileBtn.addEventListener('click', () => {
+  if (!openShelfId) return;
+  viewByShelf.set(openShelfId, 'tile');
+  viewTileBtn.classList.add('on');
+  viewListBtn.classList.remove('on');
+  renderShelfDetail();
+});
+
+/* Drag-to-reorder within the open shelf (Custom sort). */
+function dragAfter(container: HTMLElement, y: number): HTMLElement | null {
+  const cards = [...container.querySelectorAll<HTMLElement>('.card:not(.dragging)')];
+  let closest: { offset: number; el: HTMLElement | null } = { offset: -Infinity, el: null };
+  for (const child of cards) {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) closest = { offset, el: child };
   }
+  return closest.el;
+}
+shelfListEl.addEventListener('dragover', (e) => {
+  if ((sortByShelf.get(openShelfId ?? '') ?? 'custom') !== 'custom') return;
+  e.preventDefault();
+  const dragging = shelfListEl.querySelector<HTMLElement>('.dragging');
+  if (!dragging) return;
+  const after = dragAfter(shelfListEl, e.clientY);
+  if (after == null) shelfListEl.appendChild(dragging);
+  else shelfListEl.insertBefore(dragging, after);
+});
+async function saveShelfOrder(): Promise<void> {
+  const ids = [...shelfListEl.querySelectorAll<HTMLElement>('.card')].map((c) => c.dataset['id']!).filter(Boolean);
+  const byId = new Map(detailItems.map((it) => [it.albumId, it]));
+  detailItems = ids.map((id) => byId.get(id)).filter((x): x is ShelfItem => !!x);
+  await client.reorderShelf(ids, openShelfId === 'all' ? undefined : openShelfId ?? undefined).catch(() => {});
+  showToast('Order saved');
 }
 
-/* ---------- Per-album spine override editor ---------- */
+/* ================= Per-album crate assignment (floating checklist) ================= */
+let activeCrateMenu: HTMLElement | null = null;
+function closeCrateMenu(): void {
+  if (!activeCrateMenu) return;
+  document.removeEventListener('pointerdown', onCrateOutside, true);
+  activeCrateMenu.remove();
+  activeCrateMenu = null;
+}
+function onCrateOutside(e: Event): void {
+  if (activeCrateMenu && !activeCrateMenu.contains(e.target as Node)) closeCrateMenu();
+}
+function openCratePicker(anchor: HTMLElement, it: ShelfItem): void {
+  closeCrateMenu();
+  const crates = albumCrates();
+  const menu = document.createElement('div');
+  menu.className = 'crate-menu';
+  if (!crates.length) menu.innerHTML = `<div class="empty">No shelves yet — create one in Shelves.</div>`;
+  for (const c of crates) {
+    const on = crateMembers.get(c.id)?.has(it.albumId) ?? false;
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span>${esc(c.name)}</span>`;
+    const cb = label.querySelector('input') as HTMLInputElement;
+    cb.addEventListener('change', async () => {
+      const set = crateMembers.get(c.id) ?? new Set<string>();
+      if (cb.checked) {
+        await client.addAlbumToShelf(c.id, it.albumId).catch(() => {});
+        set.add(it.albumId);
+      } else {
+        await client.removeAlbumFromShelf(c.id, it.albumId).catch(() => {});
+        set.delete(it.albumId);
+      }
+      crateMembers.set(c.id, set);
+      renderShelvesIndex();
+      // If we're viewing that shelf, drop the row live when unchecked.
+      if (openShelfId === c.id && !cb.checked) {
+        detailItems = detailItems.filter((x) => x.albumId !== it.albumId);
+        renderShelfDetail();
+      }
+    });
+    menu.appendChild(label);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  const top = r.bottom + 6;
+  menu.style.top = `${Math.min(top, window.innerHeight - menu.offsetHeight - 8)}px`;
+  activeCrateMenu = menu;
+  setTimeout(() => document.addEventListener('pointerdown', onCrateOutside, true), 0);
+}
+
+/* ================= Per-album spine override editor ================= */
 const editorEl = document.getElementById('editor') as HTMLElement;
 const editorTitle = document.getElementById('editor-title') as HTMLElement;
 const ovCover = document.getElementById('ov-cover') as HTMLInputElement;
@@ -259,7 +489,7 @@ async function saveEditor(): Promise<void> {
     });
     showToast('Saved');
     closeEditor();
-    await loadShelf();
+    if (openShelfId) await openShelf(openShelfId, openShelfName);
   } catch (e) {
     showToast(`Failed: ${(e as Error).message}`);
   } finally {
@@ -274,135 +504,25 @@ editorEl.addEventListener('click', (e) => {
   if (e.target === editorEl) closeEditor();
 });
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const q = qInput.value.trim();
-  if (q) void search(q);
-});
-
-/* ---------- Crates (curated shelves) ---------- */
-async function loadCrates(): Promise<void> {
-  try {
-    shelves = (await client.getShelf()).shelves;
-  } catch {
-    return;
-  }
-  crateMembers.clear();
-  await Promise.all(
-    shelves
-      .filter((s) => s.kind === 'album' && s.id !== 'all')
-      .map(async (c) => {
-        try {
-          const m = await client.getShelf(c.id);
-          crateMembers.set(c.id, new Set(m.items.map((i) => i.albumId)));
-        } catch {
-          crateMembers.set(c.id, new Set());
-        }
-      }),
-  );
-  renderCrates();
-}
-
-function albumCrates(): Shelf[] {
-  return shelves.filter((s) => s.kind === 'album' && s.id !== 'all');
-}
-
-function renderCrates(): void {
-  const crates = albumCrates();
-  cratesListEl.innerHTML = '';
-  if (!crates.length) {
-    cratesListEl.innerHTML = `<div class="empty">No shelves yet — create one below.</div>`;
-    return;
-  }
-  for (const c of crates) {
-    const row = document.createElement('div');
-    row.className = 'crate-row';
-    row.innerHTML =
-      `<span class="crate-name">${esc(c.name)}</span>` +
-      `<span class="crate-n">${crateMembers.get(c.id)?.size ?? 0} albums</span>` +
-      `<button class="ghost crate-del">Delete</button>`;
-    row.querySelector('.crate-del')!.addEventListener('click', () => void deleteCrate(c.id, c.name));
-    cratesListEl.appendChild(row);
-  }
-}
-
-async function deleteCrate(id: string, name: string): Promise<void> {
-  if (!confirm(`Delete shelf "${name}"? Its albums stay in your library.`)) return;
-  await client.deleteShelf(id).catch(() => {});
-  await loadCrates();
-  showToast('Shelf deleted');
-}
-
-crateForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = crateNameInput.value.trim();
-  if (!name) return;
-  await client.createShelf({ name, kind: 'album' }).catch(() => {});
-  crateNameInput.value = '';
-  await loadCrates();
-  showToast('Shelf created');
-});
-
-/* Per-album crate assignment — a floating checklist. */
-let activeCrateMenu: HTMLElement | null = null;
-function closeCrateMenu(): void {
-  if (!activeCrateMenu) return;
-  document.removeEventListener('pointerdown', onCrateOutside, true);
-  activeCrateMenu.remove();
-  activeCrateMenu = null;
-}
-function onCrateOutside(e: Event): void {
-  if (activeCrateMenu && !activeCrateMenu.contains(e.target as Node)) closeCrateMenu();
-}
-function openCratePicker(anchor: HTMLElement, it: ShelfItem): void {
-  closeCrateMenu();
-  const crates = albumCrates();
-  const menu = document.createElement('div');
-  menu.className = 'crate-menu';
-  if (!crates.length) {
-    menu.innerHTML = `<div class="empty">No shelves yet — create one below.</div>`;
-  }
-  for (const c of crates) {
-    const on = crateMembers.get(c.id)?.has(it.albumId) ?? false;
-    const label = document.createElement('label');
-    label.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span>${esc(c.name)}</span>`;
-    const cb = label.querySelector('input') as HTMLInputElement;
-    cb.addEventListener('change', async () => {
-      const set = crateMembers.get(c.id) ?? new Set<string>();
-      if (cb.checked) {
-        await client.addAlbumToShelf(c.id, it.albumId).catch(() => {});
-        set.add(it.albumId);
-      } else {
-        await client.removeAlbumFromShelf(c.id, it.albumId).catch(() => {});
-        set.delete(it.albumId);
-      }
-      crateMembers.set(c.id, set);
-      renderCrates();
-    });
-    menu.appendChild(label);
-  }
-  document.body.appendChild(menu);
-  const r = anchor.getBoundingClientRect();
-  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-  menu.style.top = `${r.bottom + 6}px`;
-  activeCrateMenu = menu;
-  setTimeout(() => document.addEventListener('pointerdown', onCrateOutside, true), 0);
-}
-
-/* ---------- Settings (mirrors the wall's on-screen Settings) ---------- */
+/* ================= Settings (mirrors the wall's on-screen Settings) ================= */
+const defaultSpeakerSel = document.getElementById('default-speaker') as HTMLSelectElement;
 const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> = [
   ['spineMode', 'Spine art', [['scan', 'Real when available'], ['art', 'Generated']]],
   ['spineThickness', 'CD thickness', [['thin', 'Thin'], ['medium', 'Medium'], ['thick', 'Thick']]],
   ['spineWidthMode', 'Spine width', [['uniform', 'Uniform'], ['duration', 'By length']]],
   ['spineTextDir', 'Text direction', [['ttb', 'Top → bottom'], ['btt', 'Bottom → top']]],
   ['inkMode', 'Label ink', [['contrast', 'Contrast'], ['match', 'Match accent']]],
+  ['inkSize', 'Label size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]],
+  ['inkWeight', 'Label weight', [['light', 'Light'], ['regular', 'Regular'], ['bold', 'Bold']]],
   ['labelLayout', 'Label layout', [['split', 'Split'], ['center', 'Centered'], ['top', 'Top'], ['bottom', 'Bottom'], ['varied', 'Varied']]],
   ['labelVary', 'Typography', [['uniform', 'Uniform'], ['varied', 'Varied']]],
+  ['glowEnabled', 'Album glow', [['true', 'On'], ['false', 'Off']]],
+  ['glowRadius', 'Glow radius', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]],
+  ['glowIntensity', 'Glow intensity', [['soft', 'Soft'], ['medium', 'Medium'], ['bold', 'Bold']]],
   ['yearDisplay', 'Album year', [['off', 'Off'], ['vertical', 'Vertical'], ['horizontal', 'Horizontal']]],
   ['yearPos', 'Year position', [['top', 'Top'], ['bottom', 'Bottom']]],
   ['yearEmphasis', 'Year emphasis', [['thin', 'Thin'], ['bold', 'Bold']]],
   ['openMode', 'Opening an album', [['cover', 'Cover only'], ['card', 'Full card']]],
-  ['sortBy', 'Shelf sort', [['artist', 'Artist'], ['title', 'Title'], ['added', 'Recently added'], ['played', 'Most played'], ['year', 'Year'], ['color', 'Color'], ['custom', 'Custom order']]],
   ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open']]],
   ['idleScreen', 'When idle — screen', [['on', 'Stay on'], ['dim', 'Dim'], ['off', 'Screen off']]],
   ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf'], ['autoOpen', 'Auto-open']]],
@@ -416,11 +536,14 @@ const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
   ['autoOpenEverySec', 'Auto-open every (sec)', 5, 300],
 ];
 const SETTING_TOGGLES: Array<[keyof Settings, string]> = [
+  ['openOnExternalPlay', 'Open album on outside playback'],
   ['autoOpenRandom', 'Auto-open in random order'],
   ['idleUseSensor', 'Idle from proximity sensor (needs sensor)'],
   ['wakeOnSensor', 'Wake from proximity sensor (needs sensor)'],
   ['autoBrightness', 'Auto-brightness from ambient light (needs sensor)'],
 ];
+// Settings persisted as booleans but edited via a two-option select.
+const BOOL_SELECTS = new Set<keyof Settings>(['glowEnabled']);
 
 async function loadSettingsPanel(): Promise<void> {
   try {
@@ -445,9 +568,9 @@ async function loadSettingsPanel(): Promise<void> {
 }
 
 function renderSettingsForm(): void {
-  const form = document.getElementById('settings-form') as HTMLElement;
+  const formEl = document.getElementById('settings-form') as HTMLElement;
   if (!settings) return;
-  form.innerHTML = '';
+  formEl.innerHTML = '';
   for (const [key, label, opts] of SETTING_SELECTS) {
     const field = document.createElement('div');
     field.className = 'field';
@@ -459,10 +582,13 @@ function renderSettingsForm(): void {
       if (String(settings![key]) === v) o.selected = true;
       sel.appendChild(o);
     }
-    sel.addEventListener('change', () => void saveSetting(key, sel.value));
+    sel.addEventListener('change', () => {
+      const val = BOOL_SELECTS.has(key) ? (sel.value === 'true') : sel.value;
+      void saveSetting(key, val as Settings[typeof key]);
+    });
     field.innerHTML = `<label>${label}</label>`;
     field.appendChild(sel);
-    form.appendChild(field);
+    formEl.appendChild(field);
   }
   for (const [key, label, min, max] of SETTING_NUMBERS) {
     const field = document.createElement('div');
@@ -472,10 +598,10 @@ function renderSettingsForm(): void {
     inp.min = String(min);
     inp.max = String(max);
     inp.value = String(settings![key]);
-    inp.addEventListener('change', () => void saveSetting(key, Math.max(min, Math.min(max, Number(inp.value)))));
+    inp.addEventListener('change', () => void saveSetting(key, Math.max(min, Math.min(max, Number(inp.value))) as Settings[typeof key]));
     field.innerHTML = `<label>${label}</label>`;
     field.appendChild(inp);
-    form.appendChild(field);
+    formEl.appendChild(field);
   }
   // Idle shelf (for content 'A shelf' and auto-open 'A specific shelf').
   const isf = document.createElement('div');
@@ -496,7 +622,7 @@ function renderSettingsForm(): void {
   issel.addEventListener('change', () => void saveSetting('idleShelf', issel.value || null));
   isf.innerHTML = '<label>Idle / auto-open shelf</label>';
   isf.appendChild(issel);
-  form.appendChild(isf);
+  formEl.appendChild(isf);
   // Toggles
   for (const [key, label] of SETTING_TOGGLES) {
     const tf = document.createElement('div');
@@ -509,7 +635,7 @@ function renderSettingsForm(): void {
     lab.appendChild(cb);
     lab.append(' ' + label);
     tf.appendChild(lab);
-    form.appendChild(tf);
+    formEl.appendChild(tf);
   }
   renderSchedule();
 }
@@ -551,53 +677,7 @@ defaultSpeakerSel.addEventListener('change', async () => {
   showToast('Default speaker saved');
 });
 
-/* ---------- Drag-to-reorder (Custom sort) ---------- */
-function dragAfter(container: HTMLElement, y: number): HTMLElement | null {
-  const cards = [...container.querySelectorAll<HTMLElement>('.card:not(.dragging)')];
-  let closest: { offset: number; el: HTMLElement | null } = { offset: -Infinity, el: null };
-  for (const child of cards) {
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) closest = { offset, el: child };
-  }
-  return closest.el;
-}
-shelfListEl.addEventListener('dragover', (e) => {
-  if (shelfSort !== 'custom') return;
-  e.preventDefault();
-  const dragging = shelfListEl.querySelector<HTMLElement>('.dragging');
-  if (!dragging) return;
-  const after = dragAfter(shelfListEl, e.clientY);
-  if (after == null) shelfListEl.appendChild(dragging);
-  else shelfListEl.insertBefore(dragging, after);
-});
-async function saveShelfOrder(): Promise<void> {
-  const ids = [...shelfListEl.querySelectorAll<HTMLElement>('.card')].map((c) => c.dataset.id!).filter(Boolean);
-  const byId = new Map(shelf.map((it) => [it.albumId, it]));
-  shelf = ids.map((id) => byId.get(id)).filter((x): x is ShelfItem => !!x);
-  await client.reorderShelf(ids).catch(() => {});
-  showToast('Order saved');
-}
-
-/* ---------- View toggle + sort ---------- */
-viewListBtn.addEventListener('click', () => {
-  shelfView = 'list';
-  viewListBtn.classList.add('on');
-  viewTileBtn.classList.remove('on');
-  renderShelf();
-});
-viewTileBtn.addEventListener('click', () => {
-  shelfView = 'tile';
-  viewTileBtn.classList.add('on');
-  viewListBtn.classList.remove('on');
-  renderShelf();
-});
-shelfSortSel.addEventListener('change', () => {
-  shelfSort = shelfSortSel.value;
-  renderShelf();
-});
-
+/* ================= Init ================= */
 renderResults();
-void loadShelf();
-void loadCrates();
+void loadShelvesIndex();
 void loadSettingsPanel();
