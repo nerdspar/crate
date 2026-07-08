@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -191,6 +191,19 @@ const shelfGlow = document.createElement('div');
 shelfGlow.className = 'shelf-glow';
 
 let glowTrackRaf = 0;
+/** Album-open glow tuning per setting. `spread` scales the halo margin (as a fraction of the
+    cover height), `blurVh` its softness, `opacity`/`sat` its brightness — set from the global
+    Glow radius/intensity controls. */
+const GLOW_RADIUS: Record<GlowRadius, { spread: number; blurVh: number }> = {
+  small: { spread: 0.03, blurVh: 3 },
+  medium: { spread: 0.05, blurVh: 4 },
+  large: { spread: 0.08, blurVh: 5.5 },
+};
+const GLOW_INTENSITY: Record<GlowIntensity, { opacity: number; sat: number }> = {
+  soft: { opacity: 0.48, sat: 1.3 },
+  medium: { opacity: 0.68, sat: 1.5 },
+  bold: { opacity: 0.9, sat: 1.9 },
+};
 /** A soft square halo centred on the open cover. The cover swings out on a 3D flap (so its
     real position isn't a clean offset) and the shelf scrolls to it — so we read the cover's
     actual rect and track it for the open animation, keeping the halo centred throughout. */
@@ -198,9 +211,18 @@ function positionGlow(i: number): void {
   const a = items[i];
   const el = shelf.children[i] as HTMLElement | undefined;
   if (!a || !el) return;
+  if (!settings.glowEnabled) {
+    cancelAnimationFrame(glowTrackRaf);
+    shelfGlow.classList.remove('on');
+    return;
+  }
+  const rad = GLOW_RADIUS[settings.glowRadius] ?? GLOW_RADIUS.medium;
+  const inten = GLOW_INTENSITY[settings.glowIntensity] ?? GLOW_INTENSITY.medium;
   const cover = el.querySelector('.face-cover') as HTMLElement | null;
   shelfGlow.style.backgroundImage = a.artworkUrl ? `url('${a.artworkUrl}')` : 'none';
   if (!a.artworkUrl) shelfGlow.style.backgroundColor = a.primaryColor;
+  shelfGlow.style.filter = `blur(${rad.blurVh}vh) saturate(${inten.sat})`;
+  shelfGlow.style.setProperty('--glow-op', String(inten.opacity));
   shelfGlow.classList.add('on');
   // #shelf-viewport clips vertically (overflow-y:hidden for the horizontal scroller), so the
   // short wall has only a small vertical gap above/below the cover while the sides have room.
@@ -211,9 +233,9 @@ function positionGlow(i: number): void {
     const cr = (cover ?? el).getBoundingClientRect();
     // A uniform square margin on every side, but clamped so the halo (plus its blur) never spills
     // past the shelf's top/bottom edges — that keeps the top bleed equal to the sides on the wall.
-    const blur = 0.04 * window.innerHeight; // keep in step with the CSS blur (4vh)
+    const blur = (rad.blurVh / 100) * window.innerHeight; // keep in step with the CSS blur
     const room = Math.min(cr.top - clr.top, clr.bottom - cr.bottom) - blur;
-    const d = Math.max(0, Math.min(0.05 * cr.height, room));
+    const d = Math.max(0, Math.min(rad.spread * cr.height, room));
     // The glow's offsetParent is #shelf, whose live rect already reflects the viewport scroll —
     // so (cr - sr) is the cover's position within it; no scrollLeft term needed.
     shelfGlow.style.left = `${cr.left - sr.left - d}px`;
@@ -979,6 +1001,9 @@ const SETTING_HELP: Record<string, string> = {
   'layout-choices': 'Where the artist and title sit along the spine.',
   'vary-choices': 'One shared font for every spine, or a different type style per artist.',
   'open-choices': 'Tapping a spine shows just the cover, or a full details card.',
+  'glow-choices': "A soft halo of the cover's art cast behind an opened album.",
+  'glowradius-choices': 'How far the glow spreads out around the cover.',
+  'glowintensity-choices': 'How bright and saturated the glow is.',
   'afterplay-choices': 'What the open card does after you hit play.',
 };
 
@@ -1129,6 +1154,40 @@ function renderChoices(): void {
       buildShelf();
       sizeFaces();
       void client.putSettings({ inkWeight: settings.inkWeight }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'glow-choices',
+    [['1', 'On', ''], ['0', 'Off', '']],
+    (k) => (settings.glowEnabled ? '1' : '0') === k,
+    (k) => {
+      settings.glowEnabled = k === '1';
+      updateConditionalRows();
+      if (openIdx !== null) positionGlow(openIdx);
+      void client.putSettings({ glowEnabled: settings.glowEnabled }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'glowradius-choices',
+    [['small', 'Small', ''], ['medium', 'Medium', ''], ['large', 'Large', '']],
+    (k) => settings.glowRadius === k,
+    (k) => {
+      settings.glowRadius = k as GlowRadius;
+      if (openIdx !== null) positionGlow(openIdx);
+      void client.putSettings({ glowRadius: settings.glowRadius }).catch(() => {});
+    },
+  );
+
+  choiceRow(
+    'glowintensity-choices',
+    [['soft', 'Soft', ''], ['medium', 'Medium', ''], ['bold', 'Bold', '']],
+    (k) => settings.glowIntensity === k,
+    (k) => {
+      settings.glowIntensity = k as GlowIntensity;
+      if (openIdx !== null) positionGlow(openIdx);
+      void client.putSettings({ glowIntensity: settings.glowIntensity }).catch(() => {});
     },
   );
 
@@ -1389,6 +1448,10 @@ function updateConditionalRows(): void {
   const yearOn = settings.yearDisplay !== 'off';
   for (const id of ['yearpos-choices', 'yearemph-choices']) {
     document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !yearOn);
+  }
+  // Radius/intensity only matter when the glow is on.
+  for (const id of ['glowradius-choices', 'glowintensity-choices']) {
+    document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !settings.glowEnabled);
   }
   // The "when idle" behaviors only matter if idle can ever trigger (a timer or the sensor).
   const idleOn = settings.idleAfterMin > 0 || settings.idleUseSensor;

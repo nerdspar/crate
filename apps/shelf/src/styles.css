@@ -179,10 +179,10 @@ body {
   position: absolute;
   z-index: -1; pointer-events: none;
   background-size: cover; background-position: center;
-  filter: blur(4vh) saturate(1.5);
+  filter: blur(4vh) saturate(1.5); /* fallback; JS sets blur/saturate from the Glow settings */
   opacity: 0; transition: opacity 0.5s ease;
 }
-.shelf-glow.on { opacity: 0.68; }
+.shelf-glow.on { opacity: var(--glow-op, 0.68); }
 .spine.open:active { filter: none; }
 .spine:not(.open):active { filter: brightness(1.25); }
 

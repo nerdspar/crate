@@ -188,6 +188,9 @@ export type InkMode = 'contrast' | 'match';
 export type InkSize = 'small' | 'medium' | 'large';
 /** Global adjustment to the spine-label font weight. */
 export type InkWeight = 'light' | 'regular' | 'bold';
+/** Album-open ambient glow: how far the halo spreads / how bright it is. */
+export type GlowRadius = 'small' | 'medium' | 'large';
+export type GlowIntensity = 'soft' | 'medium' | 'bold';
 /** Album-year catalog imprint: hidden, or shown vertical/horizontal. */
 export type YearDisplay = 'off' | 'vertical' | 'horizontal';
 /** Which end of the spine the year imprint sits at. */
@@ -226,6 +229,10 @@ export interface Settings {
   inkMode: InkMode;
   inkSize: InkSize;
   inkWeight: InkWeight;
+  /** Ambient halo behind an opened album's cover. */
+  glowEnabled: boolean;
+  glowRadius: GlowRadius;
+  glowIntensity: GlowIntensity;
   yearDisplay: YearDisplay;
   yearPos: YearPos;
   yearEmphasis: YearEmphasis;
@@ -275,6 +282,9 @@ export const DEFAULT_SETTINGS: Settings = {
   inkMode: 'contrast',
   inkSize: 'medium',
   inkWeight: 'regular',
+  glowEnabled: true,
+  glowRadius: 'medium',
+  glowIntensity: 'medium',
   yearDisplay: 'vertical',
   yearPos: 'bottom',
   yearEmphasis: 'thin',
