@@ -361,7 +361,8 @@ button {
 .seek-fill { height: 100%; width: 0; background: var(--ink); border-radius: 3px; }
 .times {
   display: flex; justify-content: space-between;
-  font-size: 1.5vh; color: var(--ink-dim); letter-spacing: 0.04em;
+  font-size: 1.9vh; color: var(--ink); opacity: 0.72; letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 .tracks {
@@ -654,7 +655,7 @@ body.idle #find-grip::after { opacity: 0; }
 .cc-sub { font-size: 2.4vh; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-seek { height: 0.7vh; border-radius: 999px; background: rgba(236,231,221,0.15); margin-top: 0.6vh; }
 .cc-seek-fill { height: 100%; width: 0; border-radius: 999px; background: var(--ink); }
-.cc-times { display: flex; justify-content: space-between; font-size: 1.7vh; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.cc-times { display: flex; justify-content: space-between; font-size: 1.9vh; color: var(--ink); opacity: 0.72; font-variant-numeric: tabular-nums; }
 
 /* Transport — under the seek bar, centered in the now-playing column. */
 .cc-transport { display: flex; align-items: center; justify-content: center; gap: 4vw; margin-top: 1.2vh; }
