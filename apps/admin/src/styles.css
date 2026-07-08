@@ -119,18 +119,17 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 
 /* List view: compact readable rows. On narrow screens the meta gets the full row
    width and the actions stack under it; when there's room they sit inline. */
-#shelf-list.list { display: flex; flex-direction: column; gap: 0.5rem; grid-template-columns: none; }
-#shelf-list.list .card { flex-direction: row; align-items: center; padding: 0.6rem 0.8rem; gap: 0.8rem; }
-#shelf-list.list .card .art { width: 56px; height: 56px; aspect-ratio: 1; }
-#shelf-list.list .card .body { flex: 1; min-width: 0; gap: 0.5rem; }
-#shelf-list.list .card .t { -webkit-line-clamp: 1; white-space: nowrap; }
-#shelf-list.list .card-actions { margin-top: 0; }
-#shelf-list.list .card-actions button { flex: 0 0 auto; }
-@media (min-width: 560px) {
-  #shelf-list.list .card .body { flex-direction: row; align-items: center; gap: 0.9rem; }
-  #shelf-list.list .card .meta { flex: 1; }
-  #shelf-list.list .card-actions { flex: 0 0 auto; flex-wrap: nowrap; }
-}
+/* List view = thin single-line rows (distinct from the big tile grid). */
+#shelf-list.list { display: flex; flex-direction: column; gap: 0.3rem; grid-template-columns: none; }
+#shelf-list.list .card { flex-direction: row; align-items: center; padding: 0.3rem 0.5rem; gap: 0.6rem; border-radius: 8px; }
+#shelf-list.list .card .art { width: 34px; height: 34px; aspect-ratio: 1; border-radius: 5px; }
+#shelf-list.list .card .body { flex: 1; min-width: 0; flex-direction: row; align-items: center; gap: 0.6rem; }
+#shelf-list.list .card .meta { flex: 1; min-width: 0; flex-direction: row; align-items: baseline; gap: 0.5rem; }
+#shelf-list.list .card .t { -webkit-line-clamp: 1; white-space: nowrap; font-size: 0.92rem; flex: 0 1 auto; }
+#shelf-list.list .card .a { font-size: 0.8rem; }
+#shelf-list.list .card .y { display: none; }
+#shelf-list.list .card-actions { margin-top: 0; flex: 0 0 auto; flex-wrap: nowrap; gap: 0.3rem; }
+#shelf-list.list .card-actions button { flex: 0 0 auto; padding: 0.3rem 0.6rem; font-size: 0.78rem; }
 
 /* Drag-to-reorder */
 #shelf-list.draggable .card { cursor: grab; }

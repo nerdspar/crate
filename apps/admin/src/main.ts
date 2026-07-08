@@ -40,6 +40,7 @@ let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
 let libraryCount = 0; // size of the "All" shelf
 let playlistCount = 0; // size of the "All Playlists" shelf
+const playlistSongCounts = new Map<string, number>(); // named playlist shelf id → song count
 
 // Currently open shelf detail: 'all' = the library, else a named shelf id; null = index.
 let openShelfId: string | null = null;
@@ -479,8 +480,9 @@ async function loadShelvesIndex(): Promise<void> {
     return;
   }
   crateMembers.clear();
-  await Promise.all(
-    albumCrates().map(async (c) => {
+  playlistSongCounts.clear();
+  await Promise.all([
+    ...albumCrates().map(async (c) => {
       try {
         const m = await client.getShelf(c.id);
         crateMembers.set(c.id, new Set(m.items.map((i) => i.albumId)));
@@ -488,7 +490,16 @@ async function loadShelvesIndex(): Promise<void> {
         crateMembers.set(c.id, new Set());
       }
     }),
-  );
+    ...shelves
+      .filter((s) => s.kind === 'playlist' && s.id !== 'playlists')
+      .map(async (s) => {
+        try {
+          playlistSongCounts.set(s.id, (await client.getShelf(s.id)).items.length);
+        } catch {
+          playlistSongCounts.set(s.id, 0);
+        }
+      }),
+  ]);
   renderShelvesIndex();
   if (openShelfId) renderShelfDetail();
 }
@@ -541,9 +552,10 @@ async function deleteCrate(id: string, name: string): Promise<void> {
 function playlistShelfRow(s: Shelf): HTMLElement {
   const row = document.createElement('button');
   row.className = 'shelf-row';
+  const n = playlistSongCounts.get(s.id);
   row.innerHTML =
     `<span class="sh-name">${esc(s.name)}</span>` +
-    `<span class="sh-n">songs</span>` +
+    `<span class="sh-n">${n == null ? '…' : `${n} song${n === 1 ? '' : 's'}`}</span>` +
     `<span class="sh-del" role="button" aria-label="Remove playlist shelf">✕</span>` +
     `<span class="sh-chev">›</span>`;
   row.addEventListener('click', () => void openSongShelf(s.id, s.name));
@@ -811,6 +823,7 @@ function renderShelfDetail(): void {
             <div class="a">${esc(it.artist)}</div>
           </div>
           <div class="card-actions">
+            <button class="ghost edit-btn">Edit</button>
             <button class="ghost rm-btn">Remove</button>
           </div>
         </div>`;
@@ -821,6 +834,7 @@ function renderShelfDetail(): void {
       meta.classList.add('tappable');
       art.addEventListener('click', nav);
       meta.addEventListener('click', nav);
+      card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
       card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
     } else {
       card.innerHTML = `
