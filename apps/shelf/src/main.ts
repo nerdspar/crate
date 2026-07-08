@@ -302,6 +302,8 @@ function buildShelf(): void {
             <span class="vol-ico">${VOL_LOW_SVG}</span>
             <input type="range" min="0" max="100" value="42">
             <span class="vol-ico">${VOL_HIGH_SVG}</span>
+            <button class="vol-caret" aria-label="Group volumes" hidden>▾</button>
+            <div class="vol-members" hidden></div>
           </div>
         </div>
         <div class="tracks"></div>
@@ -367,10 +369,7 @@ function buildShelf(): void {
         .then(() => showToast('Removed'))
         .catch(() => showToast('Remove failed'));
     });
-    (el.querySelector('.vol input') as HTMLInputElement).addEventListener('input', (e) => {
-      volume = +(e.target as HTMLInputElement).value;
-      if (activePlayerId) void client.setVolume({ playerId: activePlayerId, level: volume }).catch(() => {});
-    });
+    wireVol(el.querySelector('.vol') as HTMLElement);
     const seek = el.querySelector('.seek') as HTMLElement;
     seek.addEventListener('pointerdown', stop);
     seek.addEventListener('click', (e) => {
@@ -432,7 +431,7 @@ function openAlbum(i: number, autoscroll = true): void {
   }
   renderRooms(el);
   void renderTracks(el, i);
-  (el.querySelector('.vol input') as HTMLInputElement).value = String(volume);
+  syncVol(el.querySelector('.vol'));
   handleState(lastStates); // refocus now-playing on the newly-opened album
   el.classList.add('open');
   if (openMode === 'card') el.classList.add('expanded');
@@ -589,6 +588,7 @@ function renderRooms(el: HTMLElement): void {
     };
     wrap.appendChild(b);
   });
+  syncVol(el.querySelector('.vol')); // picking a group vs solo room flips the vol control
   syncEqs(); // keep the picker's EQ chips in phase with the track/spine EQs
 }
 
@@ -1545,6 +1545,117 @@ function groupMembers(leader: string): Player[] {
   return rooms.filter((r) => leaderOf(r.id) === leader);
 }
 
+/** Sonos-style proportional group volumes: from a snapshot (member base levels + the group
+    value at drag start) compute each member's level for a new group value. Up: approach 100
+    by remaining headroom; down: scale toward 0 by ratio — so they reach 100 together going
+    up and 0 together going down, preserving balance in between. */
+function proportionalGroupVols(baseVols: number[], gOld: number, gNew: number): number[] {
+  return baseVols.map((b) => {
+    const raw =
+      gNew >= gOld
+        ? gOld < 100
+          ? b + ((gNew - gOld) * (100 - b)) / (100 - gOld)
+          : b
+        : gOld > 0
+          ? (b * gNew) / gOld
+          : b;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  });
+}
+/** The active play target's group members (≥2), or [] when it's a solo speaker. */
+function activeGroupMembers(): Player[] {
+  if (!activePlayerId) return [];
+  const m = groupMembers(leaderOf(activePlayerId));
+  return m.length >= 2 ? m : [];
+}
+/** What the card/overlay volume slider should show: the group average when the target is a
+    group, else the single active player's volume. */
+function activeVol(): number {
+  const m = activeGroupMembers();
+  return m.length ? Math.round(m.reduce((s, r) => s + roomVol(r.id), 0) / m.length) : volume;
+}
+/** Fill a `.vol-members` overlay with per-member sliders; each sets its room and nudges the
+    main (group) slider to the members' new average. */
+function renderVolMembers(vol: HTMLElement): void {
+  const wrap = vol.querySelector('.vol-members') as HTMLElement;
+  const slider = vol.querySelector('.vol > input, .vol-row input') as HTMLInputElement | null;
+  const main = (vol.querySelector(':scope > input') as HTMLInputElement) ?? slider;
+  wrap.innerHTML = '';
+  for (const r of activeGroupMembers()) {
+    const row = document.createElement('div');
+    row.className = 'vol-member';
+    row.innerHTML =
+      `<span class="vol-member-name">${escapeHtml(r.name)}</span>` +
+      `<input type="range" min="0" max="100" value="${roomVol(r.id)}" data-id="${escapeHtml(r.id)}">`;
+    const mi = row.querySelector('input') as HTMLInputElement;
+    mi.addEventListener('input', () => {
+      void client.setVolume({ playerId: r.id, level: +mi.value }).catch(() => {});
+      const inputs = [...wrap.querySelectorAll('input')] as HTMLInputElement[];
+      if (main) main.value = String(Math.round(inputs.reduce((s, x) => s + +x.value, 0) / inputs.length));
+    });
+    wrap.appendChild(row);
+  }
+}
+/** Wire a card/overlay `.vol` block: proportional group control when the target is a group
+    (with a caret that reveals per-member sliders), single-player otherwise. */
+function wireVol(vol: HTMLElement): void {
+  const slider = vol.querySelector(':scope > input') as HTMLInputElement;
+  const caret = vol.querySelector('.vol-caret') as HTMLElement;
+  const membersEl = vol.querySelector('.vol-members') as HTMLElement;
+  let base: { g: number; vols: number[]; ids: string[] } | null = null;
+  const snap = (): { g: number; vols: number[]; ids: string[] } => {
+    const m = activeGroupMembers();
+    return { g: +slider.value, vols: m.map((r) => roomVol(r.id)), ids: m.map((r) => r.id) };
+  };
+  slider.addEventListener('pointerdown', () => {
+    base = snap();
+  });
+  slider.addEventListener('input', () => {
+    const grp = activeGroupMembers();
+    if (!grp.length) {
+      volume = +slider.value;
+      if (activePlayerId) void client.setVolume({ playerId: activePlayerId, level: volume }).catch(() => {});
+      return;
+    }
+    if (!base || !base.ids.length) base = snap();
+    const nv = proportionalGroupVols(base.vols, base.g, +slider.value);
+    base.ids.forEach((id, i) => {
+      void client.setVolume({ playerId: id, level: nv[i]! }).catch(() => {});
+      const mi = membersEl.querySelector(`input[data-id="${CSS.escape(id)}"]`) as HTMLInputElement | null;
+      if (mi) mi.value = String(nv[i]);
+    });
+  });
+  slider.addEventListener('change', () => {
+    base = null;
+  });
+  caret.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = membersEl.hidden;
+    membersEl.hidden = !open;
+    caret.classList.toggle('open', open);
+    if (open) renderVolMembers(vol);
+  });
+}
+/** Reflect the current target on a `.vol`: slider = active volume; caret only for a group;
+    keep any open member overlay in sync. */
+function syncVol(vol: HTMLElement | null): void {
+  if (!vol) return;
+  const slider = vol.querySelector(':scope > input') as HTMLInputElement | null;
+  const caret = vol.querySelector('.vol-caret') as HTMLElement | null;
+  const membersEl = vol.querySelector('.vol-members') as HTMLElement | null;
+  const isGroup = activeGroupMembers().length >= 2;
+  if (slider) slider.value = String(activeVol());
+  if (caret) caret.hidden = !isGroup;
+  if (membersEl && !membersEl.hidden) {
+    if (!isGroup) {
+      membersEl.hidden = true;
+      caret?.classList.remove('open');
+    } else {
+      renderVolMembers(vol);
+    }
+  }
+}
+
 /** A fingerprint of the current grouping (each room → its leader), so we only
     re-render the room UIs when grouping actually changes. */
 function groupSig(): string {
@@ -2164,10 +2275,7 @@ let modalIsPlaylist = false; // the overlay is showing a playlist (plays the pla
   const icons = albumModal.querySelectorAll('.am-vol .vol-ico');
   if (icons[0]) icons[0].innerHTML = VOL_LOW_SVG;
   if (icons[1]) icons[1].innerHTML = VOL_HIGH_SVG;
-  (albumModal.querySelector('.am-vol input') as HTMLInputElement).addEventListener('input', (e) => {
-    volume = +(e.target as HTMLInputElement).value;
-    if (activePlayerId) void client.setVolume({ playerId: activePlayerId, level: volume }).catch(() => {});
-  });
+  wireVol(albumModal.querySelector('.am-vol') as HTMLElement);
 }
 // Tap the overlay seek bar to scrub (mirrors the card's nowbar seek).
 (albumModal.querySelector('.am-nowbar .seek') as HTMLElement).addEventListener('click', (e) => {
@@ -2258,7 +2366,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   albumModal.hidden = false;
-  (albumModal.querySelector('.am-vol input') as HTMLInputElement).value = String(volume);
+  syncVol(albumModal.querySelector('.am-vol'));
 
   let d: ProviderAlbumDetail;
   try {
@@ -2334,7 +2442,7 @@ async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).appendChild(playlistAddControl(pl));
   albumModal.hidden = false;
-  (albumModal.querySelector('.am-vol input') as HTMLInputElement).value = String(volume);
+  syncVol(albumModal.querySelector('.am-vol'));
   renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   updateModalTransport();
   let tracks: Track[];
@@ -3255,14 +3363,8 @@ function handleState(states: PlayerState[]): void {
   const active = states.find((s) => s.playerId === activePlayerId);
   if (active && active.volume !== null) {
     volume = active.volume;
-    if (openIdx !== null) {
-      const inp = (shelf.children[openIdx] as HTMLElement).querySelector('.vol input') as HTMLInputElement | null;
-      if (inp) inp.value = String(volume);
-    }
-    if (!albumModal.hidden) {
-      const inp = albumModal.querySelector('.am-vol input') as HTMLInputElement | null;
-      if (inp) inp.value = String(volume);
-    }
+    if (openIdx !== null) syncVol((shelf.children[openIdx] as HTMLElement).querySelector('.vol'));
+    if (!albumModal.hidden) syncVol(albumModal.querySelector('.am-vol'));
   }
   // `now` is the FOCUSED now-playing that drives the open card: prefer the player
   // playing/paused the OPEN album (so its card shows real controls even when other
