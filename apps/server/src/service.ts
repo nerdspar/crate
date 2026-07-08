@@ -20,7 +20,7 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import type { MusicAssistantProvider, ProviderAlbum } from '@crate/providers';
+import type { MusicAssistantProvider, ProviderAlbum, ProviderLibraryAlbum } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
@@ -297,6 +297,7 @@ export class Service {
         albumId: row?.id ?? null,
         version: a.version,
         explicit: a.explicit,
+        inLibrary: a.inLibrary,
         source,
       };
     };
@@ -316,20 +317,38 @@ export class Service {
   async globalSearch(query: string, source?: string, limit = 20): Promise<GlobalSearchResponse> {
     const sources = await this.ma.listMusicProviders().catch(() => []);
     const shelved = this.db.shelfedUris();
-    const targets = source && source !== 'all' ? sources.filter((s) => s.instanceId === source) : sources;
+    const scope = source && source !== 'all' ? source : undefined;
+    const targets = scope ? sources.filter((s) => s.instanceId === scope) : sources;
     const searchIn = targets.length ? targets : [{ instanceId: '', name: 'Music' }];
-    const results = await Promise.all(
-      searchIn.map(async (s) => ({
-        s,
-        r: await this.ma.searchAll(query, limit, s.instanceId || undefined).catch(() => ({ albums: [], playlists: [], tracks: [] })),
-      })),
-    );
+    // Search the catalog(s) AND the saved library in parallel: MA's catalog search
+    // returns catalog-id hits that never carry the library flag, so the "in your
+    // library" tier comes from a dedicated library query instead.
+    const [results, libRaw] = await Promise.all([
+      Promise.all(
+        searchIn.map(async (s) => ({
+          s,
+          r: await this.ma.searchAll(query, limit, s.instanceId || undefined).catch(() => ({ albums: [], playlists: [], tracks: [] })),
+        })),
+      ),
+      this.ma.listLibraryAlbums({ search: query, source: scope, limit, offset: 0 }).catch((): ProviderLibraryAlbum[] => []),
+    ]);
+    const key = (artist: string, title: string): string => `${artist}|${title}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
     const albums: SearchAlbum[] = [];
+    // Library albums first (marked in-library); their keys suppress duplicate catalog hits.
+    const libKeys = new Set<string>();
+    const srcName = new Map(sources.map((s) => [s.instanceId, s.name]));
+    for (const a of libRaw) {
+      libKeys.add(key(a.artist, a.title));
+      const row = this.shelvedRow(a.providerUri, a.title, a.artist);
+      albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: true, source: (a.sourceInstanceId ? srcName.get(a.sourceInstanceId) : undefined) ?? 'Library' });
+    }
     const playlists: LibraryPlaylist[] = [];
     const songs: SearchSong[] = [];
     for (const { s, r } of results) {
-      for (const a of r.albums)
-        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, version: a.version, explicit: a.explicit, source: s.name });
+      for (const a of r.albums) {
+        if (libKeys.has(key(a.artist, a.title))) continue; // already shown under "in your library"
+        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: s.name });
+      }
       for (const p of r.playlists)
         playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
       for (const t of r.tracks)

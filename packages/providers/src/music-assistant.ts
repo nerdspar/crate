@@ -130,6 +130,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       artworkUrl: this.artworkUrl(item),
       version: str(item['version']) || null,
       explicit: typeof explicit === 'boolean' ? explicit : null,
+      inLibrary: item['favorite'] === true,
     };
   }
 

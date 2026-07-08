@@ -126,6 +126,8 @@ export interface SearchAlbum {
   version: string | null;
   /** Explicit content: true/false, or null when unknown. */
   explicit: boolean | null;
+  /** Saved in the user's provider library — separates a library hit from a catalog-only one. */
+  inLibrary: boolean;
   /** Display name of the streaming source this hit came from (e.g. "Apple Music").
       For grouping results by source when several accounts/services are connected. */
   source: string;

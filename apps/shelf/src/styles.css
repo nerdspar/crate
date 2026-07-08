@@ -952,6 +952,12 @@ body.idle #find-grip::after { opacity: 0; }
   text-transform: uppercase; padding: 0 0 0.6vh; border-bottom: 1px solid rgba(236,231,221,0.14); margin-bottom: 0.8vh;
 }
 .find-cat-list { display: flex; flex-direction: column; gap: 0.8vh; overflow-y: auto; max-height: 40vh; padding-right: 0.4vw; }
+/* Tier sub-header inside the Albums column (On your shelf / In your library / From your sources). */
+.find-subhead {
+  color: var(--ink-dim); font-size: 1.25vh; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; opacity: 0.75; padding: 0.4vh 0 0.1vh; margin-top: 0.4vh;
+}
+.find-subhead:first-child { margin-top: 0; }
 .find-card {
   flex: 0 0 auto; display: flex; align-items: center; gap: 1.4vw;
   background: rgba(0,0,0,0.28); border: 1px solid rgba(236,231,221,0.12);

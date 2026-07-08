@@ -2463,15 +2463,84 @@ function renderGlobal(loading: boolean): void {
   const cats = document.createElement('div');
   cats.className = 'find-cats';
   const remoteAlbums = g?.albums ?? [];
-  const remoteIds = new Set(remoteAlbums.map((a) => albumIdFromUri(a.providerUri)));
-  // Your shelf's own hits that search didn't return (so we don't show them twice).
-  const localOnly = items.filter(matchesFilter).filter((it) => !remoteIds.has(it.albumId));
+  // On-shelf hits come from the curated spines (authoritative). Dedupe remote hits
+  // against them by album id AND by title+artist (Apple has library-vs-catalog ids),
+  // then split the rest into "in your library" (MA favorite) vs catalog-only.
+  const localMatches = items.filter(matchesFilter);
+  const localIds = new Set(localMatches.map((it) => it.albumId));
+  const localKeys = new Set(localMatches.map((it) => albumKey(it.artist, it.title)));
+  const remoteNew = remoteAlbums.filter(
+    (a) => !localIds.has(albumIdFromUri(a.providerUri)) && !localKeys.has(albumKey(a.artist, a.title)),
+  );
+  const libAlbums = remoteNew.filter((a) => a.inLibrary);
+  const catalogAlbums = remoteNew.filter((a) => !a.inLibrary);
   const playlists = g?.playlists ?? [];
   const songs = g?.songs ?? [];
-  cats.appendChild(catColumn('Albums', [...localOnly.map(shelfCard), ...remoteAlbums.map(albumResultCard)], loading, 'albums', remoteAlbums.length));
+  cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, remoteAlbums.length));
   cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', playlists.length));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', songs.length));
   findResults.appendChild(cats);
+}
+
+/** A normalized title+artist key so a shelf album and its catalog search hit (Apple's
+    library-vs-catalog ids differ) don't show up in two tiers at once. */
+function albumKey(artist: string, title: string): string {
+  return `${artist}|${title}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
+}
+
+/** The Albums results column, sectioned into three ordered tiers: what's already on
+    your shelf, then what's in your library, then everything else from your sources.
+    On-shelf shows in full; the two remote tiers share the paging cap + "Load more". */
+function albumsColumn(
+  local: ShelfItem[],
+  lib: SearchAlbum[],
+  catalog: SearchAlbum[],
+  loading: boolean,
+  remoteCount: number,
+): HTMLElement {
+  const col = document.createElement('div');
+  col.className = 'find-cat';
+  const h = document.createElement('div');
+  h.className = 'find-cat-h';
+  h.textContent = 'Albums';
+  col.appendChild(h);
+  const list = document.createElement('div');
+  list.className = 'find-cat-list';
+  const sub = (label: string): void => {
+    const s = document.createElement('div');
+    s.className = 'find-subhead';
+    s.textContent = label;
+    list.appendChild(s);
+  };
+  if (local.length) {
+    sub('On your shelf');
+    local.forEach((it) => list.appendChild(shelfCard(it)));
+  }
+  // Library first, then catalog — paged together so "Load more" reveals the next page.
+  const remote = [...lib.map((a) => ['lib', a] as const), ...catalog.map((a) => ['cat', a] as const)];
+  let lastSec: string | null = null;
+  remote.slice(0, searchShown.albums).forEach(([sec, a]) => {
+    if (sec !== lastSec) {
+      sub(sec === 'lib' ? 'In your library' : 'From your sources');
+      lastSec = sec;
+    }
+    list.appendChild(albumResultCard(a));
+  });
+  if (!local.length && !remote.length) {
+    const e = document.createElement('div');
+    e.className = 'find-empty';
+    e.textContent = loading ? 'Searching…' : 'None';
+    list.appendChild(e);
+  }
+  if (!loading && (remote.length > searchShown.albums || remoteCount >= searchLimit)) {
+    const more = document.createElement('button');
+    more.className = 'find-more';
+    more.textContent = 'Load more';
+    more.onclick = () => loadMoreSection('albums');
+    list.appendChild(more);
+  }
+  col.appendChild(list);
+  return col;
 }
 
 function catColumn(

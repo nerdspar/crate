@@ -14,6 +14,9 @@ export interface ProviderAlbum {
   version: string | null;
   /** Explicit content: true/false, or null when the provider doesn't say. */
   explicit: boolean | null;
+  /** Saved in the user's provider library (MA "favorite") — distinguishes a
+      library album from a catalog-only search hit. */
+  inLibrary: boolean;
 }
 
 export interface ProviderLibraryAlbum extends ProviderAlbum {
