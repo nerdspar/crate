@@ -585,7 +585,9 @@ export class Service {
 
   /** Manually order albums: the library (no shelfId) or a specific crate. */
   reorder(albumIds: string[], shelfId?: string): void {
-    if (shelfId && shelfId !== 'all') this.db.reorderShelfMembers(shelfId, albumIds);
+    // 'all' (albums) and 'playlists' are both virtual views over shelf_items; named shelves
+    // reorder their members.
+    if (shelfId && shelfId !== 'all' && shelfId !== 'playlists') this.db.reorderShelfMembers(shelfId, albumIds);
     else this.db.reorderShelfItems(albumIds);
     this.hub.broadcast({ type: 'shelf' });
   }

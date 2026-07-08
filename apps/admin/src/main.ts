@@ -494,8 +494,12 @@ async function loadShelvesIndex(): Promise<void> {
 function renderShelvesIndex(): void {
   shelvesListEl.innerHTML = '';
   if (addType === 'playlist') {
-    crateForm.hidden = true; // no named playlist collections
+    crateForm.hidden = true; // playlist shelves are created by opening a playlist, not named here
     shelvesListEl.appendChild(shelfRow('playlists', 'All Playlists', playlistCount, true, 'playlist'));
+    // Each opened playlist is its own shelf (of songs), like on the wall.
+    for (const s of shelves.filter((x) => x.kind === 'playlist' && x.id !== 'playlists')) {
+      shelvesListEl.appendChild(playlistShelfRow(s));
+    }
     return;
   }
   crateForm.hidden = false;
@@ -531,6 +535,30 @@ async function deleteCrate(id: string, name: string): Promise<void> {
   showToast('Shelf deleted');
 }
 
+/** A named playlist shelf row (a single playlist's songs) — opens to its songs, deletable. */
+function playlistShelfRow(s: Shelf): HTMLElement {
+  const row = document.createElement('button');
+  row.className = 'shelf-row';
+  row.innerHTML =
+    `<span class="sh-name">${esc(s.name)}</span>` +
+    `<span class="sh-n">songs</span>` +
+    `<span class="sh-del" role="button" aria-label="Remove playlist shelf">✕</span>` +
+    `<span class="sh-chev">›</span>`;
+  row.addEventListener('click', () => void openSongShelf(s.id, s.name));
+  row.querySelector('.sh-del')!.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void deletePlaylistShelf(s.id, s.name);
+  });
+  return row;
+}
+
+async function deletePlaylistShelf(id: string, name: string): Promise<void> {
+  if (!confirm(`Remove the "${name}" playlist shelf? The playlist stays in All Playlists.`)) return;
+  await client.deleteShelf(id).catch(() => {});
+  await loadShelvesIndex();
+  showToast('Playlist shelf removed');
+}
+
 crateForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = crateNameInput.value.trim();
@@ -562,9 +590,12 @@ const playlistSongsEl = document.getElementById('playlist-songs') as HTMLElement
 const songsNameEl = document.getElementById('songs-name') as HTMLElement;
 const songsCountEl = document.getElementById('songs-count') as HTMLElement;
 const songsListEl = document.getElementById('songs-list') as HTMLElement;
-(document.getElementById('songs-back') as HTMLElement).addEventListener('click', () => {
+const songsBackEl = document.getElementById('songs-back') as HTMLElement;
+let songsBackTo: 'index' | 'detail' = 'index';
+songsBackEl.addEventListener('click', () => {
   playlistSongsEl.hidden = true;
-  shelfDetailEl.hidden = false;
+  if (songsBackTo === 'detail') shelfDetailEl.hidden = false;
+  else shelvesIndexEl.hidden = false;
 });
 
 function fmtDur(s: number | null): string {
@@ -574,33 +605,56 @@ function fmtDur(s: number | null): string {
   return `${m}:${ss.toString().padStart(2, '0')}`;
 }
 
-async function openPlaylistSongs(uri: string, name: string): Promise<void> {
+function renderSongRows(rows: Array<{ title: string; sub: string }>): void {
+  songsCountEl.textContent = `${rows.length} song${rows.length === 1 ? '' : 's'}`;
+  if (!rows.length) {
+    songsListEl.innerHTML = `<div class="empty">No songs found.</div>`;
+    return;
+  }
+  songsListEl.innerHTML = '';
+  rows.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'song-row';
+    row.innerHTML =
+      `<span class="song-n">${i + 1}</span>` +
+      `<span class="song-meta"><span class="song-t">${esc(r.title)}</span></span>` +
+      `<span class="song-d">${esc(r.sub)}</span>`;
+    songsListEl.appendChild(row);
+  });
+}
+
+function showSongsView(name: string, from: 'index' | 'detail'): void {
+  songsBackTo = from;
+  songsBackEl.textContent = from === 'detail' ? '‹ All Playlists' : '‹ Playlists';
   shelfDetailEl.hidden = true;
+  shelvesIndexEl.hidden = from !== 'detail' ? true : shelvesIndexEl.hidden;
   playlistSongsEl.hidden = false;
   songsNameEl.textContent = name;
   songsCountEl.textContent = '';
   songsListEl.innerHTML = `<div class="empty">Loading songs…</div>`;
+}
+
+/** Songs of a named playlist shelf (opened from the Playlists index) — enriched artists. */
+async function openSongShelf(shelfId: string, name: string): Promise<void> {
+  showSongsView(name, 'index');
+  try {
+    const items = (await client.getShelf(shelfId)).items;
+    renderSongRows(items.map((it) => ({ title: it.title, sub: it.artist || '' })));
+  } catch {
+    songsListEl.innerHTML = `<div class="empty">Could not load songs.</div>`;
+  }
+}
+
+/** Songs of a playlist opened from All Playlists (by provider uri) — shows durations. */
+async function openPlaylistSongs(uri: string, name: string): Promise<void> {
+  showSongsView(name, 'detail');
   if (!uri) {
     songsListEl.innerHTML = `<div class="empty">This playlist has no source to read.</div>`;
     return;
   }
   try {
     const tracks = await client.getPlaylistTracks(uri);
-    songsCountEl.textContent = `${tracks.length} song${tracks.length === 1 ? '' : 's'}`;
-    if (!tracks.length) {
-      songsListEl.innerHTML = `<div class="empty">No songs found.</div>`;
-      return;
-    }
-    songsListEl.innerHTML = '';
-    tracks.forEach((t, i) => {
-      const row = document.createElement('div');
-      row.className = 'song-row';
-      row.innerHTML =
-        `<span class="song-n">${i + 1}</span>` +
-        `<span class="song-meta"><span class="song-t">${esc(t.title)}</span><span class="song-a">${esc(t.artist || '')}</span></span>` +
-        `<span class="song-d">${fmtDur(t.duration)}</span>`;
-      songsListEl.appendChild(row);
-    });
+    renderSongRows(tracks.map((t) => ({ title: t.title, sub: t.artist || fmtDur(t.duration) })));
   } catch {
     songsListEl.innerHTML = `<div class="empty">Could not load songs.</div>`;
   }
@@ -680,9 +734,9 @@ function renderShelfDetail(): void {
     return;
   }
   shelfListEl.innerHTML = '';
-  // Drag-reorder only makes sense on the full, custom-ordered album list — not a filtered subset,
-  // and not playlists (their order isn't editable here yet).
-  const draggable = sort === 'custom' && !shelfFilter && !playlists;
+  // Drag-reorder the custom-ordered, unfiltered list (albums in a shelf, or playlists in All
+  // Playlists — both persist via reorderShelf).
+  const draggable = sort === 'custom' && !shelfFilter;
   shelfListEl.classList.toggle('draggable', draggable);
   for (const it of rows) {
     const card = document.createElement('div');
