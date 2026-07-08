@@ -158,6 +158,20 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     void service.prewarmPlaylist((req.body as { providerUri: string }).providerUri);
     return { ok: true };
   });
+  // Crate-local song curation within a playlist shelf (never edits the source playlist).
+  app.post('/api/playlists/:shelfId/songs/reorder', (req) => {
+    const { shelfId } = req.params as { shelfId: string };
+    const b = req.body as { trackUris?: string[] };
+    service.reorderPlaylistSongs(shelfId, b.trackUris ?? []);
+    return { ok: true };
+  });
+  app.post('/api/playlists/:shelfId/songs/hide', (req) => {
+    const { shelfId } = req.params as { shelfId: string };
+    const b = req.body as { trackUri: string; hidden?: boolean };
+    service.setPlaylistSongHidden(shelfId, b.trackUri, b.hidden !== false);
+    return { ok: true };
+  });
+
   // A playlist's tracks, for the play-now overlay.
   app.get('/api/playlists/tracks', async (req) => {
     const uri = ((req.query as { uri?: string }).uri ?? '').trim();

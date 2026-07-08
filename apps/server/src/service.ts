@@ -163,13 +163,38 @@ export class Service {
   private async songItems(shelfId: string): Promise<ShelfItem[]> {
     const playlist = this.db.listShelfMembers(shelfId)[0]; // holds exactly one playlist
     if (!playlist) return [];
-    const tracks = await this.ma.getTracks(playlist.provider_uri).catch((): Track[] => []);
+    const live = await this.ma.getTracks(playlist.provider_uri).catch((): Track[] => []);
+    // Layer Crate-local curation over the live playlist: hide removed songs, and apply a custom
+    // order (stored songs first by their order; anything new stays in provider order after).
+    const state = this.db.playlistSongState(shelfId);
+    const kept = live.filter((t) => !(t.uri && state.get(t.uri)?.hidden));
+    const tracks = kept
+      .map((t, i) => ({ t, key: t.uri ? (state.get(t.uri)?.order ?? null) : null, i }))
+      .sort((a, b) => {
+        if (a.key != null && b.key != null) return a.key - b.key;
+        if (a.key != null) return -1;
+        if (b.key != null) return 1;
+        return a.i - b.i;
+      })
+      .map((x) => x.t);
     const misses = tracks.filter((t) => t.uri && !this.db.getSongCache(t.uri));
     if (misses.length) void this.enrichSongsInBackground(misses);
     return tracks.map((t, i) => {
       const c = t.uri ? this.db.getSongCache(t.uri) : undefined;
       return songShelfItem(t, i, playlist.id, c ? { artist: c.artist, artworkUrl: c.artwork_url } : undefined);
     });
+  }
+
+  /** Set a Crate-local custom song order for a playlist shelf (never edits the source playlist). */
+  reorderPlaylistSongs(shelfId: string, trackUris: string[]): void {
+    this.db.setPlaylistSongOrder(shelfId, trackUris);
+    this.hub.broadcast({ type: 'shelf' });
+  }
+
+  /** Hide (Crate-local) or restore one song within a playlist shelf. */
+  setPlaylistSongHidden(shelfId: string, trackUri: string, hidden: boolean): void {
+    this.db.setPlaylistSongHidden(shelfId, trackUri, hidden);
+    this.hub.broadcast({ type: 'shelf' });
   }
 
   private async enrichSongsInBackground(misses: Track[]): Promise<void> {

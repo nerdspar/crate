@@ -598,66 +598,116 @@ songsBackEl.addEventListener('click', () => {
   else shelvesIndexEl.hidden = false;
 });
 
-function fmtDur(s: number | null): string {
-  if (s == null) return '';
-  const m = Math.floor(s / 60);
-  const ss = Math.round(s % 60);
-  return `${m}:${ss.toString().padStart(2, '0')}`;
-}
-
-function renderSongRows(rows: Array<{ title: string; sub: string }>): void {
-  songsCountEl.textContent = `${rows.length} song${rows.length === 1 ? '' : 's'}`;
-  if (!rows.length) {
-    songsListEl.innerHTML = `<div class="empty">No songs found.</div>`;
-    return;
-  }
-  songsListEl.innerHTML = '';
-  rows.forEach((r, i) => {
-    const row = document.createElement('div');
-    row.className = 'song-row';
-    row.innerHTML =
-      `<span class="song-n">${i + 1}</span>` +
-      `<span class="song-meta"><span class="song-t">${esc(r.title)}</span></span>` +
-      `<span class="song-d">${esc(r.sub)}</span>`;
-    songsListEl.appendChild(row);
-  });
-}
+let openSongShelfId: string | null = null;
 
 function showSongsView(name: string, from: 'index' | 'detail'): void {
   songsBackTo = from;
   songsBackEl.textContent = from === 'detail' ? '‹ All Playlists' : '‹ Playlists';
   shelfDetailEl.hidden = true;
-  shelvesIndexEl.hidden = from !== 'detail' ? true : shelvesIndexEl.hidden;
+  if (from !== 'detail') shelvesIndexEl.hidden = true;
   playlistSongsEl.hidden = false;
   songsNameEl.textContent = name;
   songsCountEl.textContent = '';
   songsListEl.innerHTML = `<div class="empty">Loading songs…</div>`;
 }
 
-/** Songs of a named playlist shelf (opened from the Playlists index) — enriched artists. */
-async function openSongShelf(shelfId: string, name: string): Promise<void> {
-  showSongsView(name, 'index');
+/** A playlist shelf's songs — drag to reorder, ✕ to remove (both Crate-local, per shelf). */
+async function openSongShelf(shelfId: string, name: string, from: 'index' | 'detail' = 'index'): Promise<void> {
+  openSongShelfId = shelfId;
+  showSongsView(name, from);
   try {
     const items = (await client.getShelf(shelfId)).items;
-    renderSongRows(items.map((it) => ({ title: it.title, sub: it.artist || '' })));
+    renderSongs(items);
   } catch {
     songsListEl.innerHTML = `<div class="empty">Could not load songs.</div>`;
   }
 }
 
-/** Songs of a playlist opened from All Playlists (by provider uri) — shows durations. */
-async function openPlaylistSongs(uri: string, name: string): Promise<void> {
-  showSongsView(name, 'detail');
-  if (!uri) {
-    songsListEl.innerHTML = `<div class="empty">This playlist has no source to read.</div>`;
+/** Opening a playlist (from All Playlists) reuses or creates its own song shelf, like the wall. */
+async function openPlaylistAsShelf(mediaId: string, name: string): Promise<void> {
+  let sh = shelves.find((s) => s.kind === 'playlist' && s.id !== 'playlists' && s.name === name);
+  if (!sh) {
+    const created = await client.createShelf({ name, kind: 'playlist' }).catch(() => null);
+    if (!created) {
+      showToast('Could not open playlist');
+      return;
+    }
+    await client.addAlbumToShelf(created.id, mediaId).catch(() => {});
+    shelves.push(created);
+    sh = created;
+    void loadShelvesIndex();
+  }
+  await openSongShelf(sh.id, name, 'detail');
+}
+
+function renumberSongs(): void {
+  songsListEl.querySelectorAll<HTMLElement>('.song-row .song-n').forEach((n, i) => (n.textContent = String(i + 1)));
+  songsCountEl.textContent = `${songsListEl.querySelectorAll('.song-row').length} songs`;
+}
+
+function renderSongs(items: ShelfItem[]): void {
+  songsCountEl.textContent = `${items.length} song${items.length === 1 ? '' : 's'}`;
+  if (!items.length) {
+    songsListEl.innerHTML = `<div class="empty">No songs.</div>`;
     return;
   }
-  try {
-    const tracks = await client.getPlaylistTracks(uri);
-    renderSongRows(tracks.map((t) => ({ title: t.title, sub: t.artist || fmtDur(t.duration) })));
-  } catch {
-    songsListEl.innerHTML = `<div class="empty">Could not load songs.</div>`;
+  songsListEl.innerHTML = '';
+  items.forEach((it, i) => {
+    const uri = it.albumUri ?? ''; // song spines carry the track uri here
+    const row = document.createElement('div');
+    row.className = 'song-row';
+    row.dataset['uri'] = uri;
+    if (uri) row.draggable = true;
+    row.innerHTML =
+      `<span class="drag-handle">⠿</span>` +
+      `<span class="song-n">${i + 1}</span>` +
+      `<span class="song-meta"><span class="song-t">${esc(it.title)}</span><span class="song-a">${esc(it.artist || '')}</span></span>` +
+      `<button class="song-rm" aria-label="Remove song">✕</button>`;
+    if (uri) {
+      row.addEventListener('dragstart', () => row.classList.add('dragging'));
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        void saveSongOrder();
+      });
+    }
+    row.querySelector('.song-rm')!.addEventListener('click', () => void removeSong(uri, row));
+    songsListEl.appendChild(row);
+  });
+}
+
+songsListEl.addEventListener('dragover', (e) => {
+  const dragging = songsListEl.querySelector<HTMLElement>('.song-row.dragging');
+  if (!dragging) return;
+  e.preventDefault();
+  const rows = [...songsListEl.querySelectorAll<HTMLElement>('.song-row:not(.dragging)')];
+  let after: HTMLElement | null = null;
+  let closest = -Infinity;
+  for (const r of rows) {
+    const box = r.getBoundingClientRect();
+    const offset = e.clientY - box.top - box.height / 2;
+    if (offset < 0 && offset > closest) {
+      closest = offset;
+      after = r;
+    }
   }
+  if (after == null) songsListEl.appendChild(dragging);
+  else songsListEl.insertBefore(dragging, after);
+});
+
+async function saveSongOrder(): Promise<void> {
+  if (!openSongShelfId) return;
+  const uris = [...songsListEl.querySelectorAll<HTMLElement>('.song-row')].map((r) => r.dataset['uri']!).filter(Boolean);
+  renumberSongs();
+  await client.reorderPlaylistSongs(openSongShelfId, uris).catch(() => {});
+  showToast('Song order saved');
+}
+
+async function removeSong(uri: string, row: HTMLElement): Promise<void> {
+  if (!openSongShelfId || !uri) return;
+  await client.hidePlaylistSong(openSongShelfId, uri, true).catch(() => {});
+  row.remove();
+  renumberSongs();
+  showToast('Song removed');
 }
 
 const shelfFilterInput = document.getElementById('shelf-filter') as HTMLInputElement;
@@ -762,7 +812,7 @@ function renderShelfDetail(): void {
             <button class="ghost rm-btn">Remove</button>
           </div>
         </div>`;
-      const nav = (): void => void openPlaylistSongs(it.providerUri ?? '', it.title);
+      const nav = (): void => void openPlaylistAsShelf(it.albumId, it.title);
       const art = card.querySelector('.art') as HTMLElement;
       const meta = card.querySelector('.meta') as HTMLElement;
       art.classList.add('tappable');

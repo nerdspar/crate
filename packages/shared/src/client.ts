@@ -151,6 +151,14 @@ export class CrateClient {
   getPlaylistTracks(uri: string): Promise<Track[]> {
     return this.req(`/api/playlists/tracks?uri=${encodeURIComponent(uri)}`);
   }
+  /** Crate-local custom song order for a playlist shelf (doesn't touch the source playlist). */
+  reorderPlaylistSongs(shelfId: string, trackUris: string[]): Promise<{ ok: true }> {
+    return this.post(`/api/playlists/${encodeURIComponent(shelfId)}/songs/reorder`, { trackUris });
+  }
+  /** Hide (Crate-local) or restore one song in a playlist shelf. */
+  hidePlaylistSong(shelfId: string, trackUri: string, hidden = true): Promise<{ ok: true }> {
+    return this.post(`/api/playlists/${encodeURIComponent(shelfId)}/songs/hide`, { trackUri, hidden });
+  }
   /** Start resolving a playlist's track art before opening its song shelf. */
   prewarmPlaylist(providerUri: string): Promise<{ ok: true }> {
     return this.post('/api/playlists/prewarm', { providerUri });
