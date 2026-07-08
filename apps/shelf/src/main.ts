@@ -397,6 +397,12 @@ function buildShelf(): void {
       stop(e);
       void onPlayButton(i);
     });
+    // Tapping the artist name opens the search with that name typed in.
+    el.querySelector('.panel h2')?.addEventListener('click', (e) => {
+      stop(e);
+      const a = items[i];
+      if (a) openFindWithQuery(a.artist);
+    });
     // Now-playing transport (skip only; play/pause + retarget is the big Play button).
     el.querySelector('.np-prev')!.addEventListener('click', (e) => {
       stop(e);
@@ -689,6 +695,11 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
           if (!r.classList.contains('now')) r.classList.toggle('cued', idx === ti);
         });
         updatePlayButton(); // a different track than what's playing → Play (not Pause)
+      });
+      // Double-tap plays this track immediately on the current player selection.
+      row.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        void play(i, ti);
       });
       wrap.appendChild(row);
     });
@@ -2155,6 +2166,13 @@ function openFind(): void {
 function closeFind(): void {
   find.classList.remove('open');
   clearFindResults();
+}
+/** Open the search bar pre-filled with a query (e.g. tapping an album's artist) and run it. */
+function openFindWithQuery(q: string): void {
+  openFind();
+  findSearch.value = q;
+  findSearch.dispatchEvent(new Event('input', { bubbles: true })); // sets filterQuery + runs search
+  findSearch.focus();
 }
 // Tap the exposed shelf area (outside the bar) to dismiss.
 find.addEventListener('click', (e) => {

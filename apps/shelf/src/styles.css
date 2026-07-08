@@ -267,6 +267,8 @@ body {
   font-family: 'Newsreader Variable', serif;
   font-style: italic;
   font-weight: 400;
+  cursor: pointer;
+  width: fit-content;
   font-size: 2.4vh;
   color: var(--ink-dim);
 }
