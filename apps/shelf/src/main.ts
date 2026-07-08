@@ -538,6 +538,7 @@ function closeAlbum(): void {
   cancelAnimationFrame(glowTrackRaf);
   shelfGlow.classList.remove('on');
   openIdx = null;
+  groupSelect = null; // leaving the card exits any in-progress grouping
 }
 
 function settledLeft(i: number): number {
@@ -628,6 +629,44 @@ function followIfPlayingOpenAlbum(id: string): void {
 function renderRooms(el: HTMLElement): void {
   const wrap = el.querySelector('.rooms') as HTMLElement;
   wrap.innerHTML = '';
+  wrap.classList.toggle('grouping', groupSelect !== null);
+
+  // --- Multi-select grouping mode: pick 2+ speakers, then "Group" them into one. ---
+  if (groupSelect) {
+    const cancel = document.createElement('button');
+    cancel.className = 'room room-ctl';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = (e) => {
+      e.stopPropagation();
+      groupSelect = null;
+      renderRooms(el);
+    };
+    wrap.appendChild(cancel);
+    rooms.forEach((r) => {
+      const on = groupSelect!.has(r.id);
+      const b = document.createElement('button');
+      b.className = 'room room-sel' + (on ? ' sel' : '');
+      b.innerHTML = `<span class="room-check">${on ? '✓' : '+'}</span>` + escapeHtml(r.name);
+      b.onclick = (e) => {
+        e.stopPropagation();
+        toggleGroupSel(r.id, el);
+      };
+      wrap.appendChild(b);
+    });
+    const n = groupSelect.size;
+    const done = document.createElement('button');
+    done.className = 'room room-group' + (n >= 2 ? ' on' : ' disabled');
+    done.textContent = n >= 2 ? `Group ${n}` : 'Pick 2+';
+    done.onclick = (e) => {
+      e.stopPropagation();
+      if (n >= 2) commitGroupSelection(el);
+    };
+    wrap.appendChild(done);
+    syncVol(el.querySelector('.vol'));
+    return;
+  }
+
+  // --- Normal mode: group chips + individual speakers pick the play target. ---
   // Group chips first — play to the whole group (targets its leader).
   for (const leader of [...new Set(rooms.map((r) => leaderOf(r.id)))]) {
     const members = groupMembers(leader);
@@ -645,6 +684,7 @@ function renderRooms(el: HTMLElement): void {
       renderRooms(el);
       updatePlayButton();
     };
+    attachRoomLongPress(b, leader, el);
     wrap.appendChild(b);
   }
   // Outline the targeted group's members (only when a GROUP is the target).
@@ -672,10 +712,54 @@ function renderRooms(el: HTMLElement): void {
       updatePlayButton(); // label flips to "Play" when this differs from what's playing
       updateModalTransport();
     };
+    attachRoomLongPress(b, r.id, el); // hold a room → jump into grouping with it selected
     wrap.appendChild(b);
   });
+  // A trailing "Group" pill enters multi-select grouping (only worth showing for ≥2 rooms).
+  if (rooms.length >= 2) {
+    const g = document.createElement('button');
+    g.className = 'room room-ctl room-groupbtn';
+    g.innerHTML = '<span class="room-check">+</span>Group';
+    g.onclick = (e) => {
+      e.stopPropagation();
+      enterGroupSelect(null, el);
+    };
+    wrap.appendChild(g);
+  }
   syncVol(el.querySelector('.vol')); // picking a group vs solo room flips the vol control
   syncEqs(); // keep the picker's EQ chips in phase with the track/spine EQs
+}
+
+/** Long-press a room chip → open grouping mode with that room (and the current target)
+    preselected. A move/scroll or a quick tap cancels the hold (tap keeps its click). */
+function attachRoomLongPress(b: HTMLElement, id: string, el: HTMLElement): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let held = false;
+  const clear = (): void => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+  b.addEventListener('pointerdown', (e) => {
+    if (groupSelect) return; // already grouping
+    held = false;
+    timer = setTimeout(() => {
+      held = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      enterGroupSelect(id, el);
+    }, settings.longPressMs);
+    (e.target as HTMLElement).setPointerCapture?.((e as PointerEvent).pointerId);
+  });
+  b.addEventListener('pointermove', clear);
+  b.addEventListener('pointercancel', clear);
+  b.addEventListener('pointerup', clear);
+  // Swallow the click that follows a completed long-press so it doesn't also select.
+  b.addEventListener('click', (e) => {
+    if (held) {
+      e.stopPropagation();
+      e.preventDefault();
+      held = false;
+    }
+  }, true);
 }
 
 async function renderTracks(el: HTMLElement, i: number): Promise<void> {
@@ -1559,6 +1643,10 @@ let focusedPlayerId: string | null = null;
 const expandedGroups = new Set<string>();
 /** 2-tap grouping: the "armed" room waiting for a second one to group with. */
 let pendingGroup: string | null = null;
+/** Album-card multi-select grouping: non-null = grouping mode is active in the
+    play-target picker; the set holds the speaker ids chosen to become one group.
+    Entered via the "Group" pill or a long-press on a room chip. */
+let groupSelect: Set<string> | null = null;
 /** Optimistic grouping guard: hold the just-applied grouping through stale MA
     frames for a moment so it doesn't flash apart and back. */
 let groupOverride: Map<string, string> | null = null;
@@ -1907,6 +1995,55 @@ function addToGroup(leader: string): void {
   renderRoomUIs();
   void client.group({ playerIds: [leader, ...ids.filter((x) => x !== leader)] }).catch(() => {});
 }
+/** Enter the album-card multi-select grouping mode, seeding the selection with the
+    current play target's group (or the target itself) plus an optional room. */
+function enterGroupSelect(seed: string | null, el: HTMLElement): void {
+  const sel = new Set<string>();
+  if (activePlayerId) {
+    const m = groupMembers(leaderOf(activePlayerId));
+    if (m.length >= 2) m.forEach((r) => sel.add(r.id));
+    else sel.add(activePlayerId);
+  }
+  if (seed) sel.add(seed);
+  groupSelect = sel;
+  renderRooms(el);
+}
+/** Toggle a speaker in/out of the pending group selection. */
+function toggleGroupSel(id: string, el: HTMLElement): void {
+  if (!groupSelect) return;
+  if (groupSelect.has(id)) groupSelect.delete(id);
+  else groupSelect.add(id);
+  renderRooms(el);
+}
+/** Commit the multi-select group: form one group from the chosen speakers, target it,
+    and optimistically split off anyone left behind from an affected group. */
+function commitGroupSelection(el: HTMLElement): void {
+  const sel = groupSelect ? [...groupSelect] : [];
+  if (sel.length < 2) {
+    groupSelect = null;
+    renderRooms(el);
+    return;
+  }
+  const leader = activePlayerId && sel.includes(activePlayerId) ? activePlayerId : sel[0]!;
+  // Break any non-selected room out of a group whose membership we're changing, so the
+  // optimistic view doesn't leave a stale grouping (MA reconciles within the guard window).
+  const affected = new Set(sel.map((id) => leaderOf(id)));
+  for (const r of rooms) {
+    if (sel.includes(r.id)) continue;
+    if (affected.has(leaderOf(r.id))) setLeaderLocal(r.id, r.id);
+  }
+  sel.forEach((id) => setLeaderLocal(id, leader));
+  armGroupGuard();
+  activePlayerId = leader;
+  activeSolo = false;
+  userPickedPlayer = true;
+  groupSelect = null;
+  renderRoomUIs();
+  updatePlayButton();
+  showToast(`Grouped ${sel.length} speakers`);
+  void client.group({ playerIds: [leader, ...sel.filter((x) => x !== leader)] }).catch(() => {});
+}
+
 /** Remove a room from its group (member or leader) and focus it to play on its own. */
 function ungroupRoom(id: string): void {
   const members = groupMembers(leaderOf(id)).map((r) => r.id);
@@ -2480,6 +2617,7 @@ function closeAlbumModal(): void {
   albumModal.hidden = true;
   modalUri = null;
   modalAlbumUri = null;
+  groupSelect = null; // leaving the overlay exits any in-progress grouping
 }
 
 /** Is the album shown in the overlay the one currently playing? (Playlists report the
