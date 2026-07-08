@@ -811,13 +811,22 @@ body.idle #find-grip::after { opacity: 0; }
 }
 #find.open #find-bar { transform: translateY(0); }
 #find-bar .cc-handle { align-self: center; margin-bottom: 0.4vh; cursor: grab; }
+.find-search-wrap { position: relative; display: flex; }
 #find-search {
   width: 100%;
   background: rgba(0,0,0,0.28); color: var(--ink);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 1.2vh;
-  font-size: 2.6vh; padding: 1.6vh 2.4vw;
+  font-size: 2.6vh; padding: 1.6vh 2.4vw; padding-right: 6vw;
 }
 #find-search::placeholder { color: var(--ink-dim); }
+#find-search::-webkit-search-cancel-button { display: none; } /* our own clear button */
+.find-clear {
+  position: absolute; right: 1.4vw; top: 50%; transform: translateY(-50%);
+  width: 4.4vh; height: 4.4vh; border: none; border-radius: 999px; padding: 0;
+  background: rgba(236,231,221,0.16); color: var(--ink); cursor: pointer;
+  font-size: 3vh; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.find-clear[hidden] { display: none; }
 .find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
 .find-row .choices { flex: 1 1 auto; }
 

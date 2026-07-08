@@ -52,7 +52,10 @@
       <div id="find-shelf-list"></div>
     </div>
     <div id="find-results" hidden></div>
-    <input id="find-search" type="search" placeholder="Search your shelf…" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div class="find-search-wrap">
+      <input id="find-search" type="search" placeholder="Search your shelf…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="find-clear" class="find-clear" type="button" aria-label="Clear search" hidden>×</button>
+    </div>
     <div class="find-row">
       <div class="choices" id="sort-choices"></div>
       <button id="find-settings" class="cc-sysbtn">Settings</button>

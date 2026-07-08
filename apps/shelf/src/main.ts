@@ -2207,8 +2207,10 @@ function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
   }
 }
 
+const findClear = document.getElementById('find-clear') as HTMLButtonElement;
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
+  findClear.hidden = !findSearch.value;
   items.forEach((a, i) => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
@@ -2221,6 +2223,12 @@ findSearch.addEventListener('input', () => {
   } else {
     clearFindResults();
   }
+});
+findClear.addEventListener('click', () => {
+  findSearch.value = '';
+  findClear.hidden = true;
+  findSearch.dispatchEvent(new Event('input', { bubbles: true }));
+  findSearch.focus();
 });
 // Enter (hardware keyboards / the on-screen "Go" key) searches immediately.
 findSearch.addEventListener('keydown', (e) => {
@@ -2997,6 +3005,7 @@ async function addToNewShelf(providerUri: string): Promise<void> {
 function clearSearch(): void {
   filterQuery = '';
   findSearch.value = '';
+  findClear.hidden = true;
   items.forEach((_, i) => (shelf.children[i] as HTMLElement | undefined)?.classList.remove('sliver'));
   sizeFaces();
   clearFindResults();
