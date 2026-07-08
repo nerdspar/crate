@@ -339,22 +339,28 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   async play(playerId: string, providerUri: string, opts?: { trackIndex?: number }): Promise<void> {
     const idx = opts?.trackIndex ?? 0;
-    // Start the album on the tapped track via `start_item` = the track's URI. We pass the
-    // ALBUM uri as the media (MA resolves it in one shot) rather than an explicit list of
-    // every track uri — that list forced MA to resolve each track's stream up front, which
-    // took 15-20s on real hardware while the old queue kept playing. `start_item` picks the
-    // track by uri, so it plays the RIGHT song regardless of MA's internal album ordering
-    // (no more wrong-track jump from play_index).
-    let startItem: string | undefined;
-    if (idx > 0) {
-      startItem = (await this.getTracks(providerUri).catch((): Track[] => []))[idx]?.uri ?? undefined;
+    // Whole album from the top: just queue it.
+    if (idx <= 0) {
+      await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'replace' });
+      return;
     }
-    await this.client.command('player_queues/play_media', {
-      queue_id: playerId,
-      media: providerUri,
-      option: 'replace',
-      ...(startItem ? { start_item: startItem } : {}),
-    });
+    const tracks = await this.getTracks(providerUri).catch((): Track[] => []);
+    const startUri = tracks[idx]?.uri;
+    if (!startUri) {
+      await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'replace' });
+      return;
+    }
+    // Play the exact tapped track immediately. This builds a normal Sonos queue, so there's
+    // no track-0 blip while the album loads and it pauses/resumes cleanly. Two rejected
+    // alternatives: play_media(album)+play_index let track 0 sound for a few seconds first;
+    // start_item built a queue Sonos couldn't resume ("not encoded correctly", then skipped).
+    await this.client.command('player_queues/play_media', { queue_id: playerId, media: startUri, option: 'replace' });
+    // Append the rest of the album so playback keeps going past the tapped track. Runs in
+    // the background (fire-and-forget) — the per-track resolution is slow but stays ahead of
+    // playback, and the tapped song is already playing.
+    const rest = tracks.slice(idx + 1).map((t) => t.uri).filter((u): u is string => !!u);
+    if (rest.length)
+      void this.client.command('player_queues/play_media', { queue_id: playerId, media: rest, option: 'add' }).catch(() => {});
   }
 
   async transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void> {
