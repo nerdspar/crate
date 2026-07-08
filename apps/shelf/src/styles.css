@@ -922,6 +922,10 @@ body.idle #find-grip::after { opacity: 0; }
 .am-eyebrow { color: var(--ink-dim); font-size: 1.6vh; letter-spacing: 0.24em; text-transform: uppercase; }
 .am-title { color: var(--ink); font-size: 4vh; margin: 0.4vh 0 0; line-height: 1.05; }
 .am-artist { color: var(--ink-dim); font-size: 2.4vh; margin: 0.4vh 0 1.6vh; }
+/* The play-now overlay is a large modal — scale its seek bar + times up to match. */
+.am-nowbar { gap: 1.2vh; margin: 0.6vh 0 1.8vh; }
+.am-nowbar .times { font-size: 2.4vh; }
+.am-nowbar .seek { height: 7px; }
 .am-actions { display: flex; align-items: center; gap: 1.4vw; }
 /* Play fills the row; the ⏮ ⏭ flank it when playing. */
 .am-transport { flex: 1; display: flex; align-items: center; gap: 1.4vw; }
