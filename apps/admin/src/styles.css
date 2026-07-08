@@ -198,6 +198,29 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .field-toggle { flex-direction: row; align-items: center; }
 .field-toggle label { cursor: pointer; color: var(--ink); }
 .field-toggle input[type='checkbox'] { width: 1.1rem; height: 1.1rem; }
+.settings-grid input[type='range'], #settings-cat-body input[type='range'] { width: 100%; accent-color: var(--brass); }
+
+/* Settings categories (iOS-style index) */
+#settings-cats { display: flex; flex-direction: column; gap: 0.5rem; }
+.settings-cat {
+  display: flex; align-items: center; gap: 0.9rem; padding: 0.95rem 1.1rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  cursor: pointer; text-align: left; width: 100%; color: var(--ink);
+}
+.settings-cat:active { transform: scale(0.995); }
+.settings-cat .cat-ico { flex: none; width: 1.7rem; height: 1.7rem; color: var(--brass); display: grid; place-items: center; }
+.settings-cat .cat-ico svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.settings-cat .cat-name { flex: 1; font-weight: 700; font-size: 1.1rem; }
+.settings-cat .sh-chev { color: var(--ink-dim); font-size: 1.3rem; line-height: 1; }
+#settings-cat-body { margin-top: 0.6rem; }
+#settings-cat-body .settings-grid { margin-top: 0.6rem; }
+.set-subhead {
+  color: var(--brass); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; margin: 1.6rem 0 0.2rem;
+}
+.set-subhead:first-child { margin-top: 0.4rem; }
+.sys-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 0.6rem; }
+.sys-actions .ghost.danger { border-color: color-mix(in srgb, var(--accent, #c83a3a) 55%, var(--line)); color: var(--accent, #c83a3a); }
 
 /* Sleep schedule */
 #schedule-editor { margin-top: 1.8rem; }

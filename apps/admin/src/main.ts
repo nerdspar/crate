@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1070,8 +1070,8 @@ editorEl.addEventListener('click', (e) => {
   if (e.target === editorEl) closeEditor();
 });
 
-/* ================= Settings (mirrors the wall's on-screen Settings) ================= */
-const defaultSpeakerSel = document.getElementById('default-speaker') as HTMLSelectElement;
+/* ================= Settings (iOS-style categories; mirrors the wall) ================= */
+let settingsPlayers: Player[] = [];
 const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> = [
   ['spineMode', 'Spine art', [['scan', 'Real when available'], ['art', 'Generated']]],
   ['spineThickness', 'CD thickness', [['thin', 'Thin'], ['medium', 'Medium'], ['thick', 'Thick']]],
@@ -1115,102 +1115,234 @@ async function loadSettingsPanel(): Promise<void> {
   try {
     const [players, s] = [await client.getPlayers(), await client.getSettings()];
     settings = s;
-    defaultSpeakerSel.innerHTML = '';
-    const auto = document.createElement('option');
-    auto.value = '';
-    auto.textContent = '(auto — first available)';
-    defaultSpeakerSel.appendChild(auto);
-    for (const p of players.players) {
-      const o = document.createElement('option');
-      o.value = p.id;
-      o.textContent = p.available ? p.name : `${p.name} (offline)`;
-      if (s.defaultPlayerId === p.id) o.selected = true;
-      defaultSpeakerSel.appendChild(o);
-    }
-    renderSettingsForm();
+    settingsPlayers = players.players;
   } catch {
-    defaultSpeakerSel.innerHTML = '<option>Could not load players</option>';
+    /* keep whatever we had */
   }
+  renderSettingsCats();
 }
 
-function renderSettingsForm(): void {
-  const formEl = document.getElementById('settings-form') as HTMLElement;
-  if (!settings) return;
-  formEl.innerHTML = '';
-  for (const [key, label, opts] of SETTING_SELECTS) {
-    const field = document.createElement('div');
-    field.className = 'field';
-    const sel = document.createElement('select');
-    for (const [v, l] of opts) {
-      const o = document.createElement('option');
-      o.value = v;
-      o.textContent = l;
-      if (String(settings![key]) === v) o.selected = true;
-      sel.appendChild(o);
-    }
-    sel.addEventListener('change', () => {
-      const val = BOOL_SELECTS.has(key) ? (sel.value === 'true') : sel.value;
-      void saveSetting(key, val as Settings[typeof key]);
-    });
-    field.innerHTML = `<label>${label}</label>`;
-    field.appendChild(sel);
-    formEl.appendChild(field);
+/* ---- One setting → a .field element ---- */
+function selectField(key: keyof Settings, label: string, opts: Array<[string, string]>): HTMLElement {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const sel = document.createElement('select');
+  for (const [v, l] of opts) {
+    const o = new Option(l, v);
+    if (String(settings![key]) === v) o.selected = true;
+    sel.add(o);
   }
-  for (const [key, label, min, max] of SETTING_NUMBERS) {
-    const field = document.createElement('div');
-    field.className = 'field';
-    const inp = document.createElement('input');
-    inp.type = 'number';
-    inp.min = String(min);
-    inp.max = String(max);
-    inp.value = String(settings![key]);
-    inp.addEventListener('change', () => void saveSetting(key, Math.max(min, Math.min(max, Number(inp.value))) as Settings[typeof key]));
-    field.innerHTML = `<label>${label}</label>`;
-    field.appendChild(inp);
-    formEl.appendChild(field);
-  }
-  // Idle shelf (for content 'A shelf' and auto-open 'A specific shelf').
-  const isf = document.createElement('div');
-  isf.className = 'field';
-  const issel = document.createElement('select');
-  const optAll = document.createElement('option');
-  optAll.value = '';
-  optAll.textContent = 'All';
-  if (!settings.idleShelf) optAll.selected = true;
-  issel.appendChild(optAll);
+  sel.addEventListener('change', () => {
+    const val = BOOL_SELECTS.has(key) ? sel.value === 'true' : sel.value;
+    void saveSetting(key, val as Settings[typeof key]);
+  });
+  field.innerHTML = `<label>${label}</label>`;
+  field.appendChild(sel);
+  return field;
+}
+function numberField(key: keyof Settings, label: string, min: number, max: number): HTMLElement {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.min = String(min);
+  inp.max = String(max);
+  inp.value = String(settings![key]);
+  inp.addEventListener('change', () => void saveSetting(key, Math.max(min, Math.min(max, Number(inp.value))) as Settings[typeof key]));
+  field.innerHTML = `<label>${label}</label>`;
+  field.appendChild(inp);
+  return field;
+}
+function toggleField(key: keyof Settings, label: string): HTMLElement {
+  const tf = document.createElement('div');
+  tf.className = 'field field-toggle';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!settings![key];
+  cb.addEventListener('change', () => void saveSetting(key, cb.checked as Settings[typeof key]));
+  const lab = document.createElement('label');
+  lab.appendChild(cb);
+  lab.append(' ' + label);
+  tf.appendChild(lab);
+  return tf;
+}
+function idleShelfField(): HTMLElement {
+  const f = document.createElement('div');
+  f.className = 'field';
+  const sel = document.createElement('select');
+  const all = new Option('All', '');
+  if (!settings!.idleShelf) all.selected = true;
+  sel.add(all);
   for (const sh of shelves.filter((s) => s.id !== 'all')) {
-    const o = document.createElement('option');
-    o.value = sh.id;
-    o.textContent = sh.name;
-    if (settings.idleShelf === sh.id) o.selected = true;
-    issel.appendChild(o);
+    const o = new Option(sh.name, sh.id);
+    if (settings!.idleShelf === sh.id) o.selected = true;
+    sel.add(o);
   }
-  issel.addEventListener('change', () => void saveSetting('idleShelf', issel.value || null));
-  isf.innerHTML = '<label>Idle / auto-open shelf</label>';
-  isf.appendChild(issel);
-  formEl.appendChild(isf);
-  // Toggles
-  for (const [key, label] of SETTING_TOGGLES) {
-    const tf = document.createElement('div');
-    tf.className = 'field field-toggle';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!settings[key];
-    cb.addEventListener('change', () => void saveSetting(key, cb.checked as Settings[typeof key]));
-    const lab = document.createElement('label');
-    lab.appendChild(cb);
-    lab.append(' ' + label);
-    tf.appendChild(lab);
-    formEl.appendChild(tf);
+  sel.addEventListener('change', () => void saveSetting('idleShelf', sel.value || null));
+  f.innerHTML = '<label>Idle / auto-open shelf</label>';
+  f.appendChild(sel);
+  return f;
+}
+function settingField(key: keyof Settings): HTMLElement | null {
+  const s = SETTING_SELECTS.find((x) => x[0] === key);
+  if (s) return selectField(s[0], s[1], s[2]);
+  const n = SETTING_NUMBERS.find((x) => x[0] === key);
+  if (n) return numberField(n[0], n[1], n[2], n[3]);
+  const t = SETTING_TOGGLES.find((x) => x[0] === key);
+  if (t) return toggleField(t[0], t[1]);
+  return null;
+}
+function fieldGrid(keys: Array<keyof Settings>): HTMLElement {
+  const grid = document.createElement('div');
+  grid.className = 'settings-grid';
+  for (const k of keys) {
+    const f = settingField(k);
+    if (f) grid.appendChild(f);
   }
-  renderSchedule();
+  return grid;
+}
+
+/* ---- Categories (iOS-style: index → detail) ---- */
+const CAT_ICON: Record<string, string> = {
+  players: '<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3.2"/><circle cx="12" cy="7.5" r="1"/></svg>',
+  spines: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="3.2" height="14" rx="1"/><rect x="10.4" y="5" width="3.2" height="14" rx="1"/><rect x="16.8" y="5" width="3.2" height="14" rx="1"/></svg>',
+  albums: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.2"/></svg>',
+  display: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M6.9 16.9l-2.1 2.1"/></svg>',
+  idle: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
+  sleep: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
+};
+interface SettingsCat {
+  id: string;
+  name: string;
+  render: (body: HTMLElement) => void;
+}
+const SETTINGS_CATS: SettingsCat[] = [
+  { id: 'players', name: 'Players', render: renderPlayersCat },
+  {
+    id: 'spines',
+    name: 'Spines',
+    render: (b) =>
+      renderKeyGroups(b, [
+        { header: 'Spine', keys: ['spineMode', 'spineThickness', 'spineWidthMode', 'spineTextDir'] },
+        { header: 'Label', keys: ['inkMode', 'inkSize', 'inkWeight', 'labelLayout', 'labelVary'] },
+        { header: 'Year', keys: ['yearDisplay', 'yearPos', 'yearEmphasis'] },
+      ]),
+  },
+  {
+    id: 'albums',
+    name: 'Albums',
+    render: (b) => renderKeyGroups(b, [{ keys: ['openMode', 'afterPlay', 'afterPlayLingerSec', 'longPressMs', 'glowEnabled', 'glowRadius', 'glowIntensity'] }]),
+  },
+  { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
+  { id: 'idle', name: 'Idle', render: renderIdleCat },
+  { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
+  { id: 'system', name: 'System', render: renderSystemCat },
+];
+
+function renderKeyGroups(body: HTMLElement, groups: Array<{ header?: string; keys: Array<keyof Settings> }>): void {
+  for (const g of groups) {
+    if (g.header) {
+      const h = document.createElement('div');
+      h.className = 'set-subhead';
+      h.textContent = g.header;
+      body.appendChild(h);
+    }
+    body.appendChild(fieldGrid(g.keys));
+  }
+}
+function renderPlayersCat(body: HTMLElement): void {
+  const f = document.createElement('div');
+  f.className = 'field';
+  f.innerHTML = '<label>Default speaker <span class="hint">(where albums play when none is picked)</span></label>';
+  const sel = document.createElement('select');
+  sel.add(new Option('(auto — first available)', ''));
+  for (const p of settingsPlayers) {
+    const o = new Option(p.available ? p.name : `${p.name} (offline)`, p.id);
+    if (settings!.defaultPlayerId === p.id) o.selected = true;
+    sel.add(o);
+  }
+  sel.addEventListener('change', () => {
+    void client.putSettings({ defaultPlayerId: sel.value || null }).catch(() => {});
+    showToast('Saved');
+  });
+  f.appendChild(sel);
+  body.appendChild(f);
+}
+function renderDisplayCat(body: HTMLElement): void {
+  const f = document.createElement('div');
+  f.className = 'field';
+  f.innerHTML = '<label>Brightness</label>';
+  const range = document.createElement('input');
+  range.type = 'range';
+  range.min = '8';
+  range.max = '100';
+  range.value = '100';
+  range.addEventListener('change', () => void client.setBrightness(Number(range.value)).catch(() => {}));
+  f.appendChild(range);
+  body.appendChild(f);
+  void client.getSystemStatus().then((st) => (range.value = String(st.brightness ?? 100))).catch(() => {});
+  const auto = settingField('autoBrightness');
+  if (auto) body.appendChild(auto);
+}
+function renderIdleCat(body: HTMLElement): void {
+  body.appendChild(fieldGrid(['idleAfterMin', 'idleScreen', 'idleDimPercent', 'idleContent']));
+  body.appendChild(idleShelfField());
+  body.appendChild(fieldGrid(['autoOpenEverySec', 'autoOpenPool', 'autoOpenRandom', 'openOnExternalPlay', 'idleUseSensor', 'wakeOnSensor']));
+}
+function renderSystemCat(body: HTMLElement): void {
+  const wrap = document.createElement('div');
+  wrap.className = 'sys-actions';
+  const mk = (label: string, fn: () => Promise<unknown>, danger = false): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = 'ghost' + (danger ? ' danger' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      if (danger && !confirm(`${label}?`)) return;
+      void fn().then(() => showToast(`${label}…`)).catch(() => showToast('Failed'));
+    });
+    return b;
+  };
+  wrap.append(
+    mk('Refresh art', () => client.refreshArtwork()),
+    mk('Restart app', () => client.restartApp(), true),
+    mk('Reboot', () => client.reboot(), true),
+  );
+  body.appendChild(wrap);
+}
+
+const settingsIndexEl = document.getElementById('settings-index') as HTMLElement;
+const settingsDetailEl = document.getElementById('settings-detail') as HTMLElement;
+const settingsCatBody = document.getElementById('settings-cat-body') as HTMLElement;
+const settingsCatName = document.getElementById('settings-cat-name') as HTMLElement;
+(document.getElementById('settings-back') as HTMLElement).addEventListener('click', () => {
+  settingsDetailEl.hidden = true;
+  settingsIndexEl.hidden = false;
+});
+function renderSettingsCats(): void {
+  const list = document.getElementById('settings-cats') as HTMLElement;
+  list.innerHTML = '';
+  for (const cat of SETTINGS_CATS) {
+    const row = document.createElement('button');
+    row.className = 'settings-cat';
+    row.innerHTML = `<span class="cat-ico">${CAT_ICON[cat.id] ?? ''}</span><span class="cat-name">${esc(cat.name)}</span><span class="sh-chev">›</span>`;
+    row.addEventListener('click', () => openSettingsCat(cat));
+    list.appendChild(row);
+  }
+}
+function openSettingsCat(cat: SettingsCat): void {
+  if (!settings) return;
+  settingsIndexEl.hidden = true;
+  settingsDetailEl.hidden = false;
+  settingsCatName.textContent = cat.name;
+  settingsCatBody.innerHTML = '';
+  cat.render(settingsCatBody);
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-function renderSchedule(): void {
-  const el = document.getElementById('schedule-editor');
-  if (!el || !settings) return;
-  el.innerHTML = '<h3 class="sched-h">Sleep schedule <span class="hint">(screen off; touch wakes it briefly)</span></h3>';
+function renderSchedule(el: HTMLElement): void {
+  if (!settings) return;
+  el.innerHTML = '<p class="sched-h hint">Screen off; touch wakes it briefly.</p>';
   DAYS.forEach((name, i) => {
     const day = settings!.sleepSchedule?.[i] ?? { on: false, sleep: '23:00', wake: '07:00' };
     const row = document.createElement('div');
@@ -1237,11 +1369,6 @@ async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K])
   await client.putSettings({ [key]: value } as Partial<Settings>).catch(() => {});
   showToast('Saved');
 }
-
-defaultSpeakerSel.addEventListener('change', async () => {
-  await client.putSettings({ defaultPlayerId: defaultSpeakerSel.value || null }).catch(() => {});
-  showToast('Default speaker saved');
-});
 
 /* ================= Init ================= */
 // Crate mark, top-right of each main tab header.
