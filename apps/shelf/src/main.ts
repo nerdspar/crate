@@ -227,10 +227,12 @@ function buildShelf(): void {
     const baseW = spineW / 2;
     const font = a.labelFont ?? ts.font;
     const tracking = a.labelTracking ?? ts.tracking;
-    // Global ink size/weight scale the generated label (per-album overrides still win).
-    const sizeMul = settings.inkSize === 'small' ? 0.8 : settings.inkSize === 'large' ? 1.25 : 1;
+    // Ink size/weight scale the generated label — a per-album override wins over the global.
+    const inkSize = a.overrideInkSize ?? settings.inkSize;
+    const inkWeight = a.overrideInkWeight ?? settings.inkWeight;
+    const sizeMul = inkSize === 'small' ? 0.8 : inkSize === 'large' ? 1.25 : 1;
     const fontSize = Math.min(baseW * (font.includes('Newsreader') ? 0.66 : 0.6), 19) * sizeMul;
-    const labelWeight = Math.max(200, Math.min(800, ts.weight + (settings.inkWeight === 'light' ? -150 : settings.inkWeight === 'bold' ? 150 : 0)));
+    const labelWeight = Math.max(200, Math.min(800, ts.weight + (inkWeight === 'light' ? -150 : inkWeight === 'bold' ? 150 : 0)));
     const baseInk = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
     const artistCol = a.artistColor ?? baseInk;
     const titleCol = a.titleColor ?? (settings.inkMode === 'match' ? matchInk(a) : baseInk);

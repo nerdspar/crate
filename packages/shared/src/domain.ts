@@ -128,6 +128,8 @@ export interface ShelfItem {
   overrideSpineMode: SpineMode | null;
   overrideLayout: LabelLayoutFixed | null;
   overrideYearDisplay: YearDisplay | null;
+  overrideInkSize: InkSize | null;
+  overrideInkWeight: InkWeight | null;
   /** Cover artwork URL (local cached path preferred, else remote). */
   artworkUrl: string | null;
   /** Playlist song-spine only (single-playlist shelf): the provider uri of the
@@ -209,6 +211,8 @@ export interface AlbumOverride {
   titleColor?: string | null;
   layout?: LabelLayoutFixed | null;
   yearDisplay?: YearDisplay | null;
+  size?: InkSize | null;
+  weight?: InkWeight | null;
 }
 
 export interface Settings {

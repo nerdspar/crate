@@ -68,6 +68,8 @@ export function songShelfItem(
     overrideSpineMode: null, // song spines get their own cover-slice rendering
     overrideLayout: null, // follow the global label layout/positioning
     overrideYearDisplay: null,
+    overrideInkSize: null,
+    overrideInkWeight: null,
     albumUri: track.uri ?? null,
     trackIndex: track.index ?? i + 1,
   };
@@ -143,5 +145,7 @@ export function buildShelfItem(row: ShelfRow, artBase: string, artDir: string): 
     overrideSpineMode: ov.spineMode ?? null,
     overrideLayout: ov.layout ?? null,
     overrideYearDisplay: ov.yearDisplay ?? null,
+    overrideInkSize: ov.size ?? null,
+    overrideInkWeight: ov.weight ?? null,
   };
 }

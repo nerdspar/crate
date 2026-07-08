@@ -3,6 +3,8 @@
 import type {
   Album,
   AlbumOverride,
+  InkSize,
+  InkWeight,
   LabelLayoutFixed,
   Player,
   PlayerState,
@@ -31,6 +33,8 @@ export interface OverrideRequest {
   titleColor?: string | null;
   layout?: LabelLayoutFixed | null;
   yearDisplay?: YearDisplay | null;
+  size?: InkSize | null;
+  weight?: InkWeight | null;
 }
 
 export interface ShelfResponse {

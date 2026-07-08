@@ -188,6 +188,8 @@ const ovTitleOn = document.getElementById('ov-title-on') as HTMLInputElement;
 const ovTitle = document.getElementById('ov-title') as HTMLInputElement;
 const ovSpineMode = document.getElementById('ov-spinemode') as HTMLSelectElement;
 const ovLayout = document.getElementById('ov-layout') as HTMLSelectElement;
+const ovInkSize = document.getElementById('ov-inksize') as HTMLSelectElement;
+const ovInkWeight = document.getElementById('ov-inkweight') as HTMLSelectElement;
 const ovYear = document.getElementById('ov-year') as HTMLSelectElement;
 const saveBtn = document.getElementById('editor-save') as HTMLButtonElement;
 let editingId: string | null = null;
@@ -203,6 +205,8 @@ async function openEditor(it: ShelfItem): Promise<void> {
   ovTitleOn.checked = false;
   ovSpineMode.value = '';
   ovLayout.value = '';
+  ovInkSize.value = '';
+  ovInkWeight.value = '';
   ovYear.value = '';
   try {
     const ov = (await client.getAlbum(it.albumId)).override;
@@ -210,6 +214,8 @@ async function openEditor(it: ShelfItem): Promise<void> {
     ovTracking.value = ov.tracking ?? '';
     ovSpineMode.value = ov.spineMode ?? '';
     ovLayout.value = ov.layout ?? '';
+    ovInkSize.value = ov.size ?? '';
+    ovInkWeight.value = ov.weight ?? '';
     ovYear.value = ov.yearDisplay ?? '';
     if (ov.artistColor) {
       ovArtistOn.checked = true;
@@ -247,6 +253,8 @@ async function saveEditor(): Promise<void> {
       titleColor: ovTitleOn.checked ? ovTitle.value : null,
       spineMode: (ovSpineMode.value || null) as OverrideRequest['spineMode'],
       layout: (ovLayout.value || null) as OverrideRequest['layout'],
+      size: (ovInkSize.value || null) as OverrideRequest['size'],
+      weight: (ovInkWeight.value || null) as OverrideRequest['weight'],
       yearDisplay: (ovYear.value || null) as OverrideRequest['yearDisplay'],
     });
     showToast('Saved');
