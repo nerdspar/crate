@@ -190,23 +190,34 @@ function matchInk(a: ShelfItem): string {
 const shelfGlow = document.createElement('div');
 shelfGlow.className = 'shelf-glow';
 
-/** Size the glow to a uniform square halo of width `d` (the gap the open album
-    opens up around itself) so it fills the blank space and stops at the neighbors. */
+let glowTrackRaf = 0;
+/** A soft square halo centred on the open cover. The cover swings out on a 3D flap (so its
+    real position isn't a clean offset) and the shelf scrolls to it — so we read the cover's
+    actual rect and track it for the open animation, keeping the halo centred throughout. */
 function positionGlow(i: number): void {
   const a = items[i];
   const el = shelf.children[i] as HTMLElement | undefined;
   if (!a || !el) return;
-  const d = 0.05 * window.innerWidth; // halo spread — a soft backlight beyond the cover
-  const cw = coverW();
-  // Centre a square-ish halo on the open cover (which sits ~a spine-width right of
-  // the settled position). y from the element (top/height don't animate).
-  shelfGlow.style.left = `${settledLeft(i) - d}px`;
-  shelfGlow.style.width = `${cw + 2 * d}px`;
-  shelfGlow.style.top = `${el.offsetTop - d}px`;
-  shelfGlow.style.height = `${el.offsetHeight + 2 * d}px`;
+  const cover = el.querySelector('.face-cover') as HTMLElement | null;
   shelfGlow.style.backgroundImage = a.artworkUrl ? `url('${a.artworkUrl}')` : 'none';
   if (!a.artworkUrl) shelfGlow.style.backgroundColor = a.primaryColor;
   shelfGlow.classList.add('on');
+  const d = 0.028 * window.innerWidth; // halo spread — a soft, contained backlight beyond the cover
+  const place = (): void => {
+    const sr = shelf.getBoundingClientRect();
+    const cr = (cover ?? el).getBoundingClientRect();
+    shelfGlow.style.left = `${cr.left - sr.left + shelf.scrollLeft - d}px`;
+    shelfGlow.style.top = `${cr.top - sr.top - d}px`;
+    shelfGlow.style.width = `${cr.width + 2 * d}px`;
+    shelfGlow.style.height = `${cr.height + 2 * d}px`;
+  };
+  cancelAnimationFrame(glowTrackRaf);
+  const start = performance.now();
+  const step = (): void => {
+    place();
+    if (openIdx === i && performance.now() - start < 650) glowTrackRaf = requestAnimationFrame(step);
+  };
+  step();
 }
 
 function buildShelf(): void {
@@ -467,6 +478,7 @@ function closeAlbum(): void {
   const el = shelf.children[openIdx] as HTMLElement;
   el.classList.remove('open', 'expanded');
   el.style.width = el.style.getPropertyValue('--spine-w');
+  cancelAnimationFrame(glowTrackRaf);
   shelfGlow.classList.remove('on');
   openIdx = null;
 }
