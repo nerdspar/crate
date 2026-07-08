@@ -339,28 +339,26 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   async play(playerId: string, providerUri: string, opts?: { trackIndex?: number }): Promise<void> {
     const idx = opts?.trackIndex ?? 0;
-    // Whole album from the top: just queue it.
-    if (idx <= 0) {
-      await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'replace' });
-      return;
+    // Queue the ALBUM as a container (a plain replace), then jump to the tapped track with
+    // play_index. Streaming an album container is what Sonos resumes cleanly — playing
+    // individual track uris (directly, or via start_item) produced a queue it rejected on
+    // resume: "can't play <song>, it's not encoded correctly", then a skip. The tradeoff is
+    // that track 0 sounds for the second or two the album takes to load before the jump.
+    await this.client.command('player_queues/play_media', {
+      queue_id: playerId,
+      media: providerUri,
+      option: 'replace',
+    });
+    if (idx <= 0) return;
+    // The album queues asynchronously; a play_index fired too early hits an empty queue and
+    // is ignored. Retry until the queue catches up and the index actually lands.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await this.client.command('player_queues/play_index', { queue_id: playerId, index: idx }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+      const queues = arr(await this.client.command('player_queues/all').catch(() => []));
+      const q = queues.map(rec).find((x) => str(x['queue_id']) === playerId);
+      if (q && (num(q['current_index']) ?? -1) === idx) return;
     }
-    const tracks = await this.getTracks(providerUri).catch((): Track[] => []);
-    const startUri = tracks[idx]?.uri;
-    if (!startUri) {
-      await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'replace' });
-      return;
-    }
-    // Play the exact tapped track immediately. This builds a normal Sonos queue, so there's
-    // no track-0 blip while the album loads and it pauses/resumes cleanly. Two rejected
-    // alternatives: play_media(album)+play_index let track 0 sound for a few seconds first;
-    // start_item built a queue Sonos couldn't resume ("not encoded correctly", then skipped).
-    await this.client.command('player_queues/play_media', { queue_id: playerId, media: startUri, option: 'replace' });
-    // Append the rest of the album so playback keeps going past the tapped track. Runs in
-    // the background (fire-and-forget) — the per-track resolution is slow but stays ahead of
-    // playback, and the tapped song is already playing.
-    const rest = tracks.slice(idx + 1).map((t) => t.uri).filter((u): u is string => !!u);
-    if (rest.length)
-      void this.client.command('player_queues/play_media', { queue_id: playerId, media: rest, option: 'add' }).catch(() => {});
   }
 
   async transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void> {
