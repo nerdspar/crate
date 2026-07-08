@@ -606,7 +606,7 @@ function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' {
 /** Prefix for a picker chip: animated EQ if it's playing this album, a hollow dot if
     it's playing something else (→ playing here would override it), nothing if idle. */
 function playMarker(ps: 'this' | 'other' | 'idle'): string {
-  return ps === 'this' ? TRACK_EQ + ' ' : ps === 'other' ? '<span class="room-busy">○</span> ' : '';
+  return ps === 'this' ? TRACK_EQ : ps === 'other' ? '<span class="room-busy"></span>' : '';
 }
 
 /** If the picked room is playing the OPEN album, follow it so the card shows THAT

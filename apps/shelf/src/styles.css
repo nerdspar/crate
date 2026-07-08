@@ -310,8 +310,12 @@ button {
 .room.in-group { color: var(--ink); border-color: var(--ink); }
 /* Play-state markers on picker chips (monochrome): EQ = playing THIS album (safe to
    view), hollow dot = playing OTHER music (playing here would override it). */
-.room .track-eq { height: 1.5vh; margin-right: 0.7vw; vertical-align: middle; }
-.room-busy { margin-right: 0.7vw; font-size: 1.5vh; opacity: 0.75; vertical-align: middle; }
+.room .track-eq { height: 1.4vh; margin-right: 0.5vh; vertical-align: middle; }
+/* Hollow bullet (CSS-drawn, tight to the label) — not a glyph that varies by font. */
+.room-busy {
+  display: inline-block; width: 1.1vh; height: 1.1vh; margin-right: 0.5vh;
+  border: 0.18vh solid currentColor; border-radius: 50%; opacity: 0.65; vertical-align: middle;
+}
 /* "default" tag on the admin default speaker (home base for Play). */
 .room-def {
   margin-left: 0.8vh; font-size: 1.2vh; font-weight: 700; letter-spacing: 0.1em;
@@ -856,19 +860,20 @@ body.idle #find-grip::after { opacity: 0; }
   font-size: 2.2vh; font-weight: 600; padding: 0.8vh 2.4vw; letter-spacing: 0.02em;
 }
 .find-shelf.on { color: #131114; background: var(--ink); border-color: var(--ink); }
-.find-shelf.chip { display: inline-flex; align-items: center; gap: 1.2vw; }
-/* Selected user shelf: name on the left, edit/delete right-justified. */
-.find-shelf.chip.has-actions { min-width: 13vw; padding-right: 1.4vw; }
+.find-shelf.chip { display: inline-flex; align-items: center; gap: 0.7vw; }
+/* Selected user shelf: name on the left, edit/delete right-justified — sized to content so the
+   chip doesn't balloon when its edit/delete icons appear. */
+.find-shelf.chip.has-actions { padding-right: 1vw; }
 .find-shelf.chip.has-actions .find-shelf-name { flex: 1; }
 .find-shelf-name { cursor: pointer; }
 .find-shelf-edit {
   flex-shrink: 0; background: transparent; border: none; color: rgba(19,17,20,0.55);
-  font-size: 1.9vh; padding: 0 0.4vw; line-height: 1; cursor: pointer;
+  font-size: 1.5vh; padding: 0 0.2vw; line-height: 1; cursor: pointer;
 }
 /* Delete ✕ on the selected user shelf; two-tap (turns to "Delete?"). */
 .find-shelf-x {
   flex-shrink: 0; background: transparent; border: none; color: rgba(19,17,20,0.55);
-  font-size: 1.9vh; font-weight: 700; padding: 0 0.4vw; line-height: 1; cursor: pointer;
+  font-size: 1.5vh; font-weight: 700; padding: 0 0.2vw; line-height: 1; cursor: pointer;
 }
 .find-shelf-x.armed { color: #c0392b; background: rgba(255,255,255,0.85); border-radius: 999px; padding: 0.2vh 1.4vw; }
 .find-shelf-new { color: var(--brass); border-style: dashed; }
