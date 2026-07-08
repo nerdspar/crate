@@ -362,6 +362,9 @@ button {
 }
 .np-btn[hidden] { display: none; }
 .np-btn:active { color: var(--brass); }
+/* Transport icons scale with each button's font-size (replaces color-emoji glyphs). */
+.tico { width: 1em; height: 1em; display: inline-block; vertical-align: middle; pointer-events: none; }
+.cover-play .tico { width: 44%; height: 44%; margin-left: 6%; } /* optical-center the play triangle */
 .seek {
   height: 5px; border-radius: 3px; cursor: pointer;
   background: rgba(236,231,221,0.2); overflow: hidden;

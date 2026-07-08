@@ -74,6 +74,11 @@ const VOL_LOW_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" fill="currentColor" stroke="none"/><path d="M15.4 9.3a3.2 3.2 0 0 1 0 5.4"/></svg>';
 const VOL_HIGH_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" fill="currentColor" stroke="none"/><path d="M15.4 9.3a3.2 3.2 0 0 1 0 5.4"/><path d="M18.4 6.8a6.5 6.5 0 0 1 0 10.4"/></svg>';
+// Transport icons as inline SVG (unicode ▶/⏸/⏮/⏭ render as color emoji on iOS — bug fix).
+const ICON_PLAY = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.53.85l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5Z"/></svg>';
+const ICON_PAUSE = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="5" width="3.6" height="14" rx="1.1"/><rect x="13.9" y="5" width="3.6" height="14" rx="1.1"/></svg>';
+const ICON_PREV = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5.5" width="2.5" height="13" rx="1"/><path d="M20 6.4v11.2a1 1 0 0 1-1.53.85l-8.5-5.6a1 1 0 0 1 0-1.7l8.5-5.6A1 1 0 0 1 20 6.4Z"/></svg>';
+const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg>';
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
 let openMode: OpenMode = 'cover';
 
@@ -340,7 +345,7 @@ function buildShelf(): void {
           <div class="cover-type" style="color:${baseInk}">${escapeHtml(a.title)}</div>
         </div>
       </div>
-      <button class="cover-btn cover-play" aria-label="Play">▶</button>
+      <button class="cover-btn cover-play" aria-label="Play">${ICON_PLAY}</button>
       <button class="cover-btn cover-menu" aria-label="More">⋯</button>
       <div class="panel">
         <button class="panel-menu" aria-label="More">⋯</button>
@@ -358,9 +363,9 @@ function buildShelf(): void {
         </div>
         <div class="actions">
           <div class="transport">
-            <button class="np-btn np-prev" aria-label="Previous track" hidden>⏮</button>
+            <button class="np-btn np-prev" aria-label="Previous track" hidden>${ICON_PREV}</button>
             <button class="play">Play</button>
-            <button class="np-btn np-next" aria-label="Next track" hidden>⏭</button>
+            <button class="np-btn np-next" aria-label="Next track" hidden>${ICON_NEXT}</button>
           </div>
           ${isPlaylistCase ? '<button class="songs">Songs</button>' : ''}
           <div class="rooms"></div>
@@ -1648,7 +1653,7 @@ function renderCCNow(): void {
     ccArt.style.backgroundImage = '';
     ccTitle.textContent = 'Nothing playing';
     ccArtistEl.textContent = '';
-    ccPlayPauseBtn.textContent = '▶';
+    ccPlayPauseBtn.innerHTML = ICON_PLAY;
     updateCCSeek();
     return;
   }
@@ -1658,7 +1663,7 @@ function renderCCNow(): void {
   ccTitle.textContent = title;
   const artist = it?.artist ?? np?.artist ?? '';
   ccArtistEl.textContent = [artist, albumName && albumName !== title ? albumName : null].filter(Boolean).join(' · ');
-  ccPlayPauseBtn.textContent = now.state === 'playing' ? '❚❚' : '▶';
+  ccPlayPauseBtn.innerHTML = now.state === 'playing' ? ICON_PAUSE : ICON_PLAY;
   updateCCSeek();
 }
 function updateCCSeek(): void {
@@ -2380,7 +2385,7 @@ function songResultCard(s: SearchSong): HTMLElement {
   const playBtn = document.createElement('button');
   playBtn.className = 'find-card-play';
   playBtn.setAttribute('aria-label', 'Play');
-  playBtn.textContent = '▶';
+  playBtn.innerHTML = ICON_PLAY;
   playBtn.onclick = (e) => {
     e.stopPropagation(); // don't also open the album
     void playSong(s.trackUri);
