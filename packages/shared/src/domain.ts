@@ -218,6 +218,14 @@ export interface AlbumOverride {
   weight?: InkWeight | null;
 }
 
+/** A named speaker group the wall offers as a one-tap chip in the play-target picker. */
+export interface GroupPreset {
+  id: string;
+  name: string;
+  /** Player ids that form this group (leader = the first one). */
+  playerIds: string[];
+}
+
 export interface Settings {
   labelLayout: LabelLayout;
   labelVary: LabelVary;
@@ -269,6 +277,12 @@ export interface Settings {
   openOnExternalPlay: boolean;
   /** Per-weekday lights-out windows (index 0 = Sunday). */
   sleepSchedule: DaySchedule[];
+
+  // --- Players (chunk D) ---
+  /** Named speaker groups offered as one-tap chips in the play-target picker. */
+  groupPresets: GroupPreset[];
+  /** Player ids the wall may target/show; null or empty = expose every player. */
+  exposedPlayers: string[] | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -306,4 +320,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoBrightness: false,
   openOnExternalPlay: false,
   sleepSchedule: [0, 1, 2, 3, 4, 5, 6].map(() => ({ on: false, sleep: '23:00', wake: '07:00' })),
+  groupPresets: [],
+  exposedPlayers: null,
 };

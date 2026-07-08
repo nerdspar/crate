@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1268,7 +1268,126 @@ function renderPlayersCat(body: HTMLElement): void {
   });
   f.appendChild(sel);
   body.appendChild(f);
+
+  renderExposureSection(body);
+  renderPresetsSection(body);
 }
+
+/** Which players the wall may show/target. null (or all-checked) = expose everything. */
+function renderExposureSection(body: HTMLElement): void {
+  const h = document.createElement('div');
+  h.className = 'set-subhead';
+  h.textContent = 'Shown on the wall';
+  body.appendChild(h);
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = 'Uncheck speakers to hide them from the wall’s picker. All shown by default.';
+  body.appendChild(hint);
+  const grid = document.createElement('div');
+  grid.className = 'chip-grid';
+  const exposed = settings!.exposedPlayers;
+  const isOn = (id: string): boolean => !exposed || exposed.length === 0 || exposed.includes(id);
+  for (const p of settingsPlayers) {
+    const chip = document.createElement('button');
+    chip.className = 'pick-chip' + (isOn(p.id) ? ' on' : '');
+    chip.textContent = p.name;
+    chip.addEventListener('click', () => {
+      const cur = new Set(settings!.exposedPlayers && settings!.exposedPlayers.length ? settings!.exposedPlayers : settingsPlayers.map((x) => x.id));
+      if (cur.has(p.id)) cur.delete(p.id);
+      else cur.add(p.id);
+      // All selected → store null (expose everything); never store an empty list.
+      const all = settingsPlayers.every((x) => cur.has(x.id));
+      const next = all || cur.size === 0 ? null : [...cur];
+      void saveSetting('exposedPlayers', next);
+      chip.classList.toggle('on', next === null || next.includes(p.id));
+    });
+    grid.appendChild(chip);
+  }
+  body.appendChild(grid);
+}
+
+/** Named one-tap groups the wall offers in its picker. */
+function renderPresetsSection(body: HTMLElement): void {
+  const h = document.createElement('div');
+  h.className = 'set-subhead';
+  h.textContent = 'Group presets';
+  body.appendChild(h);
+  const list = document.createElement('div');
+  list.className = 'preset-list';
+  body.appendChild(list);
+
+  if (!settings!.groupPresets) settings!.groupPresets = [];
+  const save = (): void => void saveSetting('groupPresets', settings!.groupPresets);
+  const draw = (): void => {
+    list.innerHTML = '';
+    settings!.groupPresets.forEach((preset, i) => list.appendChild(presetEditor(preset, i, save, draw)));
+    if (settings!.groupPresets.length === 0) {
+      const e = document.createElement('p');
+      e.className = 'hint';
+      e.textContent = 'No presets yet.';
+      list.appendChild(e);
+    }
+  };
+  draw();
+
+  const add = document.createElement('button');
+  add.className = 'ghost';
+  add.textContent = '+ New preset';
+  add.addEventListener('click', () => {
+    settings!.groupPresets = [...settings!.groupPresets, { id: presetId(), name: 'New group', playerIds: [] }];
+    save();
+    draw();
+  });
+  body.appendChild(add);
+}
+
+function presetId(): string {
+  return 'gp-' + Math.random().toString(36).slice(2, 9);
+}
+
+function presetEditor(preset: GroupPreset, index: number, save: () => void, redraw: () => void): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'preset-card';
+  const top = document.createElement('div');
+  top.className = 'preset-top';
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.value = preset.name;
+  name.placeholder = 'Preset name';
+  name.addEventListener('change', () => {
+    preset.name = name.value.trim() || 'Group';
+    save();
+  });
+  const del = document.createElement('button');
+  del.className = 'sh-del';
+  del.textContent = '✕';
+  del.title = 'Delete preset';
+  del.addEventListener('click', () => {
+    settings!.groupPresets = settings!.groupPresets.filter((_, i) => i !== index);
+    save();
+    redraw();
+  });
+  top.append(name, del);
+  card.appendChild(top);
+
+  const grid = document.createElement('div');
+  grid.className = 'chip-grid';
+  for (const p of settingsPlayers) {
+    const chip = document.createElement('button');
+    const on = preset.playerIds.includes(p.id);
+    chip.className = 'pick-chip' + (on ? ' on' : '');
+    chip.textContent = p.name;
+    chip.addEventListener('click', () => {
+      preset.playerIds = preset.playerIds.includes(p.id) ? preset.playerIds.filter((x) => x !== p.id) : [...preset.playerIds, p.id];
+      chip.classList.toggle('on', preset.playerIds.includes(p.id));
+      save();
+    });
+    grid.appendChild(chip);
+  }
+  card.appendChild(grid);
+  return card;
+}
+
 function renderDisplayCat(body: HTMLElement): void {
   const f = document.createElement('div');
   f.className = 'field';

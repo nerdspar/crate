@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -666,8 +666,20 @@ function renderRooms(el: HTMLElement): void {
     return;
   }
 
-  // --- Normal mode: group chips + individual speakers pick the play target. ---
-  // Group chips first — play to the whole group (targets its leader).
+  // --- Normal mode: presets + group chips + individual speakers pick the play target. ---
+  // Saved presets lead — one tap forms that group and targets it.
+  for (const preset of settings.groupPresets) {
+    if (presetRooms(preset).length === 0) continue; // none of its speakers are pickable now
+    const b = document.createElement('button');
+    b.className = 'room room-preset' + (presetIsActive(preset) ? ' on' : '');
+    b.innerHTML = `<span class="preset-star">✦</span>${escapeHtml(preset.name)}`;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      applyPreset(preset, el);
+    };
+    wrap.appendChild(b);
+  }
+  // Group chips next — play to a live group (targets its leader).
   for (const leader of [...new Set(rooms.map((r) => leaderOf(r.id)))]) {
     const members = groupMembers(leader);
     if (members.length < 2) continue;
@@ -2042,6 +2054,40 @@ function commitGroupSelection(el: HTMLElement): void {
   updatePlayButton();
   showToast(`Grouped ${sel.length} speakers`);
   void client.group({ playerIds: [leader, ...sel.filter((x) => x !== leader)] }).catch(() => {});
+}
+
+/** Player ids in a preset that are actually pickable right now (exposed + available). */
+function presetRooms(p: GroupPreset): string[] {
+  return p.playerIds.filter((id) => rooms.some((r) => r.id === id));
+}
+/** Is this preset the current play target (same set of speakers)? */
+function presetIsActive(p: GroupPreset): boolean {
+  const ids = presetRooms(p);
+  if (ids.length < 2 || activeSolo) return ids.length === 1 && activePlayerId === ids[0];
+  const active = new Set(activeGroupMembers().map((r) => r.id));
+  return active.size === ids.length && ids.every((id) => active.has(id));
+}
+/** One-tap a saved preset: form its group (of the still-present speakers) and target it. */
+function applyPreset(p: GroupPreset, el: HTMLElement): void {
+  const ids = presetRooms(p);
+  if (ids.length === 0) return;
+  const leader = ids[0]!;
+  if (ids.length >= 2) {
+    const affected = new Set(ids.map((id) => leaderOf(id)));
+    for (const r of rooms) {
+      if (ids.includes(r.id)) continue;
+      if (affected.has(leaderOf(r.id))) setLeaderLocal(r.id, r.id);
+    }
+    ids.forEach((id) => setLeaderLocal(id, leader));
+    armGroupGuard();
+    void client.group({ playerIds: [leader, ...ids.filter((x) => x !== leader)] }).catch(() => {});
+  }
+  activePlayerId = leader;
+  activeSolo = ids.length < 2;
+  userPickedPlayer = true;
+  followIfPlayingOpenAlbum(leader);
+  renderRoomUIs();
+  updatePlayButton();
 }
 
 /** Remove a room from its group (member or leader) and focus it to play on its own. */
@@ -4233,11 +4279,20 @@ async function reloadShelf(): Promise<void> {
   renderShelfList();
 }
 
+/** Derive `rooms` (the pickable speakers) from `players`, honoring the admin's
+    player-exposure subset — but never leave the wall with zero rooms. */
+function computeRooms(): void {
+  let base = players.filter((p) => p.type === 'sonos' && p.available);
+  if (base.length === 0) base = players.filter((p) => p.available);
+  const ex = settings.exposedPlayers;
+  const exposed = ex && ex.length ? base.filter((p) => ex.includes(p.id)) : base;
+  rooms = exposed.length ? exposed : base;
+}
+
 async function reloadPlayers(): Promise<void> {
   const res = await client.getPlayers();
   players = res.players;
-  rooms = players.filter((p) => p.type === 'sonos' && p.available);
-  if (rooms.length === 0) rooms = players.filter((p) => p.available);
+  computeRooms();
   if (!activePlayerId) activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
   if (ccIsOpen()) renderCCRooms();
@@ -4430,9 +4485,8 @@ async function boot(): Promise<void> {
   items = shelfRes.items;
   shelves = shelfRes.shelves;
   players = playersRes.players;
-  rooms = players.filter((p) => p.type === 'sonos' && p.available);
-  if (rooms.length === 0) rooms = players.filter((p) => p.available);
   settings = settingsRes;
+  computeRooms();
   openMode = settings.openMode;
   activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
 

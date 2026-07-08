@@ -334,6 +334,10 @@ button {
 .room-sel.sel .room-check { opacity: 1; }
 .room.disabled { opacity: 0.4; }
 .rooms.grouping .room-group.on { background: var(--brass); }
+/* Saved preset chips (one-tap groups). */
+.room-preset { border-color: var(--brass); color: var(--brass); }
+.room-preset.on { color: #131114; background: var(--brass); border-color: var(--brass); }
+.preset-star { margin-right: 0.5vh; font-size: 1.3vh; vertical-align: middle; opacity: 0.85; }
 
 .vol { display: flex; align-items: center; gap: 1.4vh; position: relative; }
 .vol .vol-ico { display: flex; align-items: center; color: var(--ink-dim); }
