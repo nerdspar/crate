@@ -401,9 +401,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
     const volumeById = new Map<string, { volume: number | null; muted: boolean }>();
     const groupLeaderById = new Map<string, string | null>();
-    // The player's OWN state + current media — carries external sources (TV, line-in,
-    // AirPlay) that live outside MA's queue, so we can still show what a speaker is playing.
-    const playerById = new Map<string, { state: string; media: Record<string, unknown> | null }>();
+    // The player's OWN state + active source + current media — carries external sources
+    // (TV, line-in, AirPlay) that live outside MA's queue, so we can still show what a
+    // speaker is playing even when its queue is empty or holds a stale (paused) track.
+    const playerById = new Map<string, { state: string; activeSource: string | null; media: Record<string, unknown> | null }>();
     for (const p of arr(playersRaw)) {
       const item = rec(p);
       const id = str(item['player_id']);
@@ -416,9 +417,13 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       groupLeaderById.set(id, syncedTo ?? (childs.length ? id : id));
       playerById.set(id, {
         state: str(item['state']) ?? str(item['playback_state']) ?? 'idle',
+        activeSource: str(item['active_source']) ?? null,
         media: item['current_media'] ? rec(item['current_media']) : null,
       });
     }
+    // A player's active_source is a queue id (its own, or its group leader's) when it's
+    // playing MA content; anything else (e.g. "tv", "line_in") is an EXTERNAL source.
+    const queueIds = new Set(playerById.keys());
 
     return arr(queuesRaw)
       .map((q): PlayerState | null => {
@@ -429,15 +434,17 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         const current = rec(queue['current_item']);
         const media = rec(current['media_item']);
         const hasNow = str(media['name']) !== undefined || str(current['name']) !== undefined;
-        // External source: MA's queue is empty but the SPEAKER itself is playing something
-        // outside MA — TV audio, line-in, AirPlay, Spotify Connect, etc. Surface it so Crate
-        // still shows "what's playing" (title + any art), even though it's not library
-        // content and has no track controls.
-        if (!hasNow) {
+        // External source: the SPEAKER is playing something outside MA — TV audio, line-in,
+        // AirPlay, Spotify Connect, etc. Detected by active_source not being a queue id
+        // (its own or its group leader's). This takes priority over the queue, because a
+        // speaker on the TV often still has a stale (paused) track sitting in its queue —
+        // we must show the TV, not that leftover song.
+        {
           const pi = playerById.get(id);
           const m = pi?.media ?? null;
           const extTitle = m ? str(m['title']) : undefined;
-          if (pi && extTitle && (pi.state === 'playing' || pi.state === 'paused')) {
+          const onExternal = !!pi?.activeSource && !queueIds.has(pi.activeSource);
+          if (pi && onExternal && extTitle && (pi.state === 'playing' || pi.state === 'paused')) {
             return {
               playerId: id,
               state: pi.state === 'paused' ? 'paused' : 'playing',
