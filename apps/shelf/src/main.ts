@@ -1603,8 +1603,8 @@ window.addEventListener('pointermove', (e) => {
 });
 window.addEventListener('pointerup', (e) => {
   if (gripDown) {
-    // A tap on the top grip (that didn't drag the CC open) closes an open album.
-    if (!gripOpened && Math.abs(e.clientY - gripY) < 8 && openIdx !== null) closeAlbum();
+    // A tap on the top edge (grip shown or not) opens the control center.
+    if (!gripOpened && Math.abs(e.clientY - gripY) < 8) openCC();
     gripDown = false;
   }
   if (handleDown) {
@@ -2204,7 +2204,11 @@ window.addEventListener('pointermove', (e) => {
   }
 });
 window.addEventListener('pointerup', (e) => {
-  if (fGripDown) fGripDown = false;
+  if (fGripDown) {
+    // A tap on the bottom edge (grip shown or not) opens the find bar.
+    if (!fGripOpened && Math.abs(e.clientY - fGripY) < 8) openFind();
+    fGripDown = false;
+  }
   if (fHandleDown) {
     fHandleDown = false;
     if (e.clientY - fHandleY > 40 || Math.abs(e.clientY - fHandleY) < 8) closeFind();
