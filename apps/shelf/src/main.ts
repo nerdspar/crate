@@ -80,6 +80,9 @@ const ICON_PAUSE = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" ar
 const ICON_PREV = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5.5" width="2.5" height="13" rx="1"/><path d="M20 6.4v11.2a1 1 0 0 1-1.53.85l-8.5-5.6a1 1 0 0 1 0-1.7l8.5-5.6A1 1 0 0 1 20 6.4Z"/></svg>';
 const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg>';
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
+// Shown in place of the EQ on the just-played album until the target room actually
+// reports playing — a "connecting" spinner so a slow queue-load doesn't look dead.
+const NOW_SPINNER = '<span class="np-spin" aria-label="Starting"></span>';
 let openMode: OpenMode = 'cover';
 
 const shelf = document.getElementById('shelf') as HTMLDivElement;
@@ -2526,11 +2529,12 @@ function updateModalTransport(): void {
 function updateModalNowTrack(): void {
   if (albumModal.hidden) return;
   const playing = modalIsPlaying();
+  const buffering = playBuffering();
   albumModal.querySelectorAll('.am-tracks .track').forEach((row, ti) => {
     const isNow = playing && isNowTrack((row as HTMLElement).dataset.uri, ti);
     row.classList.toggle('now', isNow);
     const n = row.querySelector('.n');
-    if (n) n.innerHTML = isNow ? TRACK_EQ : String(ti + 1);
+    if (n) n.innerHTML = isNow ? (buffering ? NOW_SPINNER : TRACK_EQ) : String(ti + 1);
   });
 }
 
@@ -3717,14 +3721,32 @@ function maybeAutoOpenExternal(): void {
   openNowPlaying();
 }
 
+/** True during the window after a fresh play() where our optimistic "playing" state
+    hasn't yet been confirmed by a real frame from the target room. In that window the
+    just-played album shows a spinner instead of the EQ, so a slow queue-load reads as
+    "connecting" rather than a dead/instant EQ. Capped by the play latch. */
+function playBuffering(): boolean {
+  if (playPendingIdx < 0 || userPaused || performance.now() >= playPendingUntil) return false;
+  const albumId = items[playPendingIdx]?.albumId;
+  if (!albumId) return false;
+  const confirmed = lastStates.some(
+    (s) => s.state === 'playing' && s.nowPlaying?.albumId === albumId && (!now.playerId || s.playerId === now.playerId),
+  );
+  return !confirmed;
+}
+
 /** EQ every album that's playing on any player (multi-room), plus an optimistic
     just-played album. Independent of the open card's focused `now`. */
 function markPlayingSpines(): void {
   const playing = new Set<string>();
   for (const s of lastStates) if (s.state === 'playing' && s.nowPlaying?.albumId) playing.add(s.nowPlaying.albumId);
   if (now.state === 'playing' && now.albumId) playing.add(now.albumId);
+  const bufIdx = playBuffering() ? playPendingIdx : -1;
   items.forEach((it, i) => {
-    (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('playing', playing.has(it.albumId));
+    const el = shelf.children[i] as HTMLElement | undefined;
+    if (!el) return;
+    el.classList.toggle('playing', playing.has(it.albumId));
+    el.classList.toggle('buffering', i === bufIdx);
   });
 }
 
@@ -3812,11 +3834,12 @@ function updatePlayButton(): void {
 function updateOpenTrackIndicator(): void {
   if (openIdx === null) return;
   const panel = shelf.children[openIdx] as HTMLElement;
+  const buffering = playBuffering();
   panel.querySelectorAll('.track').forEach((row, ti) => {
     const isNow = playingIdx === openIdx && isNowTrack((row as HTMLElement).dataset.uri, ti);
     row.classList.toggle('now', isNow);
     const n = row.querySelector('.n');
-    if (n) n.innerHTML = isNow ? TRACK_EQ : String(ti + 1);
+    if (n) n.innerHTML = isNow ? (buffering ? NOW_SPINNER : TRACK_EQ) : String(ti + 1);
   });
 }
 

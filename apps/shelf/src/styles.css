@@ -438,6 +438,14 @@ button {
 @keyframes track-eq { 0%, 100% { height: 0.5vh; } 50% { height: 1.8vh; } }
 /* Paused → freeze the EQ bars mid-motion (they read as stopped, not playing). */
 body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused; }
+
+/* "Connecting" spinner shown in place of the EQ until the target room actually plays. */
+.np-spin {
+  display: inline-block; width: 1.5vh; height: 1.5vh; vertical-align: middle;
+  border: 0.22vh solid currentColor; border-top-color: transparent;
+  border-radius: 50%; opacity: 0.85; animation: np-spin 0.7s linear infinite;
+}
+@keyframes np-spin { to { transform: rotate(360deg); } }
 .track .dur { margin-left: auto; font-size: 1.7vh; }
 
 .spine-label {
@@ -495,13 +503,20 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
   display: none; gap: 2px; align-items: flex-end; height: 12px;
   z-index: 2;
 }
-.spine.playing:not(.open) .eq { display: flex; }
+.spine.playing:not(.open) .eq, .spine.buffering:not(.open) .eq { display: flex; }
 .eq i { width: 3px; background: var(--ink); border-radius: 1px; animation: eq 0.9s ease-in-out infinite; opacity: 0.9; }
 .eq i:nth-child(2) { animation-delay: 0.2s; }
 .eq i:nth-child(3) { animation-delay: 0.45s; }
 @keyframes eq {
   0%, 100% { height: 3px; }
   50% { height: 12px; }
+}
+/* A just-played spine shows a spinner ring in place of the bars until it really starts. */
+.spine.buffering:not(.open) .eq i { display: none; }
+.spine.buffering:not(.open) .eq::after {
+  content: ''; width: 12px; height: 12px; box-sizing: border-box;
+  border: 2px solid var(--ink); border-top-color: transparent; border-radius: 50%;
+  opacity: 0.9; animation: np-spin 0.7s linear infinite;
 }
 
 #ledge {
