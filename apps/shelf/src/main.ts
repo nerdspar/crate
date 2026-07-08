@@ -2545,7 +2545,13 @@ function openAddMenu(anchor: HTMLElement, options: Array<{ label: string; on?: b
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-  menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+  // Open above the anchor by default; flip below if it would run off the top, then clamp
+  // fully within the viewport so the options stay reachable (it grows upward from a button
+  // near the top of the list, which used to push the menu off the top of the screen).
+  const mh = menu.offsetHeight;
+  let top = r.top - 6 - mh;
+  if (top < 8) top = r.bottom + 6;
+  menu.style.top = `${Math.max(8, Math.min(top, window.innerHeight - mh - 8))}px`;
   const out = (e: Event): void => {
     if (!menu.contains(e.target as Node) && e.target !== anchor) closeAddMenu();
   };
