@@ -202,7 +202,7 @@ function positionGlow(i: number): void {
   shelfGlow.style.backgroundImage = a.artworkUrl ? `url('${a.artworkUrl}')` : 'none';
   if (!a.artworkUrl) shelfGlow.style.backgroundColor = a.primaryColor;
   shelfGlow.classList.add('on');
-  const d = 0.028 * window.innerWidth; // halo spread — a soft, contained backlight beyond the cover
+  const d = 0.015 * window.innerWidth; // halo spread — a soft, contained backlight beyond the cover
   const place = (): void => {
     const sr = shelf.getBoundingClientRect();
     const cr = (cover ?? el).getBoundingClientRect();
