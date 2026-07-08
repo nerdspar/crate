@@ -32,7 +32,9 @@ h2 { font-family: 'Newsreader Variable', serif; font-weight: 500; font-size: 1.4
 .pane-head h1 { font-size: 2.1rem; }
 .pane-sub { color: var(--brass); font-size: 0.95rem; }
 .detail-head { align-items: center; }
-.pane-logo { width: 34px; height: 34px; margin-left: auto; opacity: 0.9; flex: 0 0 auto; }
+/* The mark occupies ~46% of its square viewBox, so the box runs larger than the visible
+   crate. Size it so the crate itself roughly matches the header cap-height. */
+.pane-logo { width: 4.4rem; height: 4.4rem; margin: -0.8rem 0; margin-left: auto; opacity: 0.92; flex: 0 0 auto; }
 
 /* ---------- Forms / buttons ---------- */
 form#search-form, #crate-form { display: flex; gap: 0.6rem; }

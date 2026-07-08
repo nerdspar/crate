@@ -265,7 +265,7 @@ export class Service {
       title: a.title,
       artist: a.artist,
       year: a.year,
-      artworkUrl: this.cachedCoverFromRow(this.matchedRow(a.providerUri, a.title, a.artist)) ?? a.artworkUrl,
+      artworkUrl: this.cachedCoverFromRow(this.shelvedRow(a.providerUri, a.title, a.artist)) ?? a.artworkUrl,
       onShelf: shelved.has(a.providerUri),
       source,
     });
@@ -396,10 +396,13 @@ export class Service {
     return shelved.has(providerUri) || !!this.db.findLibraryAlbumByTitleArtist(title, artist);
   }
 
-  /** The already-shelved album Crate holds for this provider album (matched by uri, or across
-      Apple's library-vs-catalog ids by title+artist), else null. */
-  private matchedRow(providerUri: string, title: string, artist: string): AlbumRow | null {
-    return this.db.getAlbum(albumIdFromUri(providerUri)) ?? this.db.findLibraryAlbumByTitleArtist(title, artist);
+  /** The album Crate holds *on a shelf* for this provider album — matched by its own uri, or
+      (across Apple's library-vs-catalog ids) by a same title+artist release. Returns null when
+      nothing is actually shelved, so a removed album's leftover row doesn't read as on-shelf. */
+  private shelvedRow(providerUri: string, title: string, artist: string): AlbumRow | null {
+    const byId = this.db.getAlbum(albumIdFromUri(providerUri));
+    if (byId && this.db.isOnShelf(byId.id)) return byId;
+    return this.db.findLibraryAlbumByTitleArtist(title, artist); // JOINs shelf_items → shelved only
   }
 
   /** The shelf's own cached cover for an album row — the same file the wall serves (same-origin,
@@ -432,17 +435,16 @@ export class Service {
       this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
       this.ma.listLibraryAlbums({ source: opts.source, search: opts.search, favorite: opts.favorite, limit, offset }),
     ]);
-    const shelved = this.db.shelfedUris();
     const nameById = new Map(sources.map((s) => [s.instanceId, s.name]));
     const items: LibraryAlbum[] = raw.map((a) => {
-      const row = this.matchedRow(a.providerUri, a.title, a.artist);
+      const row = this.shelvedRow(a.providerUri, a.title, a.artist);
       return {
         providerUri: a.providerUri,
         title: a.title,
         artist: a.artist,
         year: a.year,
         artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl,
-        onShelf: shelved.has(a.providerUri) || !!row,
+        onShelf: !!row,
         albumId: row?.id ?? null,
         source: (a.sourceInstanceId ? nameById.get(a.sourceInstanceId) : undefined) ?? 'Library',
         sourceInstanceId: a.sourceInstanceId,
