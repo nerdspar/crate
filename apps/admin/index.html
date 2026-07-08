@@ -14,10 +14,6 @@
       <img class="pane-logo" alt="Crate" data-logo>
     </header>
     <div class="add-bar">
-      <div class="seg" id="add-mode">
-        <button class="seg-btn on" data-mode="library">My Library</button>
-        <button class="seg-btn" data-mode="search">Search</button>
-      </div>
       <div class="seg" id="add-type">
         <button class="seg-btn on" data-type="album">Albums</button>
         <button class="seg-btn" data-type="playlist">Playlists</button>
@@ -25,11 +21,10 @@
       <select id="source-sel" class="source-sel" hidden></select>
     </div>
     <div class="lib-toolbar">
-      <input id="add-search" type="search" placeholder="Filter your library…" autocomplete="off">
-      <label class="lib-fav" id="fav-wrap"><input type="checkbox" id="lib-fav"> Favorites</label>
+      <input id="add-search" type="search" placeholder="Search your library &amp; Apple Music…" autocomplete="off">
       <button id="lib-import" class="ghost">Add all</button>
     </div>
-    <div id="add-list" class="grid"></div>
+    <div id="add-list"></div>
     <button id="add-more" class="ghost load-more" hidden>Load more</button>
   </section>
 

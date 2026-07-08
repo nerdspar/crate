@@ -70,6 +70,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 #lib-import { white-space: nowrap; }
 .load-more { display: block; margin: 1.2rem auto 0; }
 .card.busy { opacity: 0.55; pointer-events: none; }
+.add-section + .add-section { margin-top: 2vh; }
+.sec-head {
+  color: var(--brass); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; margin: 0 0 0.9vh 0.15rem;
+}
 
 /* ---------- Album cards (shared by results + shelf) ---------- */
 .grid {

@@ -19,18 +19,17 @@ const toast = document.getElementById('toast') as HTMLElement;
 
 type ShelfView = 'list' | 'tile';
 type ShelfSort = 'custom' | 'added' | 'artist' | 'title' | 'year';
-type AddMode = 'library' | 'search';
 type AddType = 'album' | 'playlist';
 
-// Add tab: My Library / Search × Albums / Playlists, source-aware.
-let addMode: AddMode = 'library';
+// Add tab: one search over your library + the catalog, per content type. Source-aware.
 let addType: AddType = 'album';
 let sources: MusicSourceInfo[] = [];
 let curSource = 'all';
 let addQuery = '';
-let addFav = false;
-let addAlbums: Array<LibraryAlbum | SearchAlbum> = [];
-let addPlaylists: LibraryPlaylist[] = [];
+let libAlbums: LibraryAlbum[] = [];
+let catAlbums: SearchAlbum[] = [];
+let libPlaylists: LibraryPlaylist[] = [];
+let catPlaylists: LibraryPlaylist[] = [];
 let addOffset = 0;
 let addHasMore = false;
 let addLoading = false;
@@ -80,11 +79,9 @@ document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => {
   b.addEventListener('click', () => switchTab(b.dataset['tab']!));
 });
 
-/* ================= Add (My Library / Search × Albums / Playlists) ================= */
+/* ================= Add — one search over your library + the catalog ================= */
 const sourceSel = document.getElementById('source-sel') as HTMLSelectElement;
 const addSearchInput = document.getElementById('add-search') as HTMLInputElement;
-const favWrap = document.getElementById('fav-wrap') as HTMLElement;
-const favCb = document.getElementById('lib-fav') as HTMLInputElement;
 const importBtn = document.getElementById('lib-import') as HTMLButtonElement;
 const addListEl = document.getElementById('add-list') as HTMLElement;
 const addMoreBtn = document.getElementById('add-more') as HTMLButtonElement;
@@ -95,21 +92,11 @@ function mkBtn(label: string, cls: string): HTMLButtonElement {
   b.textContent = label;
   return b;
 }
+const taKey = (t: string, a: string): string => `${t} ${a}`.toLowerCase().replace(/\s+/g, ' ').trim();
 
 function updateAddToolbar(): void {
-  addSearchInput.placeholder =
-    addMode === 'library' ? 'Filter your library…' : `Search — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
-  // Favorites + "Add all" only apply to browsing your library's albums.
-  const libAlbums = addMode === 'library' && addType === 'album';
-  favWrap.hidden = !libAlbums;
-  importBtn.hidden = !libAlbums;
-}
-
-function setAddMode(mode: AddMode): void {
-  addMode = mode;
-  document.querySelectorAll<HTMLElement>('#add-mode .seg-btn').forEach((b) => b.classList.toggle('on', b.dataset['mode'] === mode));
-  updateAddToolbar();
-  void reloadAdd(true);
+  addSearchInput.placeholder = `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
+  importBtn.hidden = addType !== 'album'; // "Add all" only for albums
 }
 function setAddType(type: AddType): void {
   addType = type;
@@ -117,7 +104,6 @@ function setAddType(type: AddType): void {
   updateAddToolbar();
   void reloadAdd(true);
 }
-document.querySelectorAll<HTMLElement>('#add-mode .seg-btn').forEach((b) => b.addEventListener('click', () => setAddMode(b.dataset['mode'] as AddMode)));
 document.querySelectorAll<HTMLElement>('#add-type .seg-btn').forEach((b) => b.addEventListener('click', () => setAddType(b.dataset['type'] as AddType)));
 
 function syncSourceSel(): void {
@@ -146,66 +132,69 @@ sourceSel.addEventListener('change', () => {
   void reloadAdd(true);
 });
 
-function addEmptyMsg(): string {
-  const kind = addType === 'album' ? 'albums' : 'playlists';
-  if (addMode === 'search') return addQuery ? 'No matches.' : `Search for ${addType === 'album' ? 'an album or artist' : 'a playlist'} above.`;
-  return addQuery || addFav ? `No matching ${kind}.` : `No ${kind} in your library yet.`;
+/** Header for the catalog section — one source (dropdown-scoped) or the single source's name. */
+function catalogLabel(): string {
+  if (curSource !== 'all') return `From ${sources.find((s) => s.instanceId === curSource)?.name ?? 'source'}`;
+  return sources.length === 1 ? `From ${sources[0]!.name}` : 'From Apple Music';
 }
 
-/** Load the current mode+type combination into #add-list. A monotonic token guards
-    against a slower earlier request landing after a newer one. */
+/** Load the current type into #add-list: your library on top, catalog results below when
+    searching. A monotonic token guards against a slower earlier request landing late. */
 async function reloadAdd(reset: boolean): Promise<void> {
   if (!reset && addLoading) return; // don't double-fire "Load more"
   const token = ++addToken;
   addLoading = true;
+  const q = addQuery;
   if (reset) {
     addOffset = 0;
+    addListEl.className = '';
     addListEl.innerHTML = `<div class="empty">Loading…</div>`;
   } else {
     addMoreBtn.textContent = 'Loading…';
   }
   try {
     if (addType === 'album') {
-      let items: Array<LibraryAlbum | SearchAlbum> = [];
-      let hasMore = false;
-      if (addMode === 'library') {
-        const res = await client.listLibraryAlbums({
-          source: curSource === 'all' ? undefined : curSource,
-          search: addQuery || undefined,
-          favorite: addFav || undefined,
-          limit: ADD_PAGE,
-          offset: addOffset,
-        });
+      const res = await client.listLibraryAlbums({
+        source: curSource === 'all' ? undefined : curSource,
+        search: q || undefined,
+        limit: ADD_PAGE,
+        offset: addOffset,
+      });
+      if (token !== addToken) return;
+      sources = res.sources;
+      syncSourceSel();
+      libAlbums = reset ? res.items : [...libAlbums, ...res.items];
+      addHasMore = res.hasMore;
+      addOffset += res.items.length;
+      if (q) {
+        const cat = await client.search(q, curSource);
         if (token !== addToken) return;
-        sources = res.sources;
-        syncSourceSel();
-        items = res.items;
-        hasMore = res.hasMore;
+        // Only drop catalog hits that duplicate a library-section row; keep already-shelved
+        // ones (they show "On shelf") so an album you own never silently vanishes from search.
+        const libKeys = new Set(libAlbums.map((a) => taKey(a.title, a.artist)));
+        catAlbums = cat.filter((a) => !libKeys.has(taKey(a.title, a.artist)));
       } else {
-        items = addQuery ? await client.search(addQuery, curSource) : [];
-        if (token !== addToken) return;
+        catAlbums = [];
       }
-      addAlbums = reset ? items : [...addAlbums, ...items];
-      addOffset += items.length;
-      addHasMore = hasMore;
-      renderAlbumList();
     } else {
-      let pls: LibraryPlaylist[];
-      if (addMode === 'library') {
-        pls = await client.listLibraryPlaylists();
-        if (token !== addToken) return;
-        if (addQuery) {
-          const q = addQuery.toLowerCase();
-          pls = pls.filter((p) => p.name.toLowerCase().includes(q) || (p.owner ?? '').toLowerCase().includes(q));
-        }
-      } else {
-        pls = addQuery ? await client.searchPlaylists(addQuery) : [];
-        if (token !== addToken) return;
+      let pls = await client.listLibraryPlaylists();
+      if (token !== addToken) return;
+      if (q) {
+        const ql = q.toLowerCase();
+        pls = pls.filter((p) => p.name.toLowerCase().includes(ql) || (p.owner ?? '').toLowerCase().includes(ql));
       }
-      addPlaylists = pls;
-      addHasMore = false;
-      renderPlaylistList();
+      libPlaylists = pls;
+      if (q) {
+        const cat = await client.searchPlaylists(q);
+        if (token !== addToken) return;
+        const libUris = new Set(libPlaylists.map((p) => p.providerUri));
+        const libNames = new Set(libPlaylists.map((p) => p.name.toLowerCase()));
+        catPlaylists = cat.filter((p) => !libUris.has(p.providerUri) && !libNames.has(p.name.toLowerCase()));
+      } else {
+        catPlaylists = [];
+      }
     }
+    renderAdd();
   } catch {
     if (token === addToken) addListEl.innerHTML = `<div class="empty">Could not load — check the connection.</div>`;
   } finally {
@@ -214,49 +203,73 @@ async function reloadAdd(reset: boolean): Promise<void> {
   }
 }
 
-function renderAlbumList(): void {
-  if (!addAlbums.length) {
-    addListEl.innerHTML = `<div class="empty">${addEmptyMsg()}</div>`;
+function addSection(title: string, cards: HTMLElement[]): void {
+  const sec = document.createElement('div');
+  sec.className = 'add-section';
+  if (title) {
+    const h = document.createElement('div');
+    h.className = 'sec-head';
+    h.textContent = title;
+    sec.appendChild(h);
+  }
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  cards.forEach((c) => grid.appendChild(c));
+  sec.appendChild(grid);
+  addListEl.appendChild(sec);
+}
+
+function renderAdd(): void {
+  const searching = !!addQuery;
+  addListEl.className = '';
+  const libCards = addType === 'album' ? libAlbums.map(albumCard) : libPlaylists.map(playlistCard);
+  const catCards = addType === 'album' ? catAlbums.map(albumCard) : catPlaylists.map(playlistCard);
+  if (!libCards.length && !catCards.length) {
+    const kind = addType === 'album' ? 'albums' : 'playlists';
+    addListEl.innerHTML = `<div class="empty">${searching ? 'No matches.' : `No ${kind} in your library yet.`}</div>`;
     addMoreBtn.hidden = true;
     return;
   }
-  addListEl.className = 'grid';
   addListEl.innerHTML = '';
-  for (const it of addAlbums) {
-    const albumId = 'albumId' in it ? it.albumId : null;
-    const card = document.createElement('div');
-    card.className = 'card';
-    const srcName = sources.length > 1 ? it.source : '';
-    const src = srcName ? ` · ${esc(srcName)}` : '';
-    card.innerHTML = `
-      ${artHtml(it.artworkUrl)}
-      <div class="body">
-        <div class="meta">
-          <div class="t">${esc(it.title)}</div>
-          <div class="a">${esc(it.artist)}</div>
-          <div class="y">${it.year ?? ''}${src}</div>
-        </div>
-        <div class="card-actions"></div>
-      </div>`;
-    const actions = card.querySelector('.card-actions') as HTMLElement;
-    if (it.onShelf && albumId) {
-      const shelvesBtn = mkBtn('Shelves', 'ghost');
-      shelvesBtn.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, albumId));
-      const rmBtn = mkBtn('Remove', 'ghost');
-      rmBtn.addEventListener('click', () => void removeAlbumFromBrowse(it, albumId, card));
-      actions.append(shelvesBtn, rmBtn);
-    } else if (it.onShelf) {
-      const b = mkBtn('On shelf', 'ghost');
-      b.disabled = true;
-      actions.append(b);
-    } else {
-      const b = mkBtn('Add', '');
-      b.addEventListener('click', () => void addAlbumFromBrowse(it, card, b));
-      actions.append(b);
-    }
-    addListEl.appendChild(card);
+  if (libCards.length) addSection(searching ? 'In your library' : '', libCards);
+  if (searching && catCards.length) addSection(catalogLabel(), catCards);
+  // Load-more paginates the browsed library only; searches show all matches at once.
+  addMoreBtn.hidden = searching || addType !== 'album' || !addHasMore;
+}
+
+function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
+  const albumId = 'albumId' in it ? it.albumId : null;
+  const card = document.createElement('div');
+  card.className = 'card';
+  const srcName = sources.length > 1 ? it.source : '';
+  const src = srcName ? ` · ${esc(srcName)}` : '';
+  card.innerHTML = `
+    ${artHtml(it.artworkUrl)}
+    <div class="body">
+      <div class="meta">
+        <div class="t">${esc(it.title)}</div>
+        <div class="a">${esc(it.artist)}</div>
+        <div class="y">${it.year ?? ''}${src}</div>
+      </div>
+      <div class="card-actions"></div>
+    </div>`;
+  const actions = card.querySelector('.card-actions') as HTMLElement;
+  if (it.onShelf && albumId) {
+    const shelvesBtn = mkBtn('Shelves', 'ghost');
+    shelvesBtn.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, albumId));
+    const rmBtn = mkBtn('Remove', 'ghost');
+    rmBtn.addEventListener('click', () => void removeAlbumFromBrowse(it, albumId, card));
+    actions.append(shelvesBtn, rmBtn);
+  } else if (it.onShelf) {
+    const b = mkBtn('On shelf', 'ghost');
+    b.disabled = true;
+    actions.append(b);
+  } else {
+    const b = mkBtn('Add', '');
+    b.addEventListener('click', () => void addAlbumFromBrowse(it, card, b));
+    actions.append(b);
   }
-  addMoreBtn.hidden = !addHasMore;
+  return card;
 }
 
 async function addAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
@@ -268,7 +281,7 @@ async function addAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, card: HTMLElem
     it.onShelf = true;
     if ('albumId' in it) it.albumId = r.albumId;
     showToast(`Added ${it.title}`);
-    renderAlbumList();
+    renderAdd();
     void loadShelvesIndex();
   } catch (e) {
     btn.disabled = false;
@@ -286,7 +299,7 @@ async function removeAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, albumId: st
     it.onShelf = false;
     if ('albumId' in it) it.albumId = null;
     showToast(`Removed ${it.title}`);
-    renderAlbumList();
+    renderAdd();
     void loadShelvesIndex();
   } catch (e) {
     showToast(`Failed: ${(e as Error).message}`);
@@ -295,39 +308,29 @@ async function removeAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, albumId: st
   }
 }
 
-function renderPlaylistList(): void {
-  if (!addPlaylists.length) {
-    addListEl.innerHTML = `<div class="empty">${addEmptyMsg()}</div>`;
-    addMoreBtn.hidden = true;
-    return;
+function playlistCard(p: LibraryPlaylist): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    ${artHtml(p.artworkUrl)}
+    <div class="body">
+      <div class="meta">
+        <div class="t">${esc(p.name)}</div>
+        <div class="a">${esc(p.owner ?? 'Playlist')}</div>
+      </div>
+      <div class="card-actions"></div>
+    </div>`;
+  const actions = card.querySelector('.card-actions') as HTMLElement;
+  if (p.onShelf) {
+    const b = mkBtn('Added', 'ghost');
+    b.disabled = true;
+    actions.append(b);
+  } else {
+    const b = mkBtn('Add', '');
+    b.addEventListener('click', () => void addPlaylistToShelf(p, card, b));
+    actions.append(b);
   }
-  addListEl.className = 'grid';
-  addListEl.innerHTML = '';
-  for (const p of addPlaylists) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      ${artHtml(p.artworkUrl)}
-      <div class="body">
-        <div class="meta">
-          <div class="t">${esc(p.name)}</div>
-          <div class="a">${esc(p.owner ?? 'Playlist')}</div>
-        </div>
-        <div class="card-actions"></div>
-      </div>`;
-    const actions = card.querySelector('.card-actions') as HTMLElement;
-    if (p.onShelf) {
-      const b = mkBtn('Added', 'ghost');
-      b.disabled = true;
-      actions.append(b);
-    } else {
-      const b = mkBtn('Add', '');
-      b.addEventListener('click', () => void addPlaylistToShelf(p, card, b));
-      actions.append(b);
-    }
-    addListEl.appendChild(card);
-  }
-  addMoreBtn.hidden = true;
+  return card;
 }
 
 async function addPlaylistToShelf(p: LibraryPlaylist, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
@@ -338,7 +341,7 @@ async function addPlaylistToShelf(p: LibraryPlaylist, card: HTMLElement, btn: HT
     await client.addPlaylist(p.providerUri);
     p.onShelf = true;
     showToast(`Added ${p.name}`);
-    renderPlaylistList();
+    renderAdd();
     void loadShelvesIndex();
   } catch (e) {
     btn.disabled = false;
@@ -376,10 +379,6 @@ addSearchInput.addEventListener('input', () => {
     addQuery = addSearchInput.value.trim();
     void reloadAdd(true);
   }, 300);
-});
-favCb.addEventListener('change', () => {
-  addFav = favCb.checked;
-  void reloadAdd(true);
 });
 importBtn.addEventListener('click', () => void importAll());
 addMoreBtn.addEventListener('click', () => void reloadAdd(false));
@@ -970,6 +969,6 @@ defaultSpeakerSel.addEventListener('change', async () => {
 document.querySelectorAll<HTMLImageElement>('img[data-logo]').forEach((img) => (img.src = crateMarkMono));
 void loadSources();
 updateAddToolbar();
-setAddType('album'); // seeds the Add tab (My Library · Albums) via reloadAdd
+setAddType('album'); // seeds the Add tab (Albums) via reloadAdd
 void loadShelvesIndex();
 void loadSettingsPanel();
