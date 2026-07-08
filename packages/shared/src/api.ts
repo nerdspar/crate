@@ -157,6 +157,8 @@ export interface LibraryAlbum {
   year: number | null;
   artworkUrl: string | null;
   onShelf: boolean;
+  /** Crate album id when it's already shelved (for managing shelves / removing), else null. */
+  albumId: string | null;
   /** Display name of the source this album is saved under (e.g. "Apple Music"). */
   source: string;
   /** The source's provider-instance id (for scoping/filtering); null if unknown. */

@@ -9,6 +9,7 @@
   --tabbar-h: 64px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; } /* author display rules must not override the hidden attr */
 body {
   background: var(--bg);
   color: var(--ink);
@@ -27,10 +28,11 @@ h2 { font-family: 'Newsreader Variable', serif; font-weight: 500; font-size: 1.4
 .tab-pane.on { display: block; animation: fade 0.18s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-.pane-head { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 1.8vh; }
+.pane-head { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 1.8vh; }
 .pane-head h1 { font-size: 2.1rem; }
 .pane-sub { color: var(--brass); font-size: 0.95rem; }
 .detail-head { align-items: center; }
+.pane-logo { width: 34px; height: 34px; margin-left: auto; opacity: 0.9; flex: 0 0 auto; }
 
 /* ---------- Forms / buttons ---------- */
 form#search-form, #crate-form { display: flex; gap: 0.6rem; }

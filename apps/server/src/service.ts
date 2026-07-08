@@ -265,7 +265,7 @@ export class Service {
       title: a.title,
       artist: a.artist,
       year: a.year,
-      artworkUrl: this.cachedCover(a.providerUri, a.title, a.artist) ?? a.artworkUrl,
+      artworkUrl: this.cachedCoverFromRow(this.matchedRow(a.providerUri, a.title, a.artist)) ?? a.artworkUrl,
       onShelf: shelved.has(a.providerUri),
       source,
     });
@@ -396,11 +396,15 @@ export class Service {
     return shelved.has(providerUri) || !!this.db.findLibraryAlbumByTitleArtist(title, artist);
   }
 
-  /** The shelf's own cached cover for an album we already hold — the same file the wall
-      serves (same-origin, reliable, no expiring provider URLs). Falls back to null so the
-      caller can use the provider's remote URL for albums we haven't ingested yet. */
-  private cachedCover(providerUri: string, title: string, artist: string): string | null {
-    const row = this.db.getAlbum(albumIdFromUri(providerUri)) ?? this.db.findLibraryAlbumByTitleArtist(title, artist);
+  /** The already-shelved album Crate holds for this provider album (matched by uri, or across
+      Apple's library-vs-catalog ids by title+artist), else null. */
+  private matchedRow(providerUri: string, title: string, artist: string): AlbumRow | null {
+    return this.db.getAlbum(albumIdFromUri(providerUri)) ?? this.db.findLibraryAlbumByTitleArtist(title, artist);
+  }
+
+  /** The shelf's own cached cover for an album row — the same file the wall serves (same-origin,
+      reliable, no expiring provider URLs). Null when no local rendition exists yet. */
+  private cachedCoverFromRow(row: AlbumRow | null): string | null {
     if (!row) return null;
     let file: string | null = row.artwork_path;
     if (row.overrides) {
@@ -430,16 +434,20 @@ export class Service {
     ]);
     const shelved = this.db.shelfedUris();
     const nameById = new Map(sources.map((s) => [s.instanceId, s.name]));
-    const items: LibraryAlbum[] = raw.map((a) => ({
-      providerUri: a.providerUri,
-      title: a.title,
-      artist: a.artist,
-      year: a.year,
-      artworkUrl: this.cachedCover(a.providerUri, a.title, a.artist) ?? a.artworkUrl,
-      onShelf: this.albumOnShelf(a.providerUri, a.title, a.artist, shelved),
-      source: (a.sourceInstanceId ? nameById.get(a.sourceInstanceId) : undefined) ?? 'Library',
-      sourceInstanceId: a.sourceInstanceId,
-    }));
+    const items: LibraryAlbum[] = raw.map((a) => {
+      const row = this.matchedRow(a.providerUri, a.title, a.artist);
+      return {
+        providerUri: a.providerUri,
+        title: a.title,
+        artist: a.artist,
+        year: a.year,
+        artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl,
+        onShelf: shelved.has(a.providerUri) || !!row,
+        albumId: row?.id ?? null,
+        source: (a.sourceInstanceId ? nameById.get(a.sourceInstanceId) : undefined) ?? 'Library',
+        sourceInstanceId: a.sourceInstanceId,
+      };
+    });
     return { items, offset, hasMore: raw.length >= limit, sources };
   }
 

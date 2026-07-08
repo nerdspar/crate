@@ -7,43 +7,37 @@
 </head>
 <body>
 <main id="app">
-  <!-- ============ ADD (My Library / Search) ============ -->
+  <!-- ============ ADD (My Library / Search × Albums / Playlists) ============ -->
   <section class="tab-pane on" data-tab="search">
-    <header class="pane-head"><h1>Add albums</h1></header>
+    <header class="pane-head">
+      <h1>Add</h1>
+      <img class="pane-logo" alt="Crate" data-logo>
+    </header>
     <div class="add-bar">
       <div class="seg" id="add-mode">
         <button class="seg-btn on" data-mode="library">My Library</button>
         <button class="seg-btn" data-mode="search">Search</button>
       </div>
+      <div class="seg" id="add-type">
+        <button class="seg-btn on" data-type="album">Albums</button>
+        <button class="seg-btn" data-type="playlist">Playlists</button>
+      </div>
       <select id="source-sel" class="source-sel" hidden></select>
     </div>
-
-    <!-- My Library: browse + bulk-add your saved albums -->
-    <div id="library-mode">
-      <div class="lib-toolbar">
-        <input id="lib-search" type="search" placeholder="Filter your library…" autocomplete="off">
-        <label class="lib-fav"><input type="checkbox" id="lib-fav"> Favorites</label>
-        <button id="lib-import" class="ghost">Add all</button>
-      </div>
-      <div id="library-list" class="grid"></div>
-      <button id="lib-more" class="ghost load-more" hidden>Load more</button>
+    <div class="lib-toolbar">
+      <input id="add-search" type="search" placeholder="Filter your library…" autocomplete="off">
+      <label class="lib-fav" id="fav-wrap"><input type="checkbox" id="lib-fav"> Favorites</label>
+      <button id="lib-import" class="ghost">Add all</button>
     </div>
-
-    <!-- Search: find any album not already in your library -->
-    <div id="search-mode" hidden>
-      <form id="search-form">
-        <input id="q" type="search" placeholder="Search — album or artist…" autocomplete="off">
-        <button type="submit">Search</button>
-      </form>
-      <div id="results" class="grid"></div>
-    </div>
+    <div id="add-list" class="grid"></div>
+    <button id="add-more" class="ghost load-more" hidden>Load more</button>
   </section>
 
   <!-- ============ SHELVES ============ -->
   <section class="tab-pane" data-tab="shelves">
     <!-- Index: the list of shelves (All is just the default one) -->
     <div id="shelves-index">
-      <header class="pane-head"><h1>Shelves</h1></header>
+      <header class="pane-head"><h1>Shelves</h1><img class="pane-logo" alt="Crate" data-logo></header>
       <div id="shelves-list"></div>
       <form id="crate-form">
         <input id="crate-name" type="text" placeholder="New shelf name…" autocomplete="off">
@@ -57,6 +51,9 @@
         <h1 id="shelf-detail-name">All albums</h1>
         <span id="shelf-detail-count" class="pane-sub"></span>
       </header>
+      <div class="lib-toolbar">
+        <input id="shelf-filter" type="search" placeholder="Filter this shelf…" autocomplete="off">
+      </div>
       <div class="toolbar">
         <label class="sortlabel">Sort
           <select id="shelf-sort">
@@ -78,7 +75,7 @@
 
   <!-- ============ SETTINGS ============ -->
   <section class="tab-pane" data-tab="settings">
-    <header class="pane-head"><h1>Settings</h1></header>
+    <header class="pane-head"><h1>Settings</h1><img class="pane-logo" alt="Crate" data-logo></header>
     <div class="field">
       <label>Default speaker <span class="hint">(where albums play when none is picked)</span></label>
       <select id="default-speaker"><option value="">Loading…</option></select>

@@ -4,8 +4,9 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, type LibraryAlbum, type MusicSourceInfo, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
+import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
@@ -14,26 +15,27 @@ import './styles.css';
 
 const client = new CrateClient('');
 
-const qInput = document.getElementById('q') as HTMLInputElement;
-const form = document.getElementById('search-form') as HTMLFormElement;
-const resultsEl = document.getElementById('results') as HTMLElement;
 const toast = document.getElementById('toast') as HTMLElement;
 
 type ShelfView = 'list' | 'tile';
 type ShelfSort = 'custom' | 'added' | 'artist' | 'title' | 'year';
+type AddMode = 'library' | 'search';
+type AddType = 'album' | 'playlist';
 
-let results: SearchAlbum[] = [];
-// Add tab: "My Library" browse/import vs "Search", both source-aware.
-let addMode: 'library' | 'search' = 'library';
+// Add tab: My Library / Search × Albums / Playlists, source-aware.
+let addMode: AddMode = 'library';
+let addType: AddType = 'album';
 let sources: MusicSourceInfo[] = [];
 let curSource = 'all';
-let libItems: LibraryAlbum[] = [];
-let libOffset = 0;
-let libHasMore = false;
-let libLoading = false;
-let libSearch = '';
-let libFav = false;
-const LIB_PAGE = 60;
+let addQuery = '';
+let addFav = false;
+let addAlbums: Array<LibraryAlbum | SearchAlbum> = [];
+let addPlaylists: LibraryPlaylist[] = [];
+let addOffset = 0;
+let addHasMore = false;
+let addLoading = false;
+let addToken = 0; // guards against out-of-order async responses
+const ADD_PAGE = 60;
 let shelves: Shelf[] = [];
 let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
@@ -42,6 +44,7 @@ let libraryCount = 0; // size of the "All" shelf
 // Currently open shelf detail: 'all' = the library, else a named shelf id; null = index.
 let openShelfId: string | null = null;
 let openShelfName = '';
+let shelfFilter = '';
 let detailItems: ShelfItem[] = [];
 const sortByShelf = new Map<string, ShelfSort>();
 const viewByShelf = new Map<string, ShelfView>();
@@ -77,77 +80,45 @@ document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => {
   b.addEventListener('click', () => switchTab(b.dataset['tab']!));
 });
 
-/* ================= Search ================= */
-function renderResults(): void {
-  if (results.length === 0) {
-    resultsEl.innerHTML = `<div class="empty">No results yet — search above.</div>`;
-    return;
-  }
-  resultsEl.innerHTML = '';
-  results.forEach((a, i) => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      ${artHtml(a.artworkUrl)}
-      <div class="body">
-        <div class="meta">
-          <div class="t">${esc(a.title)}</div>
-          <div class="a">${esc(a.artist)}</div>
-          <div class="y">${a.year ?? ''} · ${esc(a.provider)}</div>
-        </div>
-        <button ${a.onShelf ? 'disabled' : ''} data-i="${i}">${a.onShelf ? 'On shelf' : 'Add'}</button>
-      </div>`;
-    const btn = card.querySelector('button')!;
-    if (!a.onShelf) btn.addEventListener('click', () => void addToShelf(a, btn));
-    resultsEl.appendChild(card);
-  });
-}
-
-async function search(query: string): Promise<void> {
-  resultsEl.innerHTML = `<div class="empty">Searching…</div>`;
-  try {
-    results = await client.search(query, curSource);
-    renderResults();
-  } catch (e) {
-    resultsEl.innerHTML = `<div class="empty">Search failed: ${esc((e as Error).message)}</div>`;
-  }
-}
-
-async function addToShelf(album: SearchAlbum, btn: HTMLButtonElement): Promise<void> {
-  btn.disabled = true;
-  btn.textContent = 'Adding…';
-  try {
-    await client.addToShelf({ providerUri: album.providerUri });
-    album.onShelf = true;
-    btn.textContent = 'On shelf';
-    showToast(`Added ${album.title}`);
-    await loadShelvesIndex();
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = 'Add';
-    showToast(`Failed: ${(e as Error).message}`);
-  }
-}
-
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const q = qInput.value.trim();
-  if (q) void search(q);
-});
-
-/* ================= Add: mode toggle + source filter ================= */
+/* ================= Add (My Library / Search × Albums / Playlists) ================= */
 const sourceSel = document.getElementById('source-sel') as HTMLSelectElement;
-const libraryModeEl = document.getElementById('library-mode') as HTMLElement;
-const searchModeEl = document.getElementById('search-mode') as HTMLElement;
+const addSearchInput = document.getElementById('add-search') as HTMLInputElement;
+const favWrap = document.getElementById('fav-wrap') as HTMLElement;
+const favCb = document.getElementById('lib-fav') as HTMLInputElement;
+const importBtn = document.getElementById('lib-import') as HTMLButtonElement;
+const addListEl = document.getElementById('add-list') as HTMLElement;
+const addMoreBtn = document.getElementById('add-more') as HTMLButtonElement;
 
-function setAddMode(mode: 'library' | 'search'): void {
-  addMode = mode;
-  document.querySelectorAll<HTMLElement>('.seg-btn').forEach((b) => b.classList.toggle('on', b.dataset['mode'] === mode));
-  libraryModeEl.hidden = mode !== 'library';
-  searchModeEl.hidden = mode !== 'search';
-  if (mode === 'library' && libItems.length === 0) void loadLibrary(true);
+function mkBtn(label: string, cls: string): HTMLButtonElement {
+  const b = document.createElement('button');
+  if (cls) b.className = cls;
+  b.textContent = label;
+  return b;
 }
-document.querySelectorAll<HTMLElement>('.seg-btn').forEach((b) => b.addEventListener('click', () => setAddMode(b.dataset['mode'] as 'library' | 'search')));
+
+function updateAddToolbar(): void {
+  addSearchInput.placeholder =
+    addMode === 'library' ? 'Filter your library…' : `Search — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
+  // Favorites + "Add all" only apply to browsing your library's albums.
+  const libAlbums = addMode === 'library' && addType === 'album';
+  favWrap.hidden = !libAlbums;
+  importBtn.hidden = !libAlbums;
+}
+
+function setAddMode(mode: AddMode): void {
+  addMode = mode;
+  document.querySelectorAll<HTMLElement>('#add-mode .seg-btn').forEach((b) => b.classList.toggle('on', b.dataset['mode'] === mode));
+  updateAddToolbar();
+  void reloadAdd(true);
+}
+function setAddType(type: AddType): void {
+  addType = type;
+  document.querySelectorAll<HTMLElement>('#add-type .seg-btn').forEach((b) => b.classList.toggle('on', b.dataset['type'] === type));
+  updateAddToolbar();
+  void reloadAdd(true);
+}
+document.querySelectorAll<HTMLElement>('#add-mode .seg-btn').forEach((b) => b.addEventListener('click', () => setAddMode(b.dataset['mode'] as AddMode)));
+document.querySelectorAll<HTMLElement>('#add-type .seg-btn').forEach((b) => b.addEventListener('click', () => setAddType(b.dataset['type'] as AddType)));
 
 function syncSourceSel(): void {
   if (sources.length <= 1) {
@@ -156,8 +127,7 @@ function syncSourceSel(): void {
   }
   if (sourceSel.options.length !== sources.length + 1) {
     sourceSel.innerHTML = '';
-    const all = new Option('All sources', 'all');
-    sourceSel.add(all);
+    sourceSel.add(new Option('All sources', 'all'));
     for (const s of sources) sourceSel.add(new Option(s.name, s.instanceId));
   }
   sourceSel.value = curSource;
@@ -173,60 +143,91 @@ async function loadSources(): Promise<void> {
 }
 sourceSel.addEventListener('change', () => {
   curSource = sourceSel.value;
-  if (addMode === 'library') void loadLibrary(true);
-  else if (qInput.value.trim()) void search(qInput.value.trim());
+  void reloadAdd(true);
 });
 
-/* ================= My Library: browse + bulk import ================= */
-const libraryListEl = document.getElementById('library-list') as HTMLElement;
-const libSearchInput = document.getElementById('lib-search') as HTMLInputElement;
-const libFavCb = document.getElementById('lib-fav') as HTMLInputElement;
-const libImportBtn = document.getElementById('lib-import') as HTMLButtonElement;
-const libMoreBtn = document.getElementById('lib-more') as HTMLButtonElement;
+function addEmptyMsg(): string {
+  const kind = addType === 'album' ? 'albums' : 'playlists';
+  if (addMode === 'search') return addQuery ? 'No matches.' : `Search for ${addType === 'album' ? 'an album or artist' : 'a playlist'} above.`;
+  return addQuery || addFav ? `No matching ${kind}.` : `No ${kind} in your library yet.`;
+}
 
-async function loadLibrary(reset: boolean): Promise<void> {
-  if (libLoading) return;
-  libLoading = true;
+/** Load the current mode+type combination into #add-list. A monotonic token guards
+    against a slower earlier request landing after a newer one. */
+async function reloadAdd(reset: boolean): Promise<void> {
+  if (!reset && addLoading) return; // don't double-fire "Load more"
+  const token = ++addToken;
+  addLoading = true;
   if (reset) {
-    libOffset = 0;
-    libItems = [];
-    libraryListEl.innerHTML = `<div class="empty">Loading…</div>`;
+    addOffset = 0;
+    addListEl.innerHTML = `<div class="empty">Loading…</div>`;
   } else {
-    libMoreBtn.textContent = 'Loading…';
+    addMoreBtn.textContent = 'Loading…';
   }
   try {
-    const res = await client.listLibraryAlbums({
-      source: curSource === 'all' ? undefined : curSource,
-      search: libSearch || undefined,
-      favorite: libFav || undefined,
-      limit: LIB_PAGE,
-      offset: libOffset,
-    });
-    sources = res.sources;
-    syncSourceSel();
-    libItems = reset ? res.items : libItems.concat(res.items);
-    libHasMore = res.hasMore;
-    libOffset += res.items.length;
-    renderLibrary();
+    if (addType === 'album') {
+      let items: Array<LibraryAlbum | SearchAlbum> = [];
+      let hasMore = false;
+      if (addMode === 'library') {
+        const res = await client.listLibraryAlbums({
+          source: curSource === 'all' ? undefined : curSource,
+          search: addQuery || undefined,
+          favorite: addFav || undefined,
+          limit: ADD_PAGE,
+          offset: addOffset,
+        });
+        if (token !== addToken) return;
+        sources = res.sources;
+        syncSourceSel();
+        items = res.items;
+        hasMore = res.hasMore;
+      } else {
+        items = addQuery ? await client.search(addQuery, curSource) : [];
+        if (token !== addToken) return;
+      }
+      addAlbums = reset ? items : [...addAlbums, ...items];
+      addOffset += items.length;
+      addHasMore = hasMore;
+      renderAlbumList();
+    } else {
+      let pls: LibraryPlaylist[];
+      if (addMode === 'library') {
+        pls = await client.listLibraryPlaylists();
+        if (token !== addToken) return;
+        if (addQuery) {
+          const q = addQuery.toLowerCase();
+          pls = pls.filter((p) => p.name.toLowerCase().includes(q) || (p.owner ?? '').toLowerCase().includes(q));
+        }
+      } else {
+        pls = addQuery ? await client.searchPlaylists(addQuery) : [];
+        if (token !== addToken) return;
+      }
+      addPlaylists = pls;
+      addHasMore = false;
+      renderPlaylistList();
+    }
   } catch {
-    libraryListEl.innerHTML = `<div class="empty">Could not load your library.</div>`;
+    if (token === addToken) addListEl.innerHTML = `<div class="empty">Could not load — check the connection.</div>`;
   } finally {
-    libLoading = false;
-    libMoreBtn.textContent = 'Load more';
+    if (token === addToken) addLoading = false;
+    addMoreBtn.textContent = 'Load more';
   }
 }
 
-function renderLibrary(): void {
-  if (libItems.length === 0) {
-    libraryListEl.innerHTML = `<div class="empty">${libSearch || libFav ? 'No matching albums in your library.' : 'No albums in your library yet.'}</div>`;
-    libMoreBtn.hidden = true;
+function renderAlbumList(): void {
+  if (!addAlbums.length) {
+    addListEl.innerHTML = `<div class="empty">${addEmptyMsg()}</div>`;
+    addMoreBtn.hidden = true;
     return;
   }
-  libraryListEl.innerHTML = '';
-  for (const it of libItems) {
+  addListEl.className = 'grid';
+  addListEl.innerHTML = '';
+  for (const it of addAlbums) {
+    const albumId = 'albumId' in it ? it.albumId : null;
     const card = document.createElement('div');
     card.className = 'card';
-    const src = sources.length > 1 ? ` · ${esc(it.source)}` : '';
+    const srcName = sources.length > 1 ? it.source : '';
+    const src = srcName ? ` · ${esc(srcName)}` : '';
     card.innerHTML = `
       ${artHtml(it.artworkUrl)}
       <div class="body">
@@ -235,24 +236,109 @@ function renderLibrary(): void {
           <div class="a">${esc(it.artist)}</div>
           <div class="y">${it.year ?? ''}${src}</div>
         </div>
-        <button ${it.onShelf ? 'disabled' : ''}>${it.onShelf ? 'On shelf' : 'Add'}</button>
+        <div class="card-actions"></div>
       </div>`;
-    const btn = card.querySelector('button')!;
-    if (!it.onShelf) btn.addEventListener('click', () => void addLibraryAlbum(it, card, btn));
-    libraryListEl.appendChild(card);
+    const actions = card.querySelector('.card-actions') as HTMLElement;
+    if (it.onShelf && albumId) {
+      const shelvesBtn = mkBtn('Shelves', 'ghost');
+      shelvesBtn.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, albumId));
+      const rmBtn = mkBtn('Remove', 'ghost');
+      rmBtn.addEventListener('click', () => void removeAlbumFromBrowse(it, albumId, card));
+      actions.append(shelvesBtn, rmBtn);
+    } else if (it.onShelf) {
+      const b = mkBtn('On shelf', 'ghost');
+      b.disabled = true;
+      actions.append(b);
+    } else {
+      const b = mkBtn('Add', '');
+      b.addEventListener('click', () => void addAlbumFromBrowse(it, card, b));
+      actions.append(b);
+    }
+    addListEl.appendChild(card);
   }
-  libMoreBtn.hidden = !libHasMore;
+  addMoreBtn.hidden = !addHasMore;
 }
 
-async function addLibraryAlbum(it: LibraryAlbum, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+async function addAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
   btn.disabled = true;
   btn.textContent = 'Adding…';
   card.classList.add('busy');
   try {
-    await client.addToShelf({ providerUri: it.providerUri });
+    const r = await client.addToShelf({ providerUri: it.providerUri });
     it.onShelf = true;
-    btn.textContent = 'On shelf';
+    if ('albumId' in it) it.albumId = r.albumId;
     showToast(`Added ${it.title}`);
+    renderAlbumList();
+    void loadShelvesIndex();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Add';
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    card.classList.remove('busy');
+  }
+}
+
+async function removeAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, albumId: string, card: HTMLElement): Promise<void> {
+  card.classList.add('busy');
+  try {
+    await client.removeFromShelf(albumId);
+    it.onShelf = false;
+    if ('albumId' in it) it.albumId = null;
+    showToast(`Removed ${it.title}`);
+    renderAlbumList();
+    void loadShelvesIndex();
+  } catch (e) {
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    card.classList.remove('busy');
+  }
+}
+
+function renderPlaylistList(): void {
+  if (!addPlaylists.length) {
+    addListEl.innerHTML = `<div class="empty">${addEmptyMsg()}</div>`;
+    addMoreBtn.hidden = true;
+    return;
+  }
+  addListEl.className = 'grid';
+  addListEl.innerHTML = '';
+  for (const p of addPlaylists) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      ${artHtml(p.artworkUrl)}
+      <div class="body">
+        <div class="meta">
+          <div class="t">${esc(p.name)}</div>
+          <div class="a">${esc(p.owner ?? 'Playlist')}</div>
+        </div>
+        <div class="card-actions"></div>
+      </div>`;
+    const actions = card.querySelector('.card-actions') as HTMLElement;
+    if (p.onShelf) {
+      const b = mkBtn('Added', 'ghost');
+      b.disabled = true;
+      actions.append(b);
+    } else {
+      const b = mkBtn('Add', '');
+      b.addEventListener('click', () => void addPlaylistToShelf(p, card, b));
+      actions.append(b);
+    }
+    addListEl.appendChild(card);
+  }
+  addMoreBtn.hidden = true;
+}
+
+async function addPlaylistToShelf(p: LibraryPlaylist, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  card.classList.add('busy');
+  try {
+    await client.addPlaylist(p.providerUri);
+    p.onShelf = true;
+    showToast(`Added ${p.name}`);
+    renderPlaylistList();
     void loadShelvesIndex();
   } catch (e) {
     btn.disabled = false;
@@ -267,36 +353,36 @@ async function importAll(): Promise<void> {
   const where =
     curSource !== 'all' ? (sources.find((s) => s.instanceId === curSource)?.name ?? 'this source') : 'your library';
   if (!confirm(`Add every album in ${where} to Crate? Albums already added are skipped.`)) return;
-  const orig = libImportBtn.textContent;
-  libImportBtn.disabled = true;
-  libImportBtn.textContent = 'Adding…';
+  const orig = importBtn.textContent;
+  importBtn.disabled = true;
+  importBtn.textContent = 'Adding…';
   try {
     const r = await client.importLibrary(curSource === 'all' ? undefined : curSource);
     showToast(`Added ${r.added}, skipped ${r.skipped} of ${r.total}`);
-    await loadLibrary(true);
+    await reloadAdd(true);
     void loadShelvesIndex();
   } catch (e) {
     showToast(`Import failed: ${(e as Error).message}`);
   } finally {
-    libImportBtn.disabled = false;
-    libImportBtn.textContent = orig;
+    importBtn.disabled = false;
+    importBtn.textContent = orig;
   }
 }
 
-let libSearchTimer: ReturnType<typeof setTimeout> | undefined;
-libSearchInput.addEventListener('input', () => {
-  clearTimeout(libSearchTimer);
-  libSearchTimer = setTimeout(() => {
-    libSearch = libSearchInput.value.trim();
-    void loadLibrary(true);
+let addSearchTimer: ReturnType<typeof setTimeout> | undefined;
+addSearchInput.addEventListener('input', () => {
+  clearTimeout(addSearchTimer);
+  addSearchTimer = setTimeout(() => {
+    addQuery = addSearchInput.value.trim();
+    void reloadAdd(true);
   }, 300);
 });
-libFavCb.addEventListener('change', () => {
-  libFav = libFavCb.checked;
-  void loadLibrary(true);
+favCb.addEventListener('change', () => {
+  addFav = favCb.checked;
+  void reloadAdd(true);
 });
-libImportBtn.addEventListener('click', () => void importAll());
-libMoreBtn.addEventListener('click', () => void loadLibrary(false));
+importBtn.addEventListener('click', () => void importAll());
+addMoreBtn.addEventListener('click', () => void reloadAdd(false));
 
 /* ================= Shelves — index ================= */
 const shelvesIndexEl = document.getElementById('shelves-index') as HTMLElement;
@@ -393,9 +479,21 @@ function backToIndex(): void {
   shelvesIndexEl.hidden = false;
 }
 
+const shelfFilterInput = document.getElementById('shelf-filter') as HTMLInputElement;
+let shelfFilterTimer: ReturnType<typeof setTimeout> | undefined;
+shelfFilterInput.addEventListener('input', () => {
+  clearTimeout(shelfFilterTimer);
+  shelfFilterTimer = setTimeout(() => {
+    shelfFilter = shelfFilterInput.value.trim();
+    renderShelfDetail();
+  }, 200);
+});
+
 async function openShelf(id: string, name: string): Promise<void> {
   openShelfId = id;
   openShelfName = name;
+  shelfFilter = '';
+  shelfFilterInput.value = '';
   shelvesIndexEl.hidden = true;
   shelfDetailEl.hidden = false;
   shelfDetailName.textContent = name;
@@ -416,8 +514,13 @@ async function openShelf(id: string, name: string): Promise<void> {
 
 function sortedDetail(): ShelfItem[] {
   const sort = sortByShelf.get(openShelfId ?? '') ?? 'custom';
-  if (sort === 'custom') return [...detailItems]; // as fetched = the saved manual order
-  const s = [...detailItems];
+  let base = detailItems;
+  if (shelfFilter) {
+    const q = shelfFilter.toLowerCase();
+    base = base.filter((it) => it.title.toLowerCase().includes(q) || it.artist.toLowerCase().includes(q));
+  }
+  if (sort === 'custom') return [...base]; // as fetched = the saved manual order
+  const s = [...base];
   s.sort((a, b) => {
     if (sort === 'artist') return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
     if (sort === 'title') return a.title.localeCompare(b.title);
@@ -437,10 +540,16 @@ function renderShelfDetail(): void {
     shelfListEl.innerHTML = `<div class="empty">${openShelfId === 'all' ? 'Nothing on the shelf yet — add albums from Search.' : 'No albums in this shelf yet — add them from All albums.'}</div>`;
     return;
   }
+  const rows = sortedDetail();
+  if (rows.length === 0) {
+    shelfListEl.innerHTML = `<div class="empty">No albums match “${esc(shelfFilter)}”.</div>`;
+    return;
+  }
   shelfListEl.innerHTML = '';
-  const draggable = sort === 'custom';
+  // Drag-reorder only makes sense on the full, custom-ordered list — not a filtered subset.
+  const draggable = sort === 'custom' && !shelfFilter;
   shelfListEl.classList.toggle('draggable', draggable);
-  for (const it of sortedDetail()) {
+  for (const it of rows) {
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset['id'] = it.albumId;
@@ -466,7 +575,7 @@ function renderShelfDetail(): void {
           <button class="ghost rm-btn">${openShelfId === 'all' ? 'Remove' : 'Take out'}</button>
         </div>
       </div>`;
-    card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it));
+    card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it.albumId));
     card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
     card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
     shelfListEl.appendChild(card);
@@ -545,31 +654,31 @@ function closeCrateMenu(): void {
 function onCrateOutside(e: Event): void {
   if (activeCrateMenu && !activeCrateMenu.contains(e.target as Node)) closeCrateMenu();
 }
-function openCratePicker(anchor: HTMLElement, it: ShelfItem): void {
+function openCratePicker(anchor: HTMLElement, albumId: string): void {
   closeCrateMenu();
   const crates = albumCrates();
   const menu = document.createElement('div');
   menu.className = 'crate-menu';
   if (!crates.length) menu.innerHTML = `<div class="empty">No shelves yet — create one in Shelves.</div>`;
   for (const c of crates) {
-    const on = crateMembers.get(c.id)?.has(it.albumId) ?? false;
+    const on = crateMembers.get(c.id)?.has(albumId) ?? false;
     const label = document.createElement('label');
     label.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''}><span>${esc(c.name)}</span>`;
     const cb = label.querySelector('input') as HTMLInputElement;
     cb.addEventListener('change', async () => {
       const set = crateMembers.get(c.id) ?? new Set<string>();
       if (cb.checked) {
-        await client.addAlbumToShelf(c.id, it.albumId).catch(() => {});
-        set.add(it.albumId);
+        await client.addAlbumToShelf(c.id, albumId).catch(() => {});
+        set.add(albumId);
       } else {
-        await client.removeAlbumFromShelf(c.id, it.albumId).catch(() => {});
-        set.delete(it.albumId);
+        await client.removeAlbumFromShelf(c.id, albumId).catch(() => {});
+        set.delete(albumId);
       }
       crateMembers.set(c.id, set);
       renderShelvesIndex();
       // If we're viewing that shelf, drop the row live when unchecked.
       if (openShelfId === c.id && !cb.checked) {
-        detailItems = detailItems.filter((x) => x.albumId !== it.albumId);
+        detailItems = detailItems.filter((x) => x.albumId !== albumId);
         renderShelfDetail();
       }
     });
@@ -857,8 +966,10 @@ defaultSpeakerSel.addEventListener('change', async () => {
 });
 
 /* ================= Init ================= */
-renderResults();
+// Crate mark, top-right of each main tab header.
+document.querySelectorAll<HTMLImageElement>('img[data-logo]').forEach((img) => (img.src = crateMarkMono));
 void loadSources();
-setAddMode('library'); // loads the library browser
+updateAddToolbar();
+setAddType('album'); // seeds the Add tab (My Library · Albums) via reloadAdd
 void loadShelvesIndex();
 void loadSettingsPanel();
