@@ -1719,26 +1719,38 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     e.stopPropagation();
     canAdd ? addToGroup(leader) : groupRoom(leader);
   });
-  // Group volume is PROPORTIONAL (like Sonos): shifting the group slider moves every
-  // member by the same delta, preserving their relative balance (clamped 0–100) — not
-  // flattening them all to one level. Snapshot each member's level when the drag begins,
-  // then offset from that snapshot so clamping at 0/100 is reversible mid-drag.
+  // Group volume is PROPORTIONAL, like Sonos: raising the group scales each member toward
+  // 100 by its remaining headroom; lowering scales each toward 0 by ratio. So members
+  // converge and reach 100 together going up (and 0 together going down), preserving their
+  // balance in between. We snapshot the members' levels + the group value at drag start so
+  // the whole drag maps from a fixed origin (reversible, and it survives the ends cleanly).
   const gInput = cell.querySelector('input') as HTMLInputElement;
-  let dragBase: { slider: number; vols: number[] } | null = null;
-  const snapshot = (): { slider: number; vols: number[] } => ({ slider: +gInput.value, vols: members.map((r) => roomVol(r.id)) });
-  gInput.addEventListener('pointerdown', () => {
-    dragBase = snapshot();
-  });
-  gInput.addEventListener('input', () => {
+  let dragBase: { g: number; vols: number[] } | null = null;
+  const snapshot = (): { g: number; vols: number[] } => ({ g: +gInput.value, vols: members.map((r) => roomVol(r.id)) });
+  const applyGroup = (): void => {
     if (!dragBase) dragBase = snapshot();
-    const delta = +gInput.value - dragBase.slider;
+    const gNew = +gInput.value;
+    const gOld = dragBase.g;
     const memInputs = cell.querySelectorAll('.cc-group-member input') as NodeListOf<HTMLInputElement>;
     members.forEach((r, i) => {
-      const nv = Math.max(0, Math.min(100, Math.round((dragBase!.vols[i] ?? volume) + delta)));
+      const base = dragBase!.vols[i] ?? volume;
+      const raw =
+        gNew >= gOld
+          ? gOld < 100
+            ? base + ((gNew - gOld) * (100 - base)) / (100 - gOld) // up: approach 100 by headroom
+            : base
+          : gOld > 0
+            ? (base * gNew) / gOld // down: scale toward 0
+            : base;
+      const nv = Math.max(0, Math.min(100, Math.round(raw)));
       void client.setVolume({ playerId: r.id, level: nv }).catch(() => {});
       if (memInputs[i]) memInputs[i].value = String(nv);
     });
+  };
+  gInput.addEventListener('pointerdown', () => {
+    dragBase = snapshot();
   });
+  gInput.addEventListener('input', applyGroup);
   gInput.addEventListener('change', () => {
     dragBase = null; // next drag re-snapshots from the settled levels
   });
@@ -1771,7 +1783,14 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
       `<button class="cc-room-join">Leave</button>` +
       `</div>` +
       `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
-    wireVolume(m.querySelector('input') as HTMLInputElement, r.id);
+    // A member slider sets just that room — and nudges the GROUP slider to the members'
+    // new average (so the group control always reflects the true average level).
+    const mInput = m.querySelector('input') as HTMLInputElement;
+    mInput.addEventListener('input', () => {
+      void client.setVolume({ playerId: r.id, level: +mInput.value }).catch(() => {});
+      const memInputs = [...cell.querySelectorAll('.cc-group-member input')] as HTMLInputElement[];
+      gInput.value = String(Math.round(memInputs.reduce((s, inp) => s + +inp.value, 0) / memInputs.length));
+    });
     // Members are NOT individually selectable — the group is the player unit. Only
     // the volume slider and Leave act per-room.
     (m.querySelector('.cc-room-join') as HTMLElement).addEventListener('click', (e) => {
