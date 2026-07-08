@@ -3044,11 +3044,29 @@ async function openPlaylistPicker(): Promise<void> {
     return;
   }
   findResults.innerHTML = '';
+  // Header with a Done button so the picker is always dismissable (returns to the shelf
+  // list) — and a scrollable list so a long library can't push the find-bar (and its close
+  // handle) off the top of the screen.
+  const head = document.createElement('div');
+  head.className = 'find-pick-head';
+  head.innerHTML = '<span class="find-pick-title">Add playlists</span>';
+  const done = document.createElement('button');
+  done.className = 'find-pick-done';
+  done.textContent = 'Done';
+  done.onclick = () => {
+    findResults.hidden = true;
+    findResults.innerHTML = '';
+  };
+  head.appendChild(done);
+  findResults.appendChild(head);
   if (!list.length) {
-    findResults.innerHTML = '<div class="find-empty">No playlists in your library.</div>';
+    findResults.appendChild(Object.assign(document.createElement('div'), { className: 'find-empty', textContent: 'No playlists in your library.' }));
     return;
   }
-  for (const pl of list) findResults.appendChild(playlistCard(pl));
+  const scroller = document.createElement('div');
+  scroller.className = 'find-cat-list'; // reuse the scrollable list (max-height + overflow)
+  for (const pl of list) scroller.appendChild(playlistCard(pl));
+  findResults.appendChild(scroller);
 }
 
 function playlistCard(pl: LibraryPlaylist): HTMLElement {

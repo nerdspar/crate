@@ -797,6 +797,7 @@ body.idle #find-grip::after { opacity: 0; }
 #find-bar {
   position: absolute; left: 0; right: 0; bottom: 0;
   display: flex; flex-direction: column; gap: 1.6vh;
+  max-height: 100vh; /* never taller than the screen — inner lists scroll instead */
   padding: 1.4vh 4vw 3vh;
   background: linear-gradient(0deg, rgba(27,24,28,0.98), rgba(19,17,20,0.98));
   border-top: 1px solid rgba(255,255,255,0.08);
@@ -877,6 +878,13 @@ body.idle #find-grip::after { opacity: 0; }
 /* Global search results: a source dropdown + three columns (Albums/Playlists/Songs). */
 #find-results { display: flex; flex-direction: column; gap: 1vh; }
 #find-results[hidden] { display: none; }
+.find-pick-head { display: flex; align-items: center; justify-content: space-between; }
+.find-pick-title { color: var(--brass); font-size: 1.5vh; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.find-pick-done {
+  background: transparent; border: 1px solid rgba(236,231,221,0.3); color: var(--ink);
+  border-radius: 999px; padding: 0.6vh 1.8vw; font-size: 1.7vh; cursor: pointer;
+}
+.find-pick-done:active { background: rgba(236,231,221,0.1); }
 #find-results::-webkit-scrollbar, .find-cat-list::-webkit-scrollbar { display: none; }
 .find-srcbar { display: flex; }
 .find-src-btn {
