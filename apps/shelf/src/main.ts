@@ -1719,13 +1719,28 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     e.stopPropagation();
     canAdd ? addToGroup(leader) : groupRoom(leader);
   });
-  (cell.querySelector('input') as HTMLInputElement).addEventListener('input', (e) => {
-    const level = +(e.target as HTMLInputElement).value;
-    for (const r of members) void client.setVolume({ playerId: r.id, level }).catch(() => {});
-    // Move the member sliders in the dropdown to match (the group sets them all).
-    (cell.querySelectorAll('.cc-group-member input') as NodeListOf<HTMLInputElement>).forEach((inp) => {
-      inp.value = String(level);
+  // Group volume is PROPORTIONAL (like Sonos): shifting the group slider moves every
+  // member by the same delta, preserving their relative balance (clamped 0–100) — not
+  // flattening them all to one level. Snapshot each member's level when the drag begins,
+  // then offset from that snapshot so clamping at 0/100 is reversible mid-drag.
+  const gInput = cell.querySelector('input') as HTMLInputElement;
+  let dragBase: { slider: number; vols: number[] } | null = null;
+  const snapshot = (): { slider: number; vols: number[] } => ({ slider: +gInput.value, vols: members.map((r) => roomVol(r.id)) });
+  gInput.addEventListener('pointerdown', () => {
+    dragBase = snapshot();
+  });
+  gInput.addEventListener('input', () => {
+    if (!dragBase) dragBase = snapshot();
+    const delta = +gInput.value - dragBase.slider;
+    const memInputs = cell.querySelectorAll('.cc-group-member input') as NodeListOf<HTMLInputElement>;
+    members.forEach((r, i) => {
+      const nv = Math.max(0, Math.min(100, Math.round((dragBase!.vols[i] ?? volume) + delta)));
+      void client.setVolume({ playerId: r.id, level: nv }).catch(() => {});
+      if (memInputs[i]) memInputs[i].value = String(nv);
     });
+  });
+  gInput.addEventListener('change', () => {
+    dragBase = null; // next drag re-snapshots from the settled levels
   });
   // Expansion is exclusive — opening one group drops its volume sliders and closes
   // any other, so only one set of sliders is ever down.
