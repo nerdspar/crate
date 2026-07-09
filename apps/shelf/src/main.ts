@@ -79,6 +79,8 @@ const ICON_PLAY = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" ari
 const ICON_PAUSE = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="5" width="3.6" height="14" rx="1.1"/><rect x="13.9" y="5" width="3.6" height="14" rx="1.1"/></svg>';
 const ICON_PREV = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5.5" width="2.5" height="13" rx="1"/><path d="M20 6.4v11.2a1 1 0 0 1-1.53.85l-8.5-5.6a1 1 0 0 1 0-1.7l8.5-5.6A1 1 0 0 1 20 6.4Z"/></svg>';
 const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg>';
+const ICON_SHUFFLE = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>';
+const ICON_REPEAT = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
 // Shown in place of the EQ on the just-played album until the target room actually
 // reports playing — a "connecting" spinner so a slow queue-load doesn't look dead.
@@ -131,6 +133,12 @@ let playPendingUntil = 0;
 /** The album provider uri we just asked to play — used to confirm the target room is
     really playing THIS album (playback frames carry albumUri, not the Crate albumId). */
 let playPendingUri: string | null = null;
+/** Album-view shuffle/repeat intent. Live controls that reset to off each time a
+    *different* album opens (nothing carries between albums). When the open album is
+    the one actually playing they reflect/drive the live queue; otherwise they're the
+    pre-play choice applied on the next Play. */
+let cardShuffle = false;
+let cardRepeat: RepeatMode = 'off';
 /** "Open on outside playback": track the last now-playing album so we can tell when a NEW
     one starts; `lastTouchAt` gates against interrupting active use; `selfPlayUntil` marks a
     Crate-initiated play so it isn't mistaken for external; `firstStateSeen` skips the first
@@ -375,9 +383,11 @@ function buildShelf(): void {
         </div>
         <div class="actions">
           <div class="transport">
+            <button class="card-mode card-shuffle" aria-label="Shuffle">${ICON_SHUFFLE}</button>
             <button class="np-btn np-prev" aria-label="Previous track" hidden>${ICON_PREV}</button>
             <button class="play">Play</button>
             <button class="np-btn np-next" aria-label="Next track" hidden>${ICON_NEXT}</button>
+            <button class="card-mode card-repeat" aria-label="Repeat">${ICON_REPEAT}</button>
           </div>
           ${isPlaylistCase ? '<button class="songs">Songs</button>' : ''}
           <div class="rooms"></div>
@@ -408,6 +418,14 @@ function buildShelf(): void {
     el.querySelector('.play')!.addEventListener('click', (e) => {
       stop(e);
       void onPlayButton(i);
+    });
+    el.querySelector('.card-shuffle')!.addEventListener('click', (e) => {
+      stop(e);
+      toggleCardShuffle(i);
+    });
+    el.querySelector('.card-repeat')!.addEventListener('click', (e) => {
+      stop(e);
+      cycleCardRepeat(i);
     });
     // Tapping the artist name opens the search with that name typed in.
     el.querySelector('.panel h2')?.addEventListener('click', (e) => {
@@ -520,6 +538,10 @@ function openAlbum(i: number, autoscroll = true): void {
   closeAlbum();
   const el = shelf.children[i] as HTMLElement;
   openIdx = i;
+  // Shuffle/repeat reset to off for each newly-opened album — nothing carries over.
+  // (renderCardModes below still shows the live queue if this album is what's playing.)
+  cardShuffle = false;
+  cardRepeat = 'off';
   // Opening the album that's actually playing → snap the picker + cued track to where
   // it's really playing (overrides any sticky room pick), so the card reflects reality.
   const it = items[i];
@@ -532,6 +554,7 @@ function openAlbum(i: number, autoscroll = true): void {
   void renderTracks(el, i);
   syncVol(el.querySelector('.vol'));
   handleState(lastStates); // refocus now-playing on the newly-opened album
+  renderCardModes();
   el.classList.add('open');
   if (openMode === 'card') el.classList.add('expanded');
   el.style.width = openWidth(el) + 'px';
@@ -1070,18 +1093,67 @@ async function play(i: number, trackIndex?: number): Promise<void> {
       ...(providerUri ? { providerUri } : {}),
       ...(cue > 0 ? { trackIndex: cue } : {}),
     })
-    .then(() => applyAfterAlbumRepeat(activePlayerId))
+    .then(() => applyPlayModes(activePlayerId))
     .catch((e) => {
       console.error('play failed', e);
       showToast('Playback failed');
     });
 }
 
-/** afterAlbum='repeat' loops the album via the queue's repeat mode; the play path
-    otherwise forces repeat off, so we only need to switch it on for 'repeat'. */
-function applyAfterAlbumRepeat(playerId: string | null): void {
+/** Apply the album view's shuffle/repeat to the just-started queue. Shuffle is set
+    explicitly (the play path doesn't clear it, so this enforces the per-album reset).
+    An explicit card repeat wins; otherwise repeat falls back to the after-album setting
+    ('repeat' loops the album, everything else leaves it off so 'next'/'stop' can fire). */
+function applyPlayModes(playerId: string | null): void {
   if (!playerId) return;
-  if (settings.afterAlbum === 'repeat') void client.setRepeat({ playerId, mode: 'all' }).catch(() => {});
+  void client.setShuffle({ playerId, enabled: cardShuffle }).catch(() => {});
+  const mode: RepeatMode = cardRepeat !== 'off' ? cardRepeat : settings.afterAlbum === 'repeat' ? 'all' : 'off';
+  void client.setRepeat({ playerId, mode }).catch(() => {});
+}
+
+/* ---- Album-view shuffle + repeat (live when this album is playing; else pre-play intent) ---- */
+/** Is the open album i the one actually playing on the mode target room right now? */
+function albumIsPlayingHere(i: number): boolean {
+  const it = items[i];
+  if (!it) return false;
+  const s = lastStates.find((x) => x.playerId === modeTarget());
+  if (!s || s.state === 'idle') return false;
+  return (
+    (!!s.nowPlaying?.albumId && s.nowPlaying.albumId === it.albumId) ||
+    (!!it.providerUri && s.nowPlaying?.albumUri === it.providerUri)
+  );
+}
+/** Reflect the shuffle/repeat toggles on the open card — live queue state when this
+    album is playing, else the pending card intent. */
+function renderCardModes(): void {
+  if (openIdx === null) return;
+  const el = shelf.children[openIdx] as HTMLElement | undefined;
+  const shuf = el?.querySelector('.card-shuffle');
+  const rep = el?.querySelector('.card-repeat');
+  if (!shuf || !rep) return;
+  const m = albumIsPlayingHere(openIdx) ? queueModes() : { shuffle: cardShuffle, repeat: cardRepeat };
+  shuf.classList.toggle('on', m.shuffle);
+  rep.classList.toggle('on', m.repeat !== 'off');
+  rep.classList.toggle('repeat-one', m.repeat === 'one');
+}
+function toggleCardShuffle(i: number): void {
+  const playing = albumIsPlayingHere(i);
+  cardShuffle = !(playing ? queueModes().shuffle : cardShuffle);
+  if (playing) {
+    const pid = modeTarget();
+    if (pid) void client.setShuffle({ playerId: pid, enabled: cardShuffle }).catch(() => {});
+  }
+  renderCardModes();
+}
+function cycleCardRepeat(i: number): void {
+  const playing = albumIsPlayingHere(i);
+  const cur = playing ? queueModes().repeat : cardRepeat;
+  cardRepeat = REPEAT_CYCLE[(REPEAT_CYCLE.indexOf(cur) + 1) % REPEAT_CYCLE.length]!;
+  if (playing) {
+    const pid = modeTarget();
+    if (pid) void client.setRepeat({ playerId: pid, mode: cardRepeat }).catch(() => {});
+  }
+  renderCardModes();
 }
 
 let afterPlayTimer: ReturnType<typeof setTimeout> | undefined;
@@ -4588,6 +4660,7 @@ function applyNow(): void {
     updateOpenTrackIndicator();
     updateNowbar();
     updatePlayButton();
+    renderCardModes(); // keep shuffle/repeat in sync with the live queue
   }
   if (!albumModal.hidden) {
     updateModalTransport();
