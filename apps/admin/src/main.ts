@@ -1113,6 +1113,12 @@ editorEl.addEventListener('click', (e) => {
 
 /* ================= Settings (iOS-style categories; mirrors the wall) ================= */
 let settingsPlayers: Player[] = [];
+/** Whether a player is exposed to the wall: an explicit exposure list wins, else the
+    default (real speakers only). Used by the exposure chips and the group presets. */
+function isExposed(p: Player): boolean {
+  const ex = settings?.exposedPlayers;
+  return ex && ex.length ? ex.includes(p.id) : isSpeaker(p.type);
+}
 const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> = [
   ['spineMode', 'Spine art', [['scan', 'Real when available'], ['art', 'Generated']]],
   ['spineThickness', 'CD thickness', [['thin', 'Thin'], ['medium', 'Medium'], ['thick', 'Thick']]],
@@ -1484,7 +1490,9 @@ function presetEditor(preset: GroupPreset, index: number, save: () => void, redr
 
   const grid = document.createElement('div');
   grid.className = 'chip-grid';
-  for (const p of settingsPlayers) {
+  // Only players exposed to the wall are groupable — plus any already saved in this preset
+  // (so a player later un-exposed still shows here and can be removed).
+  for (const p of settingsPlayers.filter((p) => isExposed(p) || preset.playerIds.includes(p.id))) {
     const chip = document.createElement('button');
     const on = preset.playerIds.includes(p.id);
     chip.className = 'pick-chip' + (on ? ' on' : '');

@@ -358,7 +358,10 @@ export class Service {
       }
       for (const a of r.albums) {
         if (libKeys.has(key(a.artist, a.title))) continue; // already shown under "in your library"
-        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: a.artworkUrl, onShelf: shelved.has(a.providerUri), albumId: null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: s.name });
+        // Match the shelf by album id OR title+artist (not just the exact catalog uri) so a
+        // shelved album added under a different uri/edition is still recognized as on-shelf.
+        const row = this.shelvedRow(a.providerUri, a.title, a.artist);
+        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: s.name });
       }
       for (const p of r.playlists)
         playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
