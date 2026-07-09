@@ -83,7 +83,45 @@ function switchTab(name: string): void {
   document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset['tab'] === name));
 }
 document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => {
-  b.addEventListener('click', () => switchTab(b.dataset['tab']!));
+  b.addEventListener('click', () => {
+    // Tapping a tab always drops you on that tab's top-level screen (out of any detail).
+    resetToTabTop();
+    switchTab(b.dataset['tab']!);
+  });
+});
+
+/* ---- Screen navigation: tab tap returns to the top; the phone back button (and the
+   in-app back buttons) step out of detail screens one level at a time (History API). ---- */
+function resetToTabTop(): void {
+  if (typeof backToIndex === 'function') backToIndex();
+  settingsDetailEl.hidden = true;
+  settingsIndexEl.hidden = false;
+  currentSettingsCat = null;
+}
+/** True if any detail sub-screen is currently showing. */
+function aDetailIsOpen(): boolean {
+  return !playlistSongsEl.hidden || !shelfDetailEl.hidden || !settingsDetailEl.hidden;
+}
+/** Close the deepest-open detail screen (returns to its parent). */
+function goBackOneLevel(): void {
+  if (!playlistSongsEl.hidden) {
+    playlistSongsEl.hidden = true;
+    if (songsBackTo === 'detail') shelfDetailEl.hidden = false;
+    else shelvesIndexEl.hidden = false;
+  } else if (!shelfDetailEl.hidden) {
+    backToIndex();
+  } else if (!settingsDetailEl.hidden) {
+    settingsDetailEl.hidden = true;
+    settingsIndexEl.hidden = false;
+    currentSettingsCat = null;
+  }
+}
+/** Push a history entry when opening a detail screen, so the back button steps out. */
+function pushDetailHistory(): void {
+  history.pushState({ crateDetail: true }, '');
+}
+window.addEventListener('popstate', () => {
+  if (aDetailIsOpen()) goBackOneLevel();
 });
 
 /* ================= Add — one search over your library + the catalog ================= */
@@ -595,7 +633,7 @@ const shelfListEl = document.getElementById('shelf-list') as HTMLElement;
 const shelfSortSel = document.getElementById('shelf-sort') as HTMLSelectElement;
 const viewListBtn = document.getElementById('view-list') as HTMLButtonElement;
 const viewTileBtn = document.getElementById('view-tile') as HTMLButtonElement;
-(document.getElementById('shelf-back') as HTMLElement).addEventListener('click', backToIndex);
+(document.getElementById('shelf-back') as HTMLElement).addEventListener('click', () => history.back());
 
 function backToIndex(): void {
   openShelfId = null;
@@ -611,11 +649,7 @@ const songsCountEl = document.getElementById('songs-count') as HTMLElement;
 const songsListEl = document.getElementById('songs-list') as HTMLElement;
 const songsBackEl = document.getElementById('songs-back') as HTMLElement;
 let songsBackTo: 'index' | 'detail' = 'index';
-songsBackEl.addEventListener('click', () => {
-  playlistSongsEl.hidden = true;
-  if (songsBackTo === 'detail') shelfDetailEl.hidden = false;
-  else shelvesIndexEl.hidden = false;
-});
+songsBackEl.addEventListener('click', () => history.back());
 
 let openSongShelfId: string | null = null;
 
@@ -625,6 +659,7 @@ function showSongsView(name: string, from: 'index' | 'detail'): void {
   shelfDetailEl.hidden = true;
   if (from !== 'detail') shelvesIndexEl.hidden = true;
   playlistSongsEl.hidden = false;
+  pushDetailHistory();
   songsNameEl.textContent = name;
   songsCountEl.textContent = '';
   songsListEl.innerHTML = `<div class="empty">Loading songs…</div>`;
@@ -746,6 +781,7 @@ async function openShelf(id: string, name: string): Promise<void> {
   shelfFilterInput.value = '';
   shelvesIndexEl.hidden = true;
   shelfDetailEl.hidden = false;
+  pushDetailHistory();
   shelfDetailName.textContent = name;
   // restore this shelf's saved sort/view
   shelfSortSel.value = sortByShelf.get(id) ?? 'custom';
@@ -1098,7 +1134,7 @@ const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> 
   ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open']]],
   ['afterAlbum', 'When an album ends', [['next', 'Play next on shelf'], ['repeat', 'Repeat album'], ['stop', 'Stop']]],
   ['idleScreen', 'When idle — screen', [['on', 'Stay on'], ['dim', 'Dim'], ['off', 'Screen off']]],
-  ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf'], ['autoOpen', 'Auto-open']]],
+  ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf']]],
   ['autoOpenPool', 'Auto-open from', [['all', 'All albums'], ['current', 'Current shelf'], ['shelf', 'A specific shelf']]],
 ];
 const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
@@ -1110,6 +1146,7 @@ const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
 ];
 const SETTING_TOGGLES: Array<[keyof Settings, string]> = [
   ['openOnExternalPlay', 'Open album on outside playback'],
+  ['autoOpenEnabled', 'Auto-open albums when idle'],
   ['autoOpenRandom', 'Auto-open in random order'],
   ['idleUseSensor', 'Idle from proximity sensor (needs sensor)'],
   ['wakeOnSensor', 'Wake from proximity sensor (needs sensor)'],
@@ -1218,6 +1255,7 @@ const CAT_ICON: Record<string, string> = {
   albums: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.2"/></svg>',
   display: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M6.9 16.9l-2.1 2.1"/></svg>',
   idle: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  autoopen: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M13 9l3 3-3 3"/></svg>',
   sleep: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
   system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
 };
@@ -1245,6 +1283,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   },
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },
+  { id: 'autoopen', name: 'Auto-open', render: renderAutoOpenCat },
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
   { id: 'system', name: 'System', render: renderSystemCat },
 ];
@@ -1448,17 +1487,35 @@ function renderIdleCat(body: HTMLElement): void {
   sub('Screen');
   body.appendChild(gate(fieldGrid(s.idleScreen === 'dim' ? ['idleScreen', 'idleDimPercent'] : ['idleScreen']), 'idleScreen'));
 
-  // What the shelf shows when idle
+  // What the shelf shows when idle (auto-open is its own category)
   sub('When idle, show');
   body.appendChild(gate(fieldGrid(['idleContent']), 'idleContent'));
-  // The idle shelf is only meaningful for the 'shelf' content (or an auto-open shelf pool).
-  if (s.idleContent === 'shelf' || (s.idleContent === 'autoOpen' && s.autoOpenPool === 'shelf')) body.appendChild(idleShelfField());
+  if (s.idleContent === 'shelf') body.appendChild(idleShelfField());
   body.appendChild(fieldGrid(['openOnExternalPlay']));
+}
 
-  // Auto-open (attract mode) — segregated, and only when idle content is 'auto-open'.
-  if (s.idleContent === 'autoOpen') {
-    sub('Auto-open');
+/** Auto-open ("attract mode") — its own feature. When enabled it cycles open albums while
+    the wall is idle, independent of the idle-content choice. */
+function renderAutoOpenCat(body: HTMLElement): void {
+  const s = settings!;
+  const redraw = (): void => {
+    body.innerHTML = '';
+    renderAutoOpenCat(body);
+  };
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = 'When on, the wall slideshows albums while idle — regardless of the Idle “when idle, show” setting.';
+  body.appendChild(hint);
+  const toggle = toggleField('autoOpenEnabled', 'Auto-open albums when idle');
+  toggle.querySelector('input')?.addEventListener('change', redraw);
+  body.appendChild(toggle);
+  if (s.autoOpenEnabled) {
+    const gate = (grid: HTMLElement, key: string): HTMLElement => {
+      grid.querySelector(`[data-key="${key}"] select`)?.addEventListener('change', redraw);
+      return grid;
+    };
     body.appendChild(gate(fieldGrid(['autoOpenEverySec', 'autoOpenPool', 'autoOpenRandom']), 'autoOpenPool'));
+    if (s.autoOpenPool === 'shelf') body.appendChild(idleShelfField());
   }
 }
 function renderSystemCat(body: HTMLElement): void {
@@ -1486,10 +1543,7 @@ const settingsIndexEl = document.getElementById('settings-index') as HTMLElement
 const settingsDetailEl = document.getElementById('settings-detail') as HTMLElement;
 const settingsCatBody = document.getElementById('settings-cat-body') as HTMLElement;
 const settingsCatName = document.getElementById('settings-cat-name') as HTMLElement;
-(document.getElementById('settings-back') as HTMLElement).addEventListener('click', () => {
-  settingsDetailEl.hidden = true;
-  settingsIndexEl.hidden = false;
-});
+(document.getElementById('settings-back') as HTMLElement).addEventListener('click', () => history.back());
 function renderSettingsCats(): void {
   const list = document.getElementById('settings-cats') as HTMLElement;
   list.innerHTML = '';
@@ -1501,13 +1555,22 @@ function renderSettingsCats(): void {
     list.appendChild(row);
   }
 }
+let currentSettingsCat: SettingsCat | null = null;
 function openSettingsCat(cat: SettingsCat): void {
   if (!settings) return;
+  currentSettingsCat = cat;
   settingsIndexEl.hidden = true;
   settingsDetailEl.hidden = false;
+  pushDetailHistory();
   settingsCatName.textContent = cat.name;
   settingsCatBody.innerHTML = '';
   cat.render(settingsCatBody);
+}
+/** Re-render the open settings category in place (after a live players/settings update). */
+function refreshOpenSettingsCat(): void {
+  if (settingsDetailEl.hidden || !currentSettingsCat || !settings) return;
+  settingsCatBody.innerHTML = '';
+  currentSettingsCat.render(settingsCatBody);
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1540,6 +1603,38 @@ async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K])
   await client.putSettings({ [key]: value } as Partial<Settings>).catch(() => {});
   showToast('Saved');
 }
+
+/* ================= Live updates (WebSocket) ================= */
+// Keep the admin in sync with the device without a manual refresh: player roster/settings
+// changes re-fetch and re-render the open settings screen; shelf changes reload the index.
+function connectWs(): void {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = (ev) => {
+    let msg: { type?: string; settings?: Settings };
+    try {
+      msg = JSON.parse(ev.data as string);
+    } catch {
+      return;
+    }
+    if (msg.type === 'players') {
+      void client
+        .getPlayers()
+        .then((r) => {
+          settingsPlayers = r.players;
+          refreshOpenSettingsCat();
+        })
+        .catch(() => {});
+    } else if (msg.type === 'settings' && msg.settings) {
+      settings = msg.settings;
+      refreshOpenSettingsCat();
+    } else if (msg.type === 'shelf' || msg.type === 'shelves') {
+      void loadShelvesIndex();
+    }
+  };
+  ws.onclose = () => setTimeout(connectWs, 2000);
+}
+connectWs();
 
 /* ================= Init ================= */
 // Crate mark, top-right of each main tab header.
