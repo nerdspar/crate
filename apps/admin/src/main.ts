@@ -56,6 +56,11 @@ function esc(s: string): string {
   return d.innerHTML;
 }
 
+// Monochrome line icons for the shelf-editor action buttons.
+const ICO_SHELVES = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="6" width="5" height="14" rx="1" transform="rotate(-10 18.5 13)"/></svg>';
+const ICO_EDIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const ICO_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
+
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function showToast(msg: string): void {
   toast.textContent = msg;
@@ -823,8 +828,8 @@ function renderShelfDetail(): void {
             <div class="a">${esc(it.artist)}</div>
           </div>
           <div class="card-actions">
-            <button class="ghost edit-btn">Edit</button>
-            <button class="ghost rm-btn">Remove</button>
+            <button class="ghost ico-btn edit-btn" aria-label="Edit spine" title="Edit spine">${ICO_EDIT}</button>
+            <button class="ghost ico-btn rm-btn" aria-label="Remove" title="Remove">${ICO_TRASH}</button>
           </div>
         </div>`;
       const nav = (): void => void openPlaylistAsShelf(it.albumId, it.title);
@@ -846,9 +851,9 @@ function renderShelfDetail(): void {
             <div class="y">${it.year ?? ''}</div>
           </div>
           <div class="card-actions">
-            <button class="ghost crate-btn">Shelves</button>
-            <button class="ghost edit-btn">Edit</button>
-            <button class="ghost rm-btn">${openShelfId === 'all' ? 'Remove' : 'Take out'}</button>
+            <button class="ghost ico-btn crate-btn" aria-label="Shelves" title="Shelves">${ICO_SHELVES}</button>
+            <button class="ghost ico-btn edit-btn" aria-label="Edit spine" title="Edit spine">${ICO_EDIT}</button>
+            <button class="ghost ico-btn rm-btn" aria-label="${openShelfId === 'all' ? 'Remove' : 'Take out'}" title="${openShelfId === 'all' ? 'Remove' : 'Take out'}">${ICO_TRASH}</button>
           </div>
         </div>`;
       card.querySelector('.crate-btn')!.addEventListener('click', (e) => openCratePicker(e.currentTarget as HTMLElement, it.albumId));
@@ -1209,8 +1214,8 @@ const CAT_ICON: Record<string, string> = {
   spines: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="3.2" height="14" rx="1"/><rect x="10.4" y="5" width="3.2" height="14" rx="1"/><rect x="16.8" y="5" width="3.2" height="14" rx="1"/></svg>',
   albums: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.2"/></svg>',
   display: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M6.9 16.9l-2.1 2.1"/></svg>',
-  idle: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
-  sleep: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  idle: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  sleep: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
   system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
 };
 interface SettingsCat {
