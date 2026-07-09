@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -135,12 +135,11 @@ let playPendingUntil = 0;
 /** The album provider uri we just asked to play — used to confirm the target room is
     really playing THIS album (playback frames carry albumUri, not the Crate albumId). */
 let playPendingUri: string | null = null;
-/** Album-view shuffle/repeat intent. Live controls that reset to off each time a
-    *different* album opens (nothing carries between albums). When the open album is
-    the one actually playing they reflect/drive the live queue; otherwise they're the
-    pre-play choice applied on the next Play. */
+/** Album-view shuffle intent: a live control that resets to off each time a *different*
+    album opens. When the open album is the one playing it reflects/drives the live queue;
+    otherwise it's the pre-play choice applied on the next Play. (Repeat is not a per-album
+    intent — the repeat button drives the global afterAlbum setting; see cycleAfterAlbum.) */
 let cardShuffle = false;
-let cardRepeat: RepeatMode = 'off';
 /** "Open on outside playback": track the last now-playing album so we can tell when a NEW
     one starts; `lastTouchAt` gates against interrupting active use; `selfPlayUntil` marks a
     Crate-initiated play so it isn't mistaken for external; `firstStateSeen` skips the first
@@ -427,7 +426,7 @@ function buildShelf(): void {
     });
     el.querySelector('.card-repeat')!.addEventListener('click', (e) => {
       stop(e);
-      cycleCardRepeat(i);
+      cycleAfterAlbum();
     });
     // Tapping the artist name opens the search with that name typed in.
     el.querySelector('.panel h2')?.addEventListener('click', (e) => {
@@ -543,7 +542,6 @@ function openAlbum(i: number, autoscroll = true): void {
   // Shuffle/repeat reset to off for each newly-opened album — nothing carries over.
   // (renderCardModes below still shows the live queue if this album is what's playing.)
   cardShuffle = false;
-  cardRepeat = 'off';
   // Opening the album that's actually playing → snap the picker + cued track to where
   // it's really playing (overrides any sticky room pick), so the card reflects reality.
   const it = items[i];
@@ -1102,18 +1100,16 @@ async function play(i: number, trackIndex?: number): Promise<void> {
     });
 }
 
-/** Apply the album view's shuffle/repeat to the just-started queue. Shuffle is set
-    explicitly (the play path doesn't clear it, so this enforces the per-album reset).
-    An explicit card repeat wins; otherwise repeat falls back to the after-album setting
-    ('repeat' loops the album, everything else leaves it off so 'next'/'stop' can fire). */
+/** Apply the album view's shuffle + the global after-album behavior to the just-started
+    queue: shuffle is set explicitly; queue repeat loops only when afterAlbum is 'repeat'
+    (leaving it off so 'next'/'stop' can fire). */
 function applyPlayModes(playerId: string | null): void {
   if (!playerId) return;
   void client.setShuffle({ playerId, enabled: cardShuffle }).catch(() => {});
-  const mode: RepeatMode = cardRepeat !== 'off' ? cardRepeat : settings.afterAlbum === 'repeat' ? 'all' : 'off';
-  void client.setRepeat({ playerId, mode }).catch(() => {});
+  void client.setRepeat({ playerId, mode: settings.afterAlbum === 'repeat' ? 'all' : 'off' }).catch(() => {});
 }
 
-/* ---- Album-view shuffle + repeat (live when this album is playing; else pre-play intent) ---- */
+/* ---- Album-view shuffle + after-album (repeat) controls ---- */
 /** Is the open album i the one actually playing on the mode target room right now? */
 function albumIsPlayingHere(i: number): boolean {
   const it = items[i];
@@ -1125,18 +1121,21 @@ function albumIsPlayingHere(i: number): boolean {
     (!!it.providerUri && s.nowPlaying?.albumUri === it.providerUri)
   );
 }
-/** Reflect the shuffle/repeat toggles on the open card — live queue state when this
-    album is playing, else the pending card intent. */
+// The repeat button cycles the global "when an album ends" behavior (synced with admin).
+const AFTERALBUM_CYCLE: AfterAlbum[] = ['stop', 'repeat', 'next'];
+/** Reflect shuffle (live queue when playing, else the pending intent) + the after-album
+    button (repeat glyph for stop/repeat, next glyph for 'next'; bold when not 'stop'). */
 function renderCardModes(): void {
   if (openIdx === null) return;
   const el = shelf.children[openIdx] as HTMLElement | undefined;
   const shuf = el?.querySelector('.card-shuffle');
-  const rep = el?.querySelector('.card-repeat');
+  const rep = el?.querySelector('.card-repeat') as HTMLElement | null;
   if (!shuf || !rep) return;
-  const m = albumIsPlayingHere(openIdx) ? queueModes() : { shuffle: cardShuffle, repeat: cardRepeat };
-  shuf.classList.toggle('on', m.shuffle);
-  rep.classList.toggle('on', m.repeat !== 'off');
-  rep.classList.toggle('repeat-one', m.repeat === 'one');
+  shuf.classList.toggle('on', albumIsPlayingHere(openIdx) ? queueModes().shuffle : cardShuffle);
+  const aa = settings.afterAlbum;
+  rep.classList.toggle('on', aa !== 'stop');
+  rep.innerHTML = aa === 'next' ? ICON_NEXT : ICON_REPEAT;
+  rep.setAttribute('aria-label', aa === 'next' ? 'Play next album' : aa === 'repeat' ? 'Repeat album' : 'Stop after album');
 }
 function toggleCardShuffle(i: number): void {
   const playing = albumIsPlayingHere(i);
@@ -1147,13 +1146,15 @@ function toggleCardShuffle(i: number): void {
   }
   renderCardModes();
 }
-function cycleCardRepeat(i: number): void {
-  const playing = albumIsPlayingHere(i);
-  const cur = playing ? queueModes().repeat : cardRepeat;
-  cardRepeat = REPEAT_CYCLE[(REPEAT_CYCLE.indexOf(cur) + 1) % REPEAT_CYCLE.length]!;
-  if (playing) {
+/** Cycle the after-album behavior (stop → repeat → next), persist it (syncs with the
+    admin), and reflect repeat on the live queue if this album is playing. */
+function cycleAfterAlbum(): void {
+  const next = AFTERALBUM_CYCLE[(AFTERALBUM_CYCLE.indexOf(settings.afterAlbum) + 1) % AFTERALBUM_CYCLE.length]!;
+  settings.afterAlbum = next;
+  void client.putSettings({ afterAlbum: next }).catch(() => {});
+  if (openIdx !== null && albumIsPlayingHere(openIdx)) {
     const pid = modeTarget();
-    if (pid) void client.setRepeat({ playerId: pid, mode: cardRepeat }).catch(() => {});
+    if (pid) void client.setRepeat({ playerId: pid, mode: next === 'repeat' ? 'all' : 'off' }).catch(() => {});
   }
   renderCardModes();
 }
@@ -4975,6 +4976,7 @@ function applySettings(s: Settings): void {
   }
   renderChoices();
   renderCCSort();
+  if (openIdx !== null) renderCardModes(); // reflect an afterAlbum change made from the admin
 }
 
 /* ---------- Idle chrome ---------- */
