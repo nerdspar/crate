@@ -787,18 +787,43 @@ export class Service {
     };
   }
 
-  /** Health of the three Crate apps (service / admin / screen) + Music Assistant.
-      The service is up if this responds; the apps are "online" when a client of that
-      kind is connected over /ws; MA reflects the provider's websocket. */
+  /** Which front-end bundles the server actually mounted at boot (set from index.ts). */
+  private frontendsServed = { shelf: false, admin: false };
+  setFrontendsServed(v: { shelf: boolean; admin: boolean }): void {
+    this.frontendsServed = v;
+  }
+
+  /** Health of the three Crate apps (server / shelf / admin) + Music Assistant.
+      "online" means alive & serving: the server if this request is answered; the
+      front-ends if the server is serving their built bundle (they have no process of
+      their own); Music Assistant if the provider websocket is up. `connections` is the
+      live `/ws` client count — informational, separate from the health dot. */
   systemServices(): ServicesStatus {
-    const screens = this.hub.count('shelf');
-    const admins = this.hub.count('admin');
-    const conn = (n: number): string => (n === 1 ? '1 connected' : `${n} connected`);
+    const shelfN = this.hub.count('shelf');
+    const adminN = this.hub.count('admin');
     return {
       services: [
-        { id: 'server', name: 'Server', online: true, detail: `v${this.cfg.version}` },
-        { id: 'shelf', name: 'Shelf', online: screens > 0, detail: screens > 0 ? conn(screens) : 'no client' },
-        { id: 'admin', name: 'Admin', online: admins > 0, detail: admins > 0 ? conn(admins) : 'no client' },
+        {
+          id: 'server',
+          name: 'Server',
+          online: true,
+          connections: this.hub.total,
+          detail: `up ${fmtUptime(process.uptime())} · ${plural(this.hub.total, 'client')}`,
+        },
+        {
+          id: 'shelf',
+          name: 'Shelf',
+          online: this.frontendsServed.shelf,
+          connections: shelfN,
+          detail: this.frontendsServed.shelf ? `serving · ${plural(shelfN, 'connection')}` : 'not built',
+        },
+        {
+          id: 'admin',
+          name: 'Admin',
+          online: this.frontendsServed.admin,
+          connections: adminN,
+          detail: this.frontendsServed.admin ? `serving · ${plural(adminN, 'connection')}` : 'not built',
+        },
         {
           id: 'musicAssistant',
           name: 'Music Assistant',
@@ -839,4 +864,18 @@ export class Service {
     await rebootSystem().catch(() => {});
     return { ok: true };
   }
+}
+
+/** "3d 4h" / "5h 12m" / "8m" — a compact process-uptime string. */
+function fmtUptime(sec: number): string {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+/** "1 client" / "2 clients" / "0 clients". */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }

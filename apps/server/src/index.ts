@@ -25,12 +25,17 @@ const app = Fastify({ logger: false });
 await app.register(websocket);
 await app.register(fastifyMultipart, { limits: { fileSize: 15 * 1024 * 1024, files: 1 } });
 await app.register(fastifyStatic, { root: cfg.artDir, prefix: '/art/' });
-if (existsSync(cfg.shelfDist)) {
+// Serve the built front-end bundles (they have no process of their own) and record which
+// were mounted so the System service-status view can report them as alive & serving.
+const shelfServed = existsSync(cfg.shelfDist);
+const adminServed = existsSync(cfg.adminDist);
+if (shelfServed) {
   await app.register(fastifyStatic, { root: cfg.shelfDist, prefix: '/', decorateReply: false });
 }
-if (existsSync(cfg.adminDist)) {
+if (adminServed) {
   await app.register(fastifyStatic, { root: cfg.adminDist, prefix: '/admin/', decorateReply: false });
 }
+service.setFrontendsServed({ shelf: shelfServed, admin: adminServed });
 
 app.get('/ws', { websocket: true }, (socket, req) => {
   // Clients tag themselves (?app=shelf|admin) so the System view can report which apps

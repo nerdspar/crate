@@ -72,8 +72,12 @@ export interface SystemStatus {
 export interface ServiceHealth {
   id: 'server' | 'shelf' | 'admin' | 'musicAssistant';
   name: string;
+  /** Alive & serving: the server if responding, a front-end if the server serves its
+      bundle (they have no process of their own), MA if its websocket is up. */
   online: boolean;
-  /** Short context: version, connected-client count, etc. */
+  /** Live `/ws` client count for this app — informational, separate from `online`. */
+  connections?: number;
+  /** Short context: uptime, version, served/built state, etc. */
   detail?: string;
 }
 export interface ServicesStatus {

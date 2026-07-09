@@ -28,6 +28,11 @@ export class Hub {
     return n;
   }
 
+  /** Total connected `/ws` clients across all apps. */
+  get total(): number {
+    return this.sockets.size;
+  }
+
   broadcast(msg: WsMessage): void {
     const data = JSON.stringify(msg);
     for (const ws of this.sockets) {
