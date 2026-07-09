@@ -4394,7 +4394,13 @@ ccReboot.addEventListener('click', () => {
    - anything open + drag → step through albums, shelf glides along
    ===================================================================== */
 const vp = document.getElementById('shelf-viewport') as HTMLElement;
-const STEP_PX = 110;
+/** Finger-travel per stepped album while dragging an open album. Adaptive so ONE full-width
+    drag sweeps the ENTIRE shelf: from a centered album, dragging to a screen edge lands on the
+    far end. Floored so huge shelves don't get hyper-twitchy (edge-hold covers their overflow),
+    capped so tiny shelves keep a comfortable throw. */
+function stepPx(): number {
+  return Math.min(110, Math.max(12, window.innerWidth / Math.max(1, items.length)));
+}
 let pDown = false,
   moved = false,
   startX = 0,
@@ -4656,13 +4662,14 @@ window.addEventListener('pointermove', (e) => {
     }
     stepAccum += e.clientX - lastX;
     lastX = e.clientX;
-    while (stepAccum <= -STEP_PX) {
+    const step = stepPx();
+    while (stepAccum <= -step) {
       stepAlbum(1);
-      stepAccum += STEP_PX;
+      stepAccum += step;
     }
-    while (stepAccum >= STEP_PX) {
+    while (stepAccum >= step) {
       stepAlbum(-1);
-      stepAccum -= STEP_PX;
+      stepAccum -= step;
     }
     updateEdgeStep(e.clientX); // finger resting near a screen edge → keep stepping through the shelf
     return;
