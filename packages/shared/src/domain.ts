@@ -266,7 +266,6 @@ export interface Settings {
   yearEmphasis: YearEmphasis;
   sortBy: SortBy;
   defaultPlayerId: string | null;
-  longPressMs: number;
   afterPlay: AfterPlay;
   /** What to do when an album's last track finishes (stop / repeat / next on shelf). */
   afterAlbum: AfterAlbum;
@@ -332,7 +331,6 @@ export const DEFAULT_SETTINGS: Settings = {
   yearEmphasis: 'thin',
   sortBy: 'artist',
   defaultPlayerId: null,
-  longPressMs: 420,
   afterPlay: 'linger',
   afterAlbum: 'next',
   afterPlayLingerSec: 8,

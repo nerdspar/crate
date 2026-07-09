@@ -1138,7 +1138,6 @@ const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> 
 ];
 const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
   ['afterPlayLingerSec', 'Linger seconds', 1, 60],
-  ['longPressMs', 'Long-press (ms)', 100, 1500],
   ['idleAfterMin', 'Go idle after (min, 0=never)', 0, 240],
   ['idleDimPercent', 'Idle dim brightness (%)', 1, 100],
   ['screenOffAfterMin', 'Screen off after (min, 0=never)', 0, 240],
@@ -1177,7 +1176,6 @@ const SETTING_DESC: Partial<Record<keyof Settings, string>> = {
   afterPlay: 'What the open album card does once playback starts: Close it, Linger a few seconds, or Stay open.',
   afterPlayLingerSec: 'How long the card stays open after playback starts before closing — used when “After playing” is set to Linger. 1–60 seconds.',
   afterAlbum: 'What happens when an album’s last track ends: play the next album on the shelf, repeat the album, or stop.',
-  longPressMs: 'How long you must hold a spine to trigger its long-press menu. 100–1500 milliseconds.',
   glowEnabled: 'Whether an opened album casts a soft colored glow behind it.',
   glowRadius: 'How far the opened-album glow spreads — Small, Medium, or Large. (Only when Album glow is on.)',
   glowIntensity: 'How strong the opened-album glow is — Soft, Medium, or Bold. (Only when Album glow is on.)',
@@ -1334,7 +1332,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   {
     id: 'albums',
     name: 'Albums',
-    render: (b) => renderKeyGroups(b, [{ keys: ['openMode', 'pinchZoom', 'afterPlay', 'afterPlayLingerSec', 'afterAlbum', 'longPressMs', 'glowEnabled', 'glowRadius', 'glowIntensity'] }]),
+    render: (b) => renderKeyGroups(b, [{ keys: ['openMode', 'pinchZoom', 'afterPlay', 'afterPlayLingerSec', 'afterAlbum', 'glowEnabled', 'glowRadius', 'glowIntensity'] }]),
   },
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },

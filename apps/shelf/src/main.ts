@@ -81,6 +81,8 @@ const ICON_PREV = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" ari
 const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg>';
 const ICON_SHUFFLE = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>';
 const ICON_REPEAT = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+/** How long to hold a spine before its long-press (group-select) fires. Fixed — a quarter second. */
+const LONG_PRESS_MS = 250;
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
 // Shown in place of the EQ on the just-played album until the target room actually
 // reports playing — a "connecting" spinner so a slow queue-load doesn't look dead.
@@ -815,7 +817,7 @@ function attachRoomLongPress(b: HTMLElement, id: string, el: HTMLElement): void 
       held = true;
       if (navigator.vibrate) navigator.vibrate(15);
       enterGroupSelect(id, el);
-    }, settings.longPressMs);
+    }, LONG_PRESS_MS);
     (e.target as HTMLElement).setPointerCapture?.((e as PointerEvent).pointerId);
   });
   b.addEventListener('pointermove', clear);
@@ -1281,7 +1283,6 @@ const SETTING_HELP: Record<string, string> = {
   'afterplay-choices': 'What the open card does after you hit play.',
   'afterplaylinger-choices': 'How long the card lingers before closing, when “After playing” is set to Linger.',
   'afteralbum-choices': "When an album's last track ends: play the next album on the shelf, repeat it, or stop.",
-  'longpress-choices': 'How long you hold a spine before it opens.',
   'glow-choices': "A soft halo of the cover's art cast behind an opened album.",
   'glowradius-choices': 'How far the glow spreads out around the cover.',
   'glowintensity-choices': 'How bright and saturated the glow is.',
@@ -1621,15 +1622,6 @@ function renderChoices(): void {
     (k) => {
       settings.afterAlbum = k as typeof settings.afterAlbum;
       void client.putSettings({ afterAlbum: settings.afterAlbum }).catch(() => {});
-    },
-  );
-  choiceRow(
-    'longpress-choices',
-    [['250', '0.25s', ''], ['420', '0.4s', ''], ['600', '0.6s', ''], ['900', '0.9s', ''], ['1200', '1.2s', '']],
-    (k) => String(settings.longPressMs) === k,
-    (k) => {
-      settings.longPressMs = Number(k);
-      void client.putSettings({ longPressMs: settings.longPressMs }).catch(() => {});
     },
   );
   choiceRow(
@@ -4414,7 +4406,7 @@ vp.addEventListener('pointerdown', (e) => {
         stepAccum = 0;
         lastX = startX;
       }
-    }, settings.longPressMs);
+    }, LONG_PRESS_MS);
   }
 });
 
