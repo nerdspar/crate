@@ -149,8 +149,10 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 }
 .drag-handle:active { cursor: grabbing; color: var(--ink); }
 .drag-handle svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
-/* Tile view: float the handle top-left so it doesn't disrupt the cover layout. */
-#shelf-list:not(.list) .drag-handle { position: absolute; top: 0.2rem; left: 0.2rem; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 6px; }
+/* Tile view: float the handle top-left so it doesn't disrupt the cover layout. Give it a
+   real touch target (~40px) so it's grabbable on a phone, not a pinpoint corner grip. */
+#shelf-list:not(.list) .drag-handle { position: absolute; top: 0.3rem; left: 0.3rem; z-index: 2; background: rgba(0,0,0,0.5); border-radius: 7px; padding: 0.45rem; }
+#shelf-list:not(.list) .drag-handle svg { width: 1.5rem; height: 1.5rem; }
 #shelf-list:not(.list) .card { position: relative; }
 
 /* ---------- Shelves: type toggle + a playlist's songs ---------- */

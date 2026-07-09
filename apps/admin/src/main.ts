@@ -911,23 +911,26 @@ function wirePointerDrag(row: HTMLElement, handle: HTMLElement, container: HTMLE
     e.preventDefault();
     e.stopPropagation();
     row.classList.add('dragging');
-    handle.setPointerCapture(e.pointerId);
+    // Listen on `window`, NOT the handle. Reordering moves `row` (and its child handle) in the
+    // DOM via insertBefore, which on touch (iOS Safari) drops the handle's pointer capture — so
+    // handle-bound pointermove stops firing and the drag "sticks" after the first step. Window
+    // listeners keep receiving the moves regardless. preventDefault stops the page from scrolling.
     const move = (ev: PointerEvent): void => {
+      if (ev.cancelable) ev.preventDefault();
       const after = dragAfter(container, ev.clientY);
       if (after == null) container.appendChild(row);
       else container.insertBefore(row, after);
     };
     const up = (): void => {
-      handle.releasePointerCapture(e.pointerId);
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', up);
-      handle.removeEventListener('pointercancel', up);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       row.classList.remove('dragging');
       onDrop();
     };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', up);
-    handle.addEventListener('pointercancel', up);
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   });
 }
 
