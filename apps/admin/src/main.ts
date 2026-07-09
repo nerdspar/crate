@@ -1190,13 +1190,15 @@ function idleShelfField(): HTMLElement {
   return f;
 }
 function settingField(key: keyof Settings): HTMLElement | null {
+  let f: HTMLElement | null = null;
   const s = SETTING_SELECTS.find((x) => x[0] === key);
-  if (s) return selectField(s[0], s[1], s[2]);
+  if (s) f = selectField(s[0], s[1], s[2]);
   const n = SETTING_NUMBERS.find((x) => x[0] === key);
-  if (n) return numberField(n[0], n[1], n[2], n[3]);
+  if (!f && n) f = numberField(n[0], n[1], n[2], n[3]);
   const t = SETTING_TOGGLES.find((x) => x[0] === key);
-  if (t) return toggleField(t[0], t[1]);
-  return null;
+  if (!f && t) f = toggleField(t[0], t[1]);
+  if (f) f.dataset['key'] = String(key);
+  return f;
 }
 function fieldGrid(keys: Array<keyof Settings>): HTMLElement {
   const grid = document.createElement('div');
@@ -1411,9 +1413,44 @@ function renderDisplayCat(body: HTMLElement): void {
   if (auto) body.appendChild(auto);
 }
 function renderIdleCat(body: HTMLElement): void {
-  body.appendChild(fieldGrid(['idleAfterMin', 'idleScreen', 'idleDimPercent', 'idleContent']));
-  body.appendChild(idleShelfField());
-  body.appendChild(fieldGrid(['autoOpenEverySec', 'autoOpenPool', 'autoOpenRandom', 'openOnExternalPlay', 'idleUseSensor', 'wakeOnSensor']));
+  const s = settings!;
+  const redraw = (): void => {
+    body.innerHTML = '';
+    renderIdleCat(body);
+  };
+  // A field whose value gates others: re-render the category when it changes so the
+  // dependent rows appear/disappear right away (the value is saved first, synchronously).
+  const gate = (grid: HTMLElement, key: string): HTMLElement => {
+    grid.querySelector(`[data-key="${key}"] select, [data-key="${key}"] input`)?.addEventListener('change', redraw);
+    return grid;
+  };
+  const sub = (label: string): void => {
+    const h = document.createElement('div');
+    h.className = 'set-subhead';
+    h.textContent = label;
+    body.appendChild(h);
+  };
+
+  // When to go idle
+  sub('Go idle');
+  body.appendChild(fieldGrid(['idleAfterMin', 'idleUseSensor', 'wakeOnSensor']));
+
+  // Screen — dim brightness only when the screen dims
+  sub('Screen');
+  body.appendChild(gate(fieldGrid(s.idleScreen === 'dim' ? ['idleScreen', 'idleDimPercent'] : ['idleScreen']), 'idleScreen'));
+
+  // What the shelf shows when idle
+  sub('When idle, show');
+  body.appendChild(gate(fieldGrid(['idleContent']), 'idleContent'));
+  // The idle shelf is only meaningful for the 'shelf' content (or an auto-open shelf pool).
+  if (s.idleContent === 'shelf' || (s.idleContent === 'autoOpen' && s.autoOpenPool === 'shelf')) body.appendChild(idleShelfField());
+  body.appendChild(fieldGrid(['openOnExternalPlay']));
+
+  // Auto-open (attract mode) — segregated, and only when idle content is 'auto-open'.
+  if (s.idleContent === 'autoOpen') {
+    sub('Auto-open');
+    body.appendChild(gate(fieldGrid(['autoOpenEverySec', 'autoOpenPool', 'autoOpenRandom']), 'autoOpenPool'));
+  }
 }
 function renderSystemCat(body: HTMLElement): void {
   const wrap = document.createElement('div');
