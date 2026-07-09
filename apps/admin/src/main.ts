@@ -1487,36 +1487,50 @@ function renderIdleCat(body: HTMLElement): void {
   sub('Screen');
   body.appendChild(gate(fieldGrid(s.idleScreen === 'dim' ? ['idleScreen', 'idleDimPercent'] : ['idleScreen']), 'idleScreen'));
 
-  // What the shelf shows when idle (auto-open is its own category)
+  // What the shelf shows when idle (auto-opening a card — slideshow + external reveal
+  // — lives in the Auto-open category).
   sub('When idle, show');
   body.appendChild(gate(fieldGrid(['idleContent']), 'idleContent'));
   if (s.idleContent === 'shelf') body.appendChild(idleShelfField());
-  body.appendChild(fieldGrid(['openOnExternalPlay']));
 }
 
-/** Auto-open ("attract mode") — its own feature. When enabled it cycles open albums while
-    the wall is idle, independent of the idle-content choice. */
+/** Auto-open — the ways the wall opens an album card on its own while idle: a timed
+    slideshow ("attract mode") and revealing whatever starts playing from another app.
+    Both are independent of the idle-content choice. */
 function renderAutoOpenCat(body: HTMLElement): void {
   const s = settings!;
   const redraw = (): void => {
     body.innerHTML = '';
     renderAutoOpenCat(body);
   };
+  const gate = (grid: HTMLElement, key: string): HTMLElement => {
+    grid.querySelector(`[data-key="${key}"] select`)?.addEventListener('change', redraw);
+    return grid;
+  };
+  const sub = (label: string): void => {
+    const h = document.createElement('div');
+    h.className = 'set-subhead';
+    h.textContent = label;
+    body.appendChild(h);
+  };
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent = 'When on, the wall slideshows albums while idle — regardless of the Idle “when idle, show” setting.';
+  hint.textContent = 'How the wall opens an album card by itself while idle — a timed slideshow, and/or revealing whatever starts playing from another app.';
   body.appendChild(hint);
+
+  // Timed slideshow ("attract mode").
+  sub('Slideshow while idle');
   const toggle = toggleField('autoOpenEnabled', 'Auto-open albums when idle');
   toggle.querySelector('input')?.addEventListener('change', redraw);
   body.appendChild(toggle);
   if (s.autoOpenEnabled) {
-    const gate = (grid: HTMLElement, key: string): HTMLElement => {
-      grid.querySelector(`[data-key="${key}"] select`)?.addEventListener('change', redraw);
-      return grid;
-    };
     body.appendChild(gate(fieldGrid(['autoOpenEverySec', 'autoOpenPool', 'autoOpenRandom']), 'autoOpenPool'));
     if (s.autoOpenPool === 'shelf') body.appendChild(idleShelfField());
   }
+
+  // Reactive reveal when audio starts from outside Crate.
+  sub('Outside playback');
+  body.appendChild(fieldGrid(['openOnExternalPlay']));
 }
 function renderSystemCat(body: HTMLElement): void {
   const wrap = document.createElement('div');
