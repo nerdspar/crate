@@ -1155,6 +1155,7 @@ function renderModesIn(root: HTMLElement | null, playing: boolean): void {
   const shuf = root?.querySelector('.card-shuffle');
   const rep = root?.querySelector('.card-repeat') as HTMLElement | null;
   if (!shuf || !rep) return;
+  if (!shuf.querySelector('svg')) shuf.innerHTML = ICON_SHUFFLE; // overlay button starts empty
   shuf.classList.toggle('on', playing ? queueModes().shuffle : cardShuffle);
   const aa = settings.afterAlbum;
   rep.classList.toggle('on', aa !== 'stop');
@@ -4404,7 +4405,8 @@ let vel = 0,
   holdTimer: ReturnType<typeof setTimeout> | null = null,
   downTarget: HTMLElement | null = null;
 let stepping = false,
-  stepAccum = 0;
+  stepAccum = 0,
+  heldOpen = false; // this gesture opened an album via hold-to-open (release should keep it open)
 // Vertical swipe on the open cover: expand (up) / collapse or close (down). vSwipe:
 // 0 = undetermined, 1 = locked vertical, -1 = locked horizontal (stepping).
 let startY = 0,
@@ -4496,7 +4498,10 @@ function hideLoupe(): void {
 
 function followOpen(): void {
   if (openIdx === null) return;
-  smoothScrollTo(vp, openScrollTarget(openIdx), 320);
+  // Drag-stepping glides the shelf so each stepped album comes into view (~12% from the
+  // left) — unlike a direct tap-open, which stays in place (openScrollTarget). This is what
+  // makes dragging toward an edge reveal/open the albums along the way.
+  smoothScrollTo(vp, settledLeft(openIdx) - vp.clientWidth * 0.12, 320);
 }
 
 function stepAlbum(dir: number): void {
@@ -4537,6 +4542,7 @@ vp.addEventListener('pointerdown', (e) => {
 
   stepping = openIdx !== null;
   stepAccum = 0;
+  heldOpen = false;
   // A vertical drag that starts on the OPEN album's cover (not its panel, which scrolls)
   // toggles the extended view — a faster trigger than the ⋯ button.
   vSwipe = 0;
@@ -4550,6 +4556,7 @@ vp.addEventListener('pointerdown', (e) => {
         stepping = true;
         stepAccum = 0;
         lastX = startX;
+        heldOpen = true; // so releasing this hold keeps the album open (doesn't tap-close it)
       }
     }, LONG_PRESS_MS);
   }
@@ -4629,6 +4636,10 @@ window.addEventListener('pointerup', (e) => {
   if (stepping) {
     stepping = false;
     if (vSwipe === 1) return; // a vertical swipe already expanded/collapsed — not a tap
+    if (heldOpen) {
+      heldOpen = false;
+      return; // hold-to-open: lifting the finger keeps the album open, never tap-closes it
+    }
     if (Math.abs(e.clientX - startX) <= 8 && Math.abs(e.clientY - startY) <= 8) {
       // A tap closes the open album — on empty space (no spine under the finger) or on
       // the open album itself; tapping a DIFFERENT spine opens that one instead.
