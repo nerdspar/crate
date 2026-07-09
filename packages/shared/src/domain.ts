@@ -85,6 +85,9 @@ export interface NowPlaying {
   artworkUrl: string | null;
 }
 
+/** Queue repeat mode (off / repeat one track / repeat the whole queue). */
+export type RepeatMode = 'off' | 'one' | 'all';
+
 export interface PlayerState {
   playerId: string;
   state: PlaybackState;
@@ -94,6 +97,9 @@ export interface PlayerState {
   /** The player this one is synced to (its group leader). A solo player points
       to itself; players sharing a leader form a group. Derived from MA state. */
   groupLeader: string | null;
+  /** Queue shuffle + repeat state (for the transport toggles). */
+  shuffle: boolean;
+  repeat: RepeatMode;
 }
 
 /** Everything the shelf needs to render one spine (derived from Album + palette). */

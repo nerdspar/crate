@@ -14,9 +14,11 @@ import type {
   PlayRequest,
   PlayersResponse,
   ProviderAlbumDetail,
+  RepeatRequest,
   SearchAlbum,
   SearchSong,
   ShelfResponse,
+  ShuffleRequest,
   SystemStatus,
   TransportRequest,
   VolumeRequest,
@@ -110,6 +112,14 @@ export class CrateClient {
 
   setVolume(body: VolumeRequest): Promise<{ ok: true }> {
     return this.post('/api/volume', body);
+  }
+
+  setShuffle(body: ShuffleRequest): Promise<{ ok: true }> {
+    return this.post('/api/shuffle', body);
+  }
+
+  setRepeat(body: RepeatRequest): Promise<{ ok: true }> {
+    return this.post('/api/repeat', body);
   }
 
   group(body: GroupRequest): Promise<{ ok: true }> {

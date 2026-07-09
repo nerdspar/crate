@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -1732,6 +1732,40 @@ window.addEventListener('pointerup', (e) => {
 (document.getElementById('cc-next') as HTMLElement).addEventListener('click', () => ccSkip('next'));
 ccPlayPauseBtn.addEventListener('click', () => void ccPlayPause());
 
+/* ---- Shuffle + repeat (reflect the target queue's state; toggle/cycle on tap) ---- */
+const ccShuffleBtn = document.getElementById('cc-shuffle') as HTMLElement;
+const ccRepeatBtn = document.getElementById('cc-repeat') as HTMLElement;
+const REPEAT_CYCLE: RepeatMode[] = ['off', 'all', 'one'];
+function modeTarget(): string | null {
+  return now.playerId ?? activePlayerId;
+}
+function queueModes(): { shuffle: boolean; repeat: RepeatMode } {
+  const s = lastStates.find((x) => x.playerId === modeTarget());
+  return { shuffle: s?.shuffle ?? false, repeat: s?.repeat ?? 'off' };
+}
+function renderCCModes(): void {
+  const q = queueModes();
+  ccShuffleBtn.classList.toggle('on', q.shuffle);
+  ccRepeatBtn.classList.toggle('on', q.repeat !== 'off');
+  ccRepeatBtn.classList.toggle('repeat-one', q.repeat === 'one');
+}
+ccShuffleBtn.addEventListener('click', () => {
+  const pid = modeTarget();
+  if (!pid) return;
+  const enabled = !queueModes().shuffle;
+  ccShuffleBtn.classList.toggle('on', enabled); // optimistic
+  void client.setShuffle({ playerId: pid, enabled }).catch(() => {});
+});
+ccRepeatBtn.addEventListener('click', () => {
+  const pid = modeTarget();
+  if (!pid) return;
+  const cur = queueModes().repeat;
+  const next = REPEAT_CYCLE[(REPEAT_CYCLE.indexOf(cur) + 1) % REPEAT_CYCLE.length]!;
+  ccRepeatBtn.classList.toggle('on', next !== 'off'); // optimistic
+  ccRepeatBtn.classList.toggle('repeat-one', next === 'one');
+  void client.setRepeat({ playerId: pid, mode: next }).catch(() => {});
+});
+
 function ccSkip(cmd: 'previous' | 'next'): void {
   if (!now.playerId) return;
   void client.transport({ playerId: now.playerId, cmd }).catch(() => {});
@@ -1767,6 +1801,7 @@ ccSeekEl.addEventListener('click', (e) => {
 /* ---- Now-playing render ---- */
 function renderCCNow(): void {
   if (!ccIsOpen()) return;
+  renderCCModes(); // reflect the target queue's shuffle/repeat on the toggles
   // Prefer the shelf item (has cover art); fall back to the player's now-playing
   // metadata so the hero shows ANY room's content, even off the current shelf.
   const it = playingIdx !== null ? items[playingIdx] : null;

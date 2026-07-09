@@ -733,6 +733,17 @@ body.idle #find-grip::after { opacity: 0; }
   border: 1px solid rgba(236,231,221,0.3); border-radius: 50%; font-size: 3.6vh;
 }
 .cc-transport button:active { color: var(--brass); }
+/* Shuffle + repeat: dimmer when off, brass + a dot when on; repeat-one shows a "1". */
+.cc-transport .cc-mode { position: relative; width: 6.5vh; height: 6.5vh; color: var(--ink-dim); }
+.cc-transport .cc-mode .tico { width: 3vh; height: 3vh; }
+.cc-transport .cc-mode.on { color: var(--brass); }
+.cc-transport .cc-mode.on::after {
+  content: ''; position: absolute; bottom: 0.6vh; left: 50%; transform: translateX(-50%);
+  width: 0.6vh; height: 0.6vh; border-radius: 50%; background: currentColor;
+}
+.cc-transport .cc-mode.repeat-one::after {
+  content: '1'; width: auto; height: auto; background: none; font-size: 1.4vh; font-weight: 800; bottom: 0.9vh;
+}
 
 /* Blocks (rooms / search / sort) */
 .cc-block { display: flex; flex-direction: column; gap: 1.4vh; }

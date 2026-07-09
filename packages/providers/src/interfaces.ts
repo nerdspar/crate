@@ -1,6 +1,6 @@
 /** Provider interfaces (§3), adapted to what the device service needs in Phase 1. */
 
-import type { PlayerState, PlayerType, Track } from '@crate/shared';
+import type { PlayerState, PlayerType, RepeatMode, Track } from '@crate/shared';
 
 export interface ProviderAlbum {
   /** Provider playback ref, e.g. `apple_music://album/594061854`. */
@@ -106,6 +106,8 @@ export interface PlayerTarget {
   transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void>;
   setVolume(playerId: string, level: number): Promise<void>;
   setMembers(targetPlayerId: string, add: string[], remove: string[]): Promise<void>;
+  setShuffle(playerId: string, enabled: boolean): Promise<void>;
+  setRepeat(playerId: string, mode: RepeatMode): Promise<void>;
   getState(): Promise<PlayerState[]>;
   /** Subscribe to live player/queue state. Returns an unsubscribe fn. */
   onState(cb: (states: PlayerState[]) => void): () => void;

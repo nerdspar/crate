@@ -8,6 +8,7 @@ import type {
   LabelLayoutFixed,
   Player,
   PlayerState,
+  RepeatMode,
   Settings,
   Shelf,
   ShelfItem,
@@ -105,6 +106,16 @@ export interface TransportRequest {
 export interface VolumeRequest {
   playerId: string;
   level: number;
+}
+
+export interface ShuffleRequest {
+  playerId: string;
+  enabled: boolean;
+}
+
+export interface RepeatRequest {
+  playerId: string;
+  mode: RepeatMode;
 }
 
 export interface GroupRequest {

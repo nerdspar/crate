@@ -9,6 +9,8 @@ import type {
   PlayRequest,
   Settings,
   ShelfAlbumRequest,
+  RepeatRequest,
+  ShuffleRequest,
   TransportRequest,
   VolumeRequest,
 } from '@crate/shared';
@@ -104,6 +106,18 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.post('/api/volume', async (req) => {
     const b = req.body as VolumeRequest;
     await service.setVolume(b.playerId, b.level);
+    return { ok: true };
+  });
+
+  app.post('/api/shuffle', async (req) => {
+    const b = req.body as ShuffleRequest;
+    await service.setShuffle(b.playerId, b.enabled);
+    return { ok: true };
+  });
+
+  app.post('/api/repeat', async (req) => {
+    const b = req.body as RepeatRequest;
+    await service.setRepeat(b.playerId, b.mode);
     return { ok: true };
   });
 

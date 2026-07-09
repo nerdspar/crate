@@ -11,6 +11,7 @@ import type {
   PlayerState,
   PlayersResponse,
   ProviderAlbumDetail,
+  RepeatMode,
   SearchAlbum,
   SearchArtist,
   Settings,
@@ -724,6 +725,14 @@ export class Service {
 
   setVolume(playerId: string, level: number): Promise<void> {
     return this.ma.setVolume(playerId, level);
+  }
+
+  setShuffle(playerId: string, enabled: boolean): Promise<void> {
+    return this.ma.setShuffle(playerId, enabled);
+  }
+
+  setRepeat(playerId: string, mode: RepeatMode): Promise<void> {
+    return this.ma.setRepeat(playerId, mode);
   }
 
   group(playerIds: string[]): Promise<void> {

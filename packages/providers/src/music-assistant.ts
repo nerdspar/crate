@@ -7,7 +7,7 @@
  * MA instead of node-sonos-http-api + iTunes.
  */
 
-import type { PlaybackState, PlayerState, PlayerType, Track } from '@crate/shared';
+import type { PlaybackState, PlayerState, PlayerType, RepeatMode, Track } from '@crate/shared';
 import { MaClient, type MaClientOptions, type MaEvent, type MaServerInfo } from './ma-client.js';
 import type {
   MusicSource,
@@ -79,6 +79,10 @@ function mapPlaybackState(raw: string | undefined): PlaybackState {
     default:
       return 'unknown';
   }
+}
+
+function mapRepeat(v: string | undefined): RepeatMode {
+  return v === 'one' || v === 'all' ? v : 'off';
 }
 
 export class MusicAssistantProvider implements MusicSource, PlayerTarget {
@@ -485,6 +489,14 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     });
   }
 
+  async setShuffle(playerId: string, enabled: boolean): Promise<void> {
+    await this.client.command('player_queues/shuffle', { queue_id: playerId, shuffle_enabled: enabled });
+  }
+
+  async setRepeat(playerId: string, mode: RepeatMode): Promise<void> {
+    await this.client.command('player_queues/repeat', { queue_id: playerId, repeat_mode: mode });
+  }
+
   async getState(): Promise<PlayerState[]> {
     const [playersRaw, queuesRaw] = await Promise.all([
       this.client.command('players/all', { return_unavailable: true }),
@@ -543,6 +555,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
               volume: vol.volume,
               muted: vol.muted,
               groupLeader: groupLeaderById.get(id) ?? id,
+              shuffle: false,
+              repeat: 'off',
               nowPlaying: {
                 albumId: null,
                 albumUri: null,
@@ -568,6 +582,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
           volume: vol.volume,
           muted: vol.muted,
           groupLeader: groupLeaderById.get(id) ?? id,
+          shuffle: queue['shuffle_enabled'] === true,
+          repeat: mapRepeat(str(queue['repeat_mode'])),
           nowPlaying: hasNow
             ? {
                 albumId: null,
