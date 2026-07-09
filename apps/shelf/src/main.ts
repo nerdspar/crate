@@ -81,6 +81,7 @@ const ICON_PREV = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" ari
 const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg>';
 const ICON_SHUFFLE = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>';
 const ICON_REPEAT = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+const ICON_ARROW = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15"/><path d="M13 6l6 6-6 6"/></svg>';
 /** How long to hold a spine before its long-press (group-select) fires. Fixed — a quarter second. */
 const LONG_PRESS_MS = 250;
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
@@ -1157,7 +1158,7 @@ function renderModesIn(root: HTMLElement | null, playing: boolean): void {
   shuf.classList.toggle('on', playing ? queueModes().shuffle : cardShuffle);
   const aa = settings.afterAlbum;
   rep.classList.toggle('on', aa !== 'stop');
-  rep.innerHTML = aa === 'next' ? ICON_NEXT : ICON_REPEAT;
+  rep.innerHTML = aa === 'next' ? ICON_ARROW : ICON_REPEAT;
   rep.setAttribute('aria-label', aa === 'next' ? 'Play next album' : aa === 'repeat' ? 'Repeat album' : 'Stop after album');
 }
 /** Reflect the shuffle + after-album buttons on every surface currently showing. */

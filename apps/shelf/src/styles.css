@@ -236,7 +236,7 @@ body {
   background: linear-gradient(90deg, rgba(19,17,20,0.9), rgba(19,17,20,0.97));
   display: flex; flex-direction: column; justify-content: safe center;
   gap: 1.4vh;
-  padding: 2vh 2.4vh 2vh 3.2vh;
+  padding: 2vh 2.8vh; /* symmetric left/right margins (was 3.2 left / 2.4 right) */
   /* On short screens (e.g. iPad) a long title/track list would otherwise be pushed off the
      bottom by justify-center; safe-center + panel scroll keeps everything reachable. */
   overflow-y: auto; scrollbar-width: none;
@@ -379,10 +379,13 @@ button {
 /* now-playing seek bar (Phase 2) */
 .nowbar { display: flex; flex-direction: column; gap: 0.9vh; margin: 0.4vh 0 1.4vh; }
 .nowbar[hidden] { display: none; }
-/* Playing transport: ⏮ [Play/Pause] ⏭ — the play button shrinks to flank the skips. */
-.transport { display: flex; align-items: center; gap: 1.8vw; }
-/* When flanked by skips the button shrinks horizontally (flex) but keeps its height. */
-.transport .play { flex: 1; width: auto; }
+/* Playing transport: [shuffle] ⏮ [Play/Pause] ⏭ [repeat]. Gap is in vh, not vw — the
+   panel is only ~420px wide while the wall viewport is ultrawide, so vw gaps would eat
+   the row and squeeze the play button into a tiny circle. */
+.transport { display: flex; align-items: center; gap: 1.2vh; }
+/* The play button stays the wide, prominent element; a min-width keeps it a pill even
+   when flanked by shuffle/skip/repeat, never collapsing to a circle. */
+.transport .play { flex: 1; width: auto; min-width: 18vh; }
 .np-btn {
   flex: 0 0 auto; background: transparent; border: none; color: var(--ink);
   cursor: pointer; padding: 0.4vh 0.6vh; line-height: 1; font-size: 3vh;
@@ -1120,7 +1123,8 @@ body.idle #find-grip::after { opacity: 0; }
 .am-nowbar .seek { height: 7px; }
 .am-actions { display: flex; align-items: center; gap: 1.4vw; }
 /* Play fills the row; the ⏮ ⏭ flank it when playing. */
-.am-transport { flex: 1; display: flex; align-items: center; gap: 1.4vw; }
+.am-transport { flex: 1; display: flex; align-items: center; gap: 1.2vh; }
+.am-transport .am-play { min-width: 18vh; } /* keep Play a wide pill next to shuffle/skip/repeat */
 .am-play {
   flex: 1;
   background: var(--ink); color: #131114; border: none; border-radius: 999px;
