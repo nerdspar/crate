@@ -74,7 +74,10 @@ function showToast(msg: string): void {
 // image fails to load (e.g. personal Apple Music uploads whose signed art URLs MA can't re-serve).
 document.documentElement.style.setProperty('--crate-mark', `url("${crateMark}")`);
 function artHtml(url: string | null): string {
-  const img = url ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  // No loading="lazy": on mobile (esp. iOS Safari) lazy thumbnails re-load/re-decode as they
+  // scroll into view, which reads as perpetual flashing. These are small cached covers, so
+  // load them once up front and let them stay decoded. decoding="async" keeps it off the main thread.
+  const img = url ? `<img src="${esc(url)}" alt="" decoding="async" onerror="this.remove()">` : '';
   return `<div class="art">${img}</div>`;
 }
 
