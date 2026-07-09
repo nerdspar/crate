@@ -349,6 +349,14 @@ export class Service {
     const songs: SearchSong[] = [];
     const artists: SearchArtist[] = [];
     const artistNames = new Set<string>();
+    // A section can still have more to fetch if any single query came back full (== limit):
+    // the library album query, or any source's per-type page. Raising the limit re-fetches more.
+    const hasMore = { albums: libRaw.length >= limit, playlists: false, songs: false };
+    for (const { r } of results) {
+      if (r.albums.length >= limit) hasMore.albums = true;
+      if (r.playlists.length >= limit) hasMore.playlists = true;
+      if (r.tracks.length >= limit) hasMore.songs = true;
+    }
     for (const { s, r } of results) {
       for (const a of r.artists) {
         const nk = a.name.toLowerCase();
@@ -368,7 +376,7 @@ export class Service {
       for (const t of r.tracks)
         songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: s.name });
     }
-    return { artists, albums, playlists, songs, sources };
+    return { artists, albums, playlists, songs, sources, hasMore };
   }
 
   /** An artist's albums, marked with shelf/library status like search hits. */

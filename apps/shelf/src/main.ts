@@ -186,7 +186,7 @@ function coverW(): number {
   return shelf.clientHeight * 0.89;
 }
 function panelW(): number {
-  return Math.min(window.innerWidth * 0.34, 540);
+  return Math.round(coverW() * 0.66); // the extended card's text panel ≈ 2/3 the album cover's width
 }
 /** Base spine width, proportional to a real CD jewel case (~10mm spine on a
     ~117mm case ≈ 9% of the case height). This is the uniform "every CD is the
@@ -3071,9 +3071,10 @@ function renderGlobal(loading: boolean): void {
   const catalogAlbums = remoteNew.filter((a) => !a.inLibrary);
   const playlists = g?.playlists ?? [];
   const songs = g?.songs ?? [];
-  cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, remoteAlbums.length));
-  cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', playlists.length));
-  cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', songs.length));
+  const more = g?.hasMore ?? { albums: false, playlists: false, songs: false };
+  cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, more.albums));
+  cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', more.playlists));
+  cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', more.songs));
   findResults.appendChild(cats);
 }
 
@@ -3091,7 +3092,7 @@ function albumsColumn(
   lib: SearchAlbum[],
   catalog: SearchAlbum[],
   loading: boolean,
-  remoteCount: number,
+  more: boolean,
 ): HTMLElement {
   const col = document.createElement('div');
   col.className = 'find-cat';
@@ -3137,12 +3138,14 @@ function albumsColumn(
     e.textContent = loading ? 'Searching…' : 'None';
     list.appendChild(e);
   }
-  if (!loading && (remote.length > searchShown.albums || remoteCount >= searchLimit)) {
-    const more = document.createElement('button');
-    more.className = 'find-more';
-    more.textContent = 'Load more';
-    more.onclick = () => loadMoreSection('albums');
-    list.appendChild(more);
+  // Offer more when there are fetched-but-hidden cards to reveal, or the server says a bigger
+  // fetch would return more. Keeps working page after page until the sources are exhausted.
+  if (!loading && (remote.length > searchShown.albums || more)) {
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'find-more';
+    moreBtn.textContent = 'Load more';
+    moreBtn.onclick = () => loadMoreSection('albums');
+    list.appendChild(moreBtn);
   }
   col.appendChild(list);
   return col;
@@ -3231,7 +3234,7 @@ function catColumn(
   cards: HTMLElement[],
   loading: boolean,
   key: 'albums' | 'playlists' | 'songs',
-  remoteCount: number,
+  more: boolean,
 ): HTMLElement {
   const col = document.createElement('div');
   col.className = 'find-cat';
@@ -3244,14 +3247,14 @@ function catColumn(
   if (cards.length) {
     const shown = searchShown[key];
     cards.slice(0, shown).forEach((c) => list.appendChild(c));
-    // Offer more when we have extra fetched-but-hidden cards, or the source's page
-    // came back saturated (so there are likely more beyond what we've fetched).
-    if (!loading && (cards.length > shown || remoteCount >= searchLimit)) {
-      const more = document.createElement('button');
-      more.className = 'find-more';
-      more.textContent = 'Load more';
-      more.onclick = () => loadMoreSection(key);
-      list.appendChild(more);
+    // Offer more when we have extra fetched-but-hidden cards, or the server says a bigger
+    // fetch would return more — so paging continues until the sources are exhausted.
+    if (!loading && (cards.length > shown || more)) {
+      const moreBtn = document.createElement('button');
+      moreBtn.className = 'find-more';
+      moreBtn.textContent = 'Load more';
+      moreBtn.onclick = () => loadMoreSection(key);
+      list.appendChild(moreBtn);
     }
   } else {
     const e = document.createElement('div');

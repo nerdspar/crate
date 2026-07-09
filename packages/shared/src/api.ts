@@ -248,6 +248,9 @@ export interface GlobalSearchResponse {
   playlists: LibraryPlaylist[];
   songs: SearchSong[];
   sources: MusicSourceInfo[];
+  /** Whether raising the per-section fetch limit would likely yield more results — true when
+      any source (or the library query) returned a full page. Drives the "Load more" button. */
+  hasMore: { albums: boolean; playlists: boolean; songs: boolean };
 }
 
 /** A saved playlist from the provider library, plus whether it's already added. */
