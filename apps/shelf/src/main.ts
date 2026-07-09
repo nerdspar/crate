@@ -1806,9 +1806,38 @@ function updateCCSeek(): void {
 function roomVol(id: string): number {
   return lastStates.find((s) => s.playerId === id)?.volume ?? volume;
 }
+/** While the user is actively dragging a volume slider we hold off syncing sliders
+    from incoming MA frames, so a live update doesn't fight the drag. */
+let volTouchUntil = 0;
+function bumpVolTouch(): void {
+  volTouchUntil = performance.now() + 1400;
+}
 function wireVolume(input: HTMLInputElement, playerId: string): void {
+  input.dataset['pid'] = playerId; // lets syncCCVolumes push external changes back in
+  input.addEventListener('pointerdown', bumpVolTouch);
   input.addEventListener('input', (e) => {
+    bumpVolTouch();
     void client.setVolume({ playerId, level: +(e.target as HTMLInputElement).value }).catch(() => {});
+  });
+}
+/** Reflect external volume changes (Sonos app / hardware buttons) on the open control
+    center's room + group sliders, live — skipping any the user is mid-drag. */
+function syncCCVolumes(): void {
+  if (!ccIsOpen() || performance.now() < volTouchUntil) return;
+  const wrap = document.getElementById('cc-rooms');
+  if (!wrap) return;
+  wrap.querySelectorAll<HTMLInputElement>('input[type=range]').forEach((inp) => {
+    if (inp === document.activeElement) return;
+    const pid = inp.dataset['pid'];
+    if (pid) {
+      inp.value = String(roomVol(pid));
+      return;
+    }
+    const leader = inp.dataset['group'];
+    if (leader) {
+      const m = groupMembers(leader);
+      if (m.length) inp.value = String(Math.round(m.reduce((s, r) => s + roomVol(r.id), 0) / m.length));
+    }
   });
 }
 /** The group leader a room is synced to (from MA state); solo rooms lead themselves. */
@@ -2194,6 +2223,7 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   // balance in between. We snapshot the members' levels + the group value at drag start so
   // the whole drag maps from a fixed origin (reversible, and it survives the ends cleanly).
   const gInput = cell.querySelector('input') as HTMLInputElement;
+  gInput.dataset['group'] = leader; // syncCCVolumes pushes the live group average here
   let dragBase: { g: number; vols: number[] } | null = null;
   const snapshot = (): { g: number; vols: number[] } => ({ g: +gInput.value, vols: members.map((r) => roomVol(r.id)) });
   const applyGroup = (): void => {
@@ -2217,9 +2247,13 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     });
   };
   gInput.addEventListener('pointerdown', () => {
+    bumpVolTouch();
     dragBase = snapshot();
   });
-  gInput.addEventListener('input', applyGroup);
+  gInput.addEventListener('input', () => {
+    bumpVolTouch();
+    applyGroup();
+  });
   gInput.addEventListener('change', () => {
     dragBase = null; // next drag re-snapshots from the settled levels
   });
@@ -2255,7 +2289,10 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
     // A member slider sets just that room — and nudges the GROUP slider to the members'
     // new average (so the group control always reflects the true average level).
     const mInput = m.querySelector('input') as HTMLInputElement;
+    mInput.dataset['pid'] = r.id;
+    mInput.addEventListener('pointerdown', bumpVolTouch);
     mInput.addEventListener('input', () => {
+      bumpVolTouch();
       void client.setVolume({ playerId: r.id, level: +mInput.value }).catch(() => {});
       const memInputs = [...cell.querySelectorAll('.cc-group-member input')] as HTMLInputElement[];
       gInput.value = String(Math.round(memInputs.reduce((s, inp) => s + +inp.value, 0) / memInputs.length));
@@ -4040,6 +4077,8 @@ function handleState(states: PlayerState[]): void {
     if (openIdx !== null) syncVol((shelf.children[openIdx] as HTMLElement).querySelector('.vol'));
     if (!albumModal.hidden) syncVol(albumModal.querySelector('.am-vol'));
   }
+  // Any room's external volume change (Sonos app / hardware) → the control center sliders.
+  syncCCVolumes();
   // `now` is the FOCUSED now-playing that drives the open card: prefer the player
   // playing/paused the OPEN album (so its card shows real controls even when other
   // rooms play other albums), else any playing/paused player. Guards drop this
