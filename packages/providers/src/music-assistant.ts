@@ -238,11 +238,26 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       an artist is slow (MA fetches the full track list ~30–40s) then MA caches it, so
       we also cache here and give the command a long timeout. Returned already trimmed. */
   private artistTrackCache = new Map<string, { tracks: ProviderTrackHit[]; at: number }>();
+  private static readonly ARTIST_TRACK_TTL_MS = 60 * 60_000; // top tracks change rarely — hold an hour
+  private artistTrackInflight = new Map<string, Promise<ProviderTrackHit[]>>();
   async getArtistTopTracks(providerUri: string): Promise<ProviderTrackHit[]> {
     const parsed = parseProviderUri(providerUri);
     if (!parsed) return [];
     const cached = this.artistTrackCache.get(providerUri);
-    if (cached && Date.now() - cached.at < MusicAssistantProvider.TRACK_TTL_MS) return cached.tracks;
+    if (cached && Date.now() - cached.at < MusicAssistantProvider.ARTIST_TRACK_TTL_MS) return cached.tracks;
+    // Coalesce concurrent requests (a prefetch + a tap) onto one slow MA call.
+    const inflight = this.artistTrackInflight.get(providerUri);
+    if (inflight) return inflight;
+    const p = this.fetchArtistTopTracks(providerUri, parsed.id, parsed.provider);
+    this.artistTrackInflight.set(providerUri, p);
+    try {
+      return await p;
+    } finally {
+      this.artistTrackInflight.delete(providerUri);
+    }
+  }
+  private async fetchArtistTopTracks(providerUri: string, id: string, provider: string): Promise<ProviderTrackHit[]> {
+    const parsed = { id, provider };
     const raw = await this.client.command(
       'music/artists/artist_tracks',
       { item_id: parsed.id, provider_instance_id_or_domain: parsed.provider },

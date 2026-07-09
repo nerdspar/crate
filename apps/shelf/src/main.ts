@@ -2500,6 +2500,16 @@ let searchSource = 'all'; // selected global-search source (instance id or 'all'
 let globalResults: GlobalSearchResponse | null = null;
 let artistView: SearchArtist | null = null; // non-null = the artist detail is showing
 let artistSeq = 0; // cancels stale artist-detail fetches
+// Warm the top artists' (slow) song lists in the background as soon as they appear in
+// results, so tapping in usually finds them ready. Deduped per session.
+const prefetchedArtists = new Set<string>();
+function prefetchArtistSongs(artists: SearchArtist[]): void {
+  for (const a of artists.slice(0, 2)) {
+    if (prefetchedArtists.has(a.providerUri)) continue;
+    prefetchedArtists.add(a.providerUri);
+    void client.getArtistTopSongs(a.providerUri).catch(() => prefetchedArtists.delete(a.providerUri));
+  }
+}
 let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
 /* Recent searches: the last handful of queries, shown as tappable chips when the
@@ -2659,6 +2669,7 @@ function renderGlobal(loading: boolean): void {
   // Artists lead the results (tap → their albums + top songs).
   const artistsRow = artistsRowEl(g?.artists ?? []);
   if (artistsRow) findResults.appendChild(artistsRow);
+  if (!loading) prefetchArtistSongs(g?.artists ?? []); // warm the slow song lists in the background
 
   const cats = document.createElement('div');
   cats.className = 'find-cats';
