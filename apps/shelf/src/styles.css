@@ -297,6 +297,7 @@ button {
 .songs:active { transform: scale(0.97); }
 .rooms { display: flex; gap: 1vh; flex-wrap: wrap; }
 .room {
+  display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25);
   font-size: 1.8vh; font-weight: 600;
