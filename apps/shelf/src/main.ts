@@ -3084,14 +3084,10 @@ function renderGlobal(loading: boolean): void {
   const catalogAlbums = remoteNew.filter((a) => !a.inLibrary);
   const playlists = g?.playlists ?? [];
   const songs = g?.songs ?? [];
-  // More to load if the server says so (a source page came back full) OR our own growth check
-  // saw the last bigger fetch return more than the one before it.
-  const hm = g?.hasMore ?? { albums: false, playlists: false, songs: false };
-  const more = {
-    albums: hm.albums || searchGrew.albums,
-    playlists: hm.playlists || searchGrew.playlists,
-    songs: hm.songs || searchGrew.songs,
-  };
+  // More to load = the server's per-section hasMore (a source page came back full). Fall back to
+  // our own raw growth check only when the server didn't send hasMore (older build). Both are
+  // computed from the RAW result count, so they aren't fooled by on-shelf dedup shrinking the list.
+  const more = g?.hasMore ?? searchGrew;
   cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, more.albums));
   cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', more.playlists));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', more.songs));
@@ -3158,10 +3154,10 @@ function albumsColumn(
     e.textContent = loading ? 'Searching…' : 'None';
     list.appendChild(e);
   }
-  // Offer more only once the page is actually full (else a tiny result set would show a dead
-  // button): either there are fetched-but-hidden cards to reveal, or a bigger fetch would
-  // return more. Pages on until the sources run dry.
-  if (!loading && remote.length >= searchShown.albums && (remote.length > searchShown.albums || more)) {
+  // Offer more when there are fetched-but-hidden cards to reveal, or a bigger fetch would return
+  // more (server hasMore). Don't gate on remote.length vs the page size — on-shelf dedup shrinks
+  // remote below the page, which would wrongly hide the button when there's plenty more.
+  if (!loading && (remote.length > searchShown.albums || more)) {
     const moreBtn = document.createElement('button');
     moreBtn.className = 'find-more';
     moreBtn.textContent = 'Load more';
@@ -3268,9 +3264,8 @@ function catColumn(
   if (cards.length) {
     const shown = searchShown[key];
     cards.slice(0, shown).forEach((c) => list.appendChild(c));
-    // Offer more only once the page is full (else a tiny result set shows a dead button):
-    // extra hidden cards to reveal, or a bigger fetch would return more.
-    if (!loading && cards.length >= shown && (cards.length > shown || more)) {
+    // Extra hidden cards to reveal, or a bigger fetch would return more (server hasMore).
+    if (!loading && (cards.length > shown || more)) {
       const moreBtn = document.createElement('button');
       moreBtn.className = 'find-more';
       moreBtn.textContent = 'Load more';
