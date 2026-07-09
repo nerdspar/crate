@@ -186,7 +186,7 @@ function coverW(): number {
   return shelf.clientHeight * 0.89;
 }
 function panelW(): number {
-  return Math.min(window.innerWidth * 0.3, 420);
+  return Math.min(window.innerWidth * 0.34, 540);
 }
 /** Base spine width, proportional to a real CD jewel case (~10mm spine on a
     ~117mm case ≈ 9% of the case height). This is the uniform "every CD is the
