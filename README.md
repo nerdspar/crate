@@ -6,6 +6,26 @@ open, hit play, and it starts on your speakers. Open-source, commodity hardware.
 
 See [`CRATE_BUILD_PLAN.md`](./CRATE_BUILD_PLAN.md) for the full design.
 
+## Features
+
+- **Spine shelf** — your library as CD-jewel-case spines on an ultrawide display; tap to
+  flip a case open, hit play, and it streams to your Sonos. Real or generated spine art,
+  duration-scaled widths, per-album typography.
+- **Shelves** — curated, reorderable collections (albums and playlists), each with its own
+  sort. Playlists render as song shelves you can view, reorder, and hide tracks in.
+- **Search** — one box across your sources, tiered *On your shelf → In your library → From
+  your sources*, plus artists (→ their albums + top songs) and songs (→ open the album cued).
+  Explicit tags, recent searches.
+- **Multi-room** — pick any speaker or group as the play target; form groups from the album
+  picker (multi-select or long-press), save one-tap group presets, per-room + proportional
+  group volume that tracks external (Sonos-app) changes live.
+- **Playback feedback** — a "connecting" spinner and frozen seek until the room actually
+  reports playing, so nothing animates before audio starts.
+- **Pinch to zoom** the shelf (spine density or a magnifier loupe), idle/attract modes, a
+  sleep schedule, and brightness/display control.
+- **Admin app** — a phone/desktop companion (iOS-style) to import & curate the library,
+  build shelves, edit spines, manage speakers/presets, and configure everything.
+
 ## Playback architecture (Phase 0 outcome)
 
 Phase 0 proved that node-sonos-http-api **cannot** reliably start arbitrary Apple

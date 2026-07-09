@@ -588,7 +588,7 @@ function openCardAlbumUri(): string | null {
 }
 /** Whether a room is playing THIS album, some OTHER music, or nothing — so the picker
     can mark which are safe to take over. */
-function roomPlayState(id: string): 'this' | 'other' | 'idle' {
+function roomPlayState(id: string): 'this' | 'other' | 'idle' | 'buffering' {
   const hereId = openCardAlbumId();
   // The FOCUSED room (the one this card controls) keeps its EQ when playing OR paused —
   // frozen while paused so its chip tracks the song row + Pause button. This also serves
@@ -596,7 +596,7 @@ function roomPlayState(id: string): 'this' | 'other' | 'idle' {
   // Other rooms only qualify when actively playing (below), so a background room you've
   // moved away from — left paused on this album — does NOT keep a stale EQ.
   if (id === now.playerId && (now.state === 'playing' || now.state === 'paused') && !!now.albumId && now.albumId === hereId)
-    return 'this';
+    return playBuffering() ? 'buffering' : 'this'; // 'connecting' until the room really plays
   // Any OTHER room must be ACTIVELY playing to get a marker: its EQ if it's on this
   // album, else the busy dot for other music. A paused background room shows nothing.
   const s = lastStates.find((x) => x.playerId === id && x.state === 'playing' && x.nowPlaying);
@@ -606,19 +606,21 @@ function roomPlayState(id: string): 'this' | 'other' | 'idle' {
   return matches ? 'this' : 'other';
 }
 /** A group's play state = whatever any member is doing (they share the queue). */
-function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' {
+function groupPlayState(members: Player[]): 'this' | 'other' | 'idle' | 'buffering' {
   let other = false;
+  let buffering = false;
   for (const m of members) {
     const ps = roomPlayState(m.id);
     if (ps === 'this') return 'this';
+    if (ps === 'buffering') buffering = true;
     if (ps === 'other') other = true;
   }
-  return other ? 'other' : 'idle';
+  return buffering ? 'buffering' : other ? 'other' : 'idle';
 }
-/** Prefix for a picker chip: animated EQ if it's playing this album, a hollow dot if
-    it's playing something else (→ playing here would override it), nothing if idle. */
-function playMarker(ps: 'this' | 'other' | 'idle'): string {
-  return ps === 'this' ? TRACK_EQ : ps === 'other' ? '<span class="room-busy"></span>' : '';
+/** Prefix for a picker chip: animated EQ if it's playing this album, a spinner while a
+    fresh play is connecting, a hollow dot if it's playing other music, nothing if idle. */
+function playMarker(ps: 'this' | 'other' | 'idle' | 'buffering'): string {
+  return ps === 'this' ? TRACK_EQ : ps === 'buffering' ? NOW_SPINNER : ps === 'other' ? '<span class="room-busy"></span>' : '';
 }
 
 /** If the picked room is playing the OPEN album, follow it so the card shows THAT
@@ -1003,7 +1005,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   applyNow();
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement); // target room EQ now
   scheduleAfterPlayClose();
-  showToast(`Playing on ${roomName(activePlayerId)}`);
+  showToast(`Sent to ${roomName(activePlayerId)}…`);
   client
     .play({
       albumId: item.albumId,
@@ -2878,7 +2880,7 @@ async function playSong(trackUri: string): Promise<void> {
       ...(activePlayerId ? { playerId: activePlayerId } : {}),
       ...(d.cueIndex > 0 ? { trackIndex: d.cueIndex } : {}),
     });
-    showToast(`Playing on ${roomName(activePlayerId)}`);
+    showToast(`Sent to ${roomName(activePlayerId)}…`);
   } catch {
     showToast('Playback failed');
   }
@@ -3115,7 +3117,7 @@ async function playModal(trackIndex?: number): Promise<void> {
     applyNow();
     renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's EQ now
   }
-  showToast(`Playing on ${roomName(activePlayerId)}`);
+  showToast(`Sent to ${roomName(activePlayerId)}…`);
   client
     .play({
       albumId: modalAlbumUri,
@@ -4402,6 +4404,9 @@ function updateOpenTrackIndicator(): void {
 }
 
 function liveElapsed(): number {
+  // While a fresh play is still "connecting" (buffering), hold the position at 0 so the
+  // seek bar doesn't tick up then snap back when real playback actually starts.
+  if (playBuffering()) return 0;
   const e = now.state === 'playing' ? now.elapsed + (performance.now() - now.at) / 1000 : now.elapsed;
   return now.duration > 0 ? Math.min(e, now.duration) : e;
 }
