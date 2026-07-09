@@ -948,18 +948,21 @@ body.idle #find-grip::after { opacity: 0; }
 .find-clear[hidden] { display: none; }
 .find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
 .find-row .choices { flex: 1 1 auto; }
+/* Sort buttons match the Settings button's size (smaller than the default .choice) to free space. */
+.find-row .choices .choice { font-size: 1.9vh; padding: 1vh 3vw; border-radius: 999px; }
 
-/* Shelf switcher (top of the Find bar): Albums/Playlists tabs + a list of shelves. */
-#find-shelves { display: flex; flex-direction: column; gap: 1.2vh; }
-.find-shelf-tabs { display: flex; gap: 4vw; border-bottom: 1px solid rgba(236,231,221,0.12); }
+/* Shelf switcher (top of the Find bar): Albums/Playlists tabs stacked vertically on the left
+   (frees the vertical band a horizontal tab row used) + the list of shelves to their right. */
+#find-shelves { display: flex; flex-direction: row; align-items: flex-start; gap: 2.4vw; }
+.find-shelf-tabs { display: flex; flex-direction: column; gap: 0.6vh; flex: 0 0 auto; }
 .find-shelf-tab {
-  background: transparent; border: none; border-bottom: 3px solid transparent; border-radius: 0;
-  margin-bottom: -1px; color: var(--ink-dim);
+  background: transparent; border: none; border-left: 3px solid transparent; border-radius: 0;
+  color: var(--ink-dim); text-align: left;
   font-family: 'Newsreader Variable', serif; font-size: 2.8vh; font-weight: 500;
-  padding: 0 0.5vw 1vh;
+  padding: 0.3vh 0.9vw;
 }
-.find-shelf-tab.on { color: var(--ink); border-bottom-color: var(--brass); }
-#find-shelf-list { display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
+.find-shelf-tab.on { color: var(--ink); border-left-color: var(--brass); }
+#find-shelf-list { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
 .find-shelf {
   text-align: left; background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.18); border-radius: 999px;
