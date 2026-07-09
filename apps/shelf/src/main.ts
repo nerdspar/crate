@@ -561,13 +561,20 @@ function openAlbum(i: number, autoscroll = true): void {
   positionGlow(i);
   if (!autoscroll) return;
   requestAnimationFrame(() => {
-    smoothScrollTo(vp, openScrollTarget(i));
+    const target = openScrollTarget(i);
+    if (Math.abs(target - vp.scrollLeft) > 1) smoothScrollTo(vp, target); // open in place unless it'd overflow
   });
 }
 
 function expand(el: HTMLElement, on: boolean): void {
   el.classList.toggle('expanded', on);
   el.style.width = openWidth(el) + 'px'; // grows to the right, pushing later spines along
+  if (on && openIdx !== null) {
+    requestAnimationFrame(() => {
+      const target = openScrollTarget(openIdx!); // the now-wider panel may need to scroll into view
+      if (Math.abs(target - vp.scrollLeft) > 1) smoothScrollTo(vp, target);
+    });
+  }
 }
 
 function closeAlbum(): void {
@@ -591,10 +598,20 @@ function settledLeft(i: number): number {
   return x;
 }
 
-/** Scroll target that brings an opened album ~12% from the viewport's left — the album
-    flips open in place and the cover/panel grow to its right, pushing later spines along. */
+/** Minimal scroll for an opened album: keep it exactly in place unless the flipped-open
+    card would run past an edge. Only then scroll — just enough to fit the card past the
+    right edge (the common case), or to reveal its left edge if it started off-screen left.
+    Tapping a visible album never yanks the shelf sideways. */
 function openScrollTarget(i: number): number {
-  return settledLeft(i) - vp.clientWidth * 0.12;
+  const el = shelf.children[i] as HTMLElement;
+  const left = settledLeft(i);
+  const cardRight = left + openWidth(el);
+  const viewLeft = vp.scrollLeft;
+  const viewRight = vp.scrollLeft + vp.clientWidth;
+  const margin = vp.clientWidth * 0.03;
+  if (cardRight > viewRight) return vp.scrollLeft + (cardRight - viewRight) + margin; // overflow right → fit
+  if (left < viewLeft) return Math.max(0, left - margin); // spine off-screen left → reveal it
+  return vp.scrollLeft; // fits in the current view → don't move
 }
 
 let scrollToken = 0;
