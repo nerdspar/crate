@@ -776,6 +776,7 @@ function renderRooms(el: HTMLElement): void {
       activePlayerId = r.id;
       activeSolo = true;
       userPickedPlayer = true;
+      volume = roomVol(r.id); // adopt the picked player's level so the slider updates instantly
       followIfPlayingOpenAlbum(r.id);
       renderRooms(el);
       updatePlayButton(); // label flips to "Play" when this differs from what's playing
@@ -4984,6 +4985,17 @@ function applySettings(s: Settings): void {
     activePlayerId = s.defaultPlayerId;
     activeSolo = true;
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    if (ccIsOpen()) renderCCRooms();
+  }
+  // A player's exposure toggled in the admin → recompute the pickable rooms and re-render
+  // the pickers live (no wall refresh), including any open card / play-now overlay.
+  if (JSON.stringify(s.exposedPlayers) !== JSON.stringify(prev.exposedPlayers)) {
+    computeRooms();
+    if (!activePlayerId || !rooms.some((r) => r.id === activePlayerId)) {
+      activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? activePlayerId;
+    }
+    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    if (!albumModal.hidden) renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
     if (ccIsOpen()) renderCCRooms();
   }
   applyTextDir();
