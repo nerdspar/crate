@@ -112,6 +112,7 @@
     <div class="set-tabs">
       <button class="set-tab on" data-pane="spines">Spines</button>
       <button class="set-tab" data-pane="albums">Albums</button>
+      <button class="set-tab" data-pane="players">Players</button>
       <button class="set-tab" data-pane="display">Display</button>
       <button class="set-tab" data-pane="idle">Idle</button>
       <button class="set-tab" data-pane="sleep">Sleep</button>
@@ -144,6 +145,13 @@
       <div class="setting-row"><div class="label">Album glow</div><div class="choices" id="glow-choices"></div></div>
       <div class="setting-row"><div class="label">Glow radius</div><div class="choices" id="glowradius-choices"></div></div>
       <div class="setting-row"><div class="label">Glow intensity</div><div class="choices" id="glowintensity-choices"></div></div>
+    </div>
+
+    <!-- PLAYERS — default speaker, which players show on the wall, one-tap group presets. -->
+    <div class="set-pane" data-pane="players">
+      <div class="setting-row"><div class="label">Default speaker</div><div class="choices" id="wall-default-player"></div></div>
+      <div class="setting-row"><div class="label">Shown on the wall</div><div class="choices" id="wall-exposed-players"></div></div>
+      <div class="setting-row set-schedule-row"><div class="label">Group presets</div><div id="wall-presets"></div></div>
     </div>
 
     <!-- DISPLAY — screen brightness. -->

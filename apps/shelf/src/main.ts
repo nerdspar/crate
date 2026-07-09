@@ -1767,7 +1767,116 @@ function renderChoices(): void {
     void client.putSettings({ openOnExternalPlay: v }).catch(() => {});
   });
   renderWallSchedule();
+  renderPlayersPane();
   updateConditionalRows();
+}
+
+/* ---- Players settings pane (default speaker + exposure + group presets), mirrors admin ---- */
+/** Whether a player is exposed to the wall: an explicit list wins, else real speakers only. */
+function isExposedWall(p: Player): boolean {
+  const ex = settings.exposedPlayers;
+  return ex && ex.length ? ex.includes(p.id) : isSpeaker(p.type);
+}
+function renderPlayersPane(): void {
+  const defWrap = document.getElementById('wall-default-player');
+  const expWrap = document.getElementById('wall-exposed-players');
+  if (!defWrap || !expWrap) return;
+
+  // Default speaker — "Auto" (first available) + each exposed player.
+  defWrap.innerHTML = '';
+  const mkDef = (id: string | null, label: string): void => {
+    const b = document.createElement('button');
+    b.className = 'choice' + ((settings.defaultPlayerId ?? null) === id ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => {
+      settings.defaultPlayerId = id;
+      void client.putSettings({ defaultPlayerId: id }).catch(() => {});
+      renderPlayersPane();
+    };
+    defWrap.appendChild(b);
+  };
+  mkDef(null, 'Auto');
+  for (const p of players.filter(isExposedWall)) mkDef(p.id, p.name);
+
+  // Shown on the wall — speakers first, then other devices; toggling stores an explicit
+  // list (or null when it's back to the plain speaker default).
+  expWrap.innerHTML = '';
+  const speakerDefault = new Set(players.filter((p) => isSpeaker(p.type)).map((p) => p.id));
+  const sameAsDefault = (s: Set<string>): boolean => s.size === speakerDefault.size && [...s].every((id) => speakerDefault.has(id));
+  for (const p of [...players].sort((a, b) => Number(isSpeaker(b.type)) - Number(isSpeaker(a.type)))) {
+    const b = document.createElement('button');
+    b.className = 'choice' + (isExposedWall(p) ? ' on' : '') + (isSpeaker(p.type) ? '' : ' choice-other');
+    b.textContent = p.available ? p.name : `${p.name} (offline)`;
+    b.onclick = () => {
+      const cur = new Set(players.filter(isExposedWall).map((x) => x.id));
+      if (cur.has(p.id)) cur.delete(p.id);
+      else cur.add(p.id);
+      const next = cur.size === 0 || sameAsDefault(cur) ? null : [...cur];
+      settings.exposedPlayers = next;
+      void client.putSettings({ exposedPlayers: next }).catch(() => {});
+      computeRooms();
+      renderPlayersPane();
+      if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    };
+    expWrap.appendChild(b);
+  }
+
+  renderWallPresets();
+}
+function renderWallPresets(): void {
+  const wrap = document.getElementById('wall-presets');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!settings.groupPresets) settings.groupPresets = [];
+  const save = (): void => void client.putSettings({ groupPresets: settings.groupPresets }).catch(() => {});
+  settings.groupPresets.forEach((preset, i) => {
+    const card = document.createElement('div');
+    card.className = 'wall-preset';
+    const top = document.createElement('div');
+    top.className = 'wall-preset-top';
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.value = preset.name;
+    name.placeholder = 'Preset name';
+    name.onchange = () => {
+      preset.name = name.value.trim() || 'Group';
+      save();
+    };
+    const del = document.createElement('button');
+    del.className = 'choice wall-preset-del';
+    del.textContent = '✕';
+    del.onclick = () => {
+      settings.groupPresets = settings.groupPresets.filter((_, j) => j !== i);
+      save();
+      renderWallPresets();
+    };
+    top.append(name, del);
+    card.appendChild(top);
+    const chips = document.createElement('div');
+    chips.className = 'choices';
+    for (const p of players.filter((p) => isExposedWall(p) || preset.playerIds.includes(p.id))) {
+      const chip = document.createElement('button');
+      chip.className = 'choice' + (preset.playerIds.includes(p.id) ? ' on' : '');
+      chip.textContent = p.name;
+      chip.onclick = () => {
+        preset.playerIds = preset.playerIds.includes(p.id) ? preset.playerIds.filter((x) => x !== p.id) : [...preset.playerIds, p.id];
+        chip.classList.toggle('on', preset.playerIds.includes(p.id));
+        save();
+      };
+      chips.appendChild(chip);
+    }
+    card.appendChild(chips);
+    wrap.appendChild(card);
+  });
+  const add = document.createElement('button');
+  add.className = 'choice wall-preset-add';
+  add.textContent = '+ New preset';
+  add.onclick = () => {
+    settings.groupPresets = [...settings.groupPresets, { id: 'gp-' + Math.random().toString(36).slice(2, 9), name: 'New group', playerIds: [] }];
+    save();
+    renderWallPresets();
+  };
+  wrap.appendChild(add);
 }
 
 /* Per-weekday sleep schedule editor for the wall — mirrors the admin one. */
@@ -5008,6 +5117,7 @@ async function reloadPlayers(): Promise<void> {
   if (!activePlayerId) activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
   if (ccIsOpen()) renderCCRooms();
+  renderPlayersPane(); // keep the Players settings chips in sync with the roster
 }
 
 function applySettings(s: Settings): void {

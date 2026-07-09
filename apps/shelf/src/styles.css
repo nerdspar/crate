@@ -646,7 +646,19 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
   letter-spacing: 0.04em;
 }
 .choice.on { color: var(--ink); border-color: var(--ink); }
+.choice.choice-other { opacity: 0.6; } /* web/computer players read as secondary */
 .label .hint { font-family: 'Archivo Narrow', sans-serif; font-size: 2.2vh; font-weight: 400; color: var(--ink-dim); letter-spacing: 0; }
+
+/* Wall group-preset editor (Players tab). */
+#wall-presets { display: flex; flex-direction: column; gap: 2vh; }
+.wall-preset { display: flex; flex-direction: column; gap: 1.2vh; padding-bottom: 1.6vh; border-bottom: 1px solid rgba(236,231,221,0.12); }
+.wall-preset-top { display: flex; align-items: center; gap: 1.4vh; }
+.wall-preset-top input[type="text"] {
+  flex: 1; min-width: 0; background: rgba(236,231,221,0.06); border: 1px solid rgba(236,231,221,0.25);
+  border-radius: 8px; color: var(--ink); font-family: inherit; font-size: 2.3vh; padding: 1.2vh 1.6vh; outline: none;
+}
+.wall-preset-del { flex: 0 0 auto; padding: 1.2vh 2vh; }
+.wall-preset-add { align-self: flex-start; }
 
 /* Wall sleep-schedule editor (Idle & sleep tab). */
 #wall-schedule { display: flex; flex-direction: column; gap: 1.2vh; }
