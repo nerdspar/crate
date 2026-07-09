@@ -59,6 +59,7 @@ function esc(s: string): string {
 // Monochrome line icons for the shelf-editor action buttons.
 const ICO_SHELVES = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="6" width="5" height="14" rx="1" transform="rotate(-10 18.5 13)"/></svg>';
 const ICO_EDIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const ICO_GRIP = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
 const ICO_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -847,14 +848,6 @@ function renderShelfDetail(): void {
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset['id'] = it.albumId;
-    if (draggable) {
-      card.draggable = true;
-      card.addEventListener('dragstart', () => card.classList.add('dragging'));
-      card.addEventListener('dragend', () => {
-        card.classList.remove('dragging');
-        void saveShelfOrder();
-      });
-    }
     if (playlists) {
       card.innerHTML = `
         ${artHtml(it.artworkUrl)}
@@ -896,8 +889,43 @@ function renderShelfDetail(): void {
       card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
       card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
     }
+    if (draggable) {
+      const handle = document.createElement('button');
+      handle.className = 'drag-handle';
+      handle.setAttribute('aria-label', 'Drag to reorder');
+      handle.innerHTML = ICO_GRIP;
+      card.insertBefore(handle, card.firstChild); // left of the row
+      wirePointerDrag(card, handle, shelfListEl, saveShelfOrder);
+    }
     shelfListEl.appendChild(card);
   }
+}
+
+/** Pointer-based drag reorder (works on touch AND mouse, unlike HTML5 dnd). Dragging
+    starts from the handle; the row follows a reorder within its container by pointer Y. */
+function wirePointerDrag(row: HTMLElement, handle: HTMLElement, container: HTMLElement, onDrop: () => void): void {
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.add('dragging');
+    handle.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent): void => {
+      const after = dragAfter(container, ev.clientY);
+      if (after == null) container.appendChild(row);
+      else container.insertBefore(row, after);
+    };
+    const up = (): void => {
+      handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      row.classList.remove('dragging');
+      onDrop();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
 }
 
 async function removeFromDetail(albumId: string): Promise<void> {
@@ -945,15 +973,6 @@ function dragAfter(container: HTMLElement, y: number): HTMLElement | null {
   }
   return closest.el;
 }
-shelfListEl.addEventListener('dragover', (e) => {
-  if ((sortByShelf.get(openShelfId ?? '') ?? 'custom') !== 'custom') return;
-  e.preventDefault();
-  const dragging = shelfListEl.querySelector<HTMLElement>('.dragging');
-  if (!dragging) return;
-  const after = dragAfter(shelfListEl, e.clientY);
-  if (after == null) shelfListEl.appendChild(dragging);
-  else shelfListEl.insertBefore(dragging, after);
-});
 async function saveShelfOrder(): Promise<void> {
   const ids = [...shelfListEl.querySelectorAll<HTMLElement>('.card')].map((c) => c.dataset['id']!).filter(Boolean);
   const byId = new Map(detailItems.map((it) => [it.albumId, it]));
