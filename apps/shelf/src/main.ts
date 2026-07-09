@@ -535,15 +535,13 @@ function openAlbum(i: number, autoscroll = true): void {
   positionGlow(i);
   if (!autoscroll) return;
   requestAnimationFrame(() => {
-    smoothScrollTo(vp, centeredOpenTarget(i));
+    smoothScrollTo(vp, openScrollTarget(i));
   });
 }
 
 function expand(el: HTMLElement, on: boolean): void {
   el.classList.toggle('expanded', on);
-  el.style.width = openWidth(el) + 'px';
-  // Re-center: expanding adds the panel width, so the cover+panel stay centered together.
-  if (openIdx !== null) requestAnimationFrame(() => smoothScrollTo(vp, centeredOpenTarget(openIdx as number), 300));
+  el.style.width = openWidth(el) + 'px'; // grows to the right, pushing later spines along
 }
 
 function closeAlbum(): void {
@@ -567,24 +565,10 @@ function settledLeft(i: number): number {
   return x;
 }
 
-/** Scroll target that centers the OPEN album's visible face — the cover, plus the
-    details panel when expanded (the thin spine binding sits just left of it) — in the
-    viewport, so opening keeps the cover centered and expanding keeps the pair centered.
-    Measures the rendered cover/panel (their horizontal layout is stable even mid-flip)
-    for pixel accuracy, falling back to a computed estimate. */
-function centeredOpenTarget(i: number): number {
-  const el = shelf.children[i] as HTMLElement | undefined;
-  if (!el) return 0;
-  const cover = el.querySelector('.face-cover') as HTMLElement | null;
-  if (cover) {
-    const rightEl = (el.classList.contains('expanded') ? el.querySelector('.panel') : null) ?? cover;
-    const faceLeft = cover.getBoundingClientRect().left + vp.scrollLeft; // → shelf space
-    const faceRight = (rightEl as HTMLElement).getBoundingClientRect().right + vp.scrollLeft;
-    return Math.max(0, (faceLeft + faceRight) / 2 - vp.clientWidth / 2);
-  }
-  const sw = parseFloat(el.style.getPropertyValue('--spine-w')) || 0;
-  const faceW = coverW() + (el.classList.contains('expanded') ? panelW() : 0);
-  return Math.max(0, settledLeft(i) + sw + faceW / 2 - vp.clientWidth / 2);
+/** Scroll target that brings an opened album ~12% from the viewport's left — the album
+    flips open in place and the cover/panel grow to its right, pushing later spines along. */
+function openScrollTarget(i: number): number {
+  return settledLeft(i) - vp.clientWidth * 0.12;
 }
 
 let scrollToken = 0;
@@ -751,10 +735,15 @@ function renderRooms(el: HTMLElement): void {
     // follows before you pick anything (inActiveGroup is only set when a GROUP is targeted).
     const isTarget = r.id === activePlayerId && inActiveGroup.size === 0;
     b.className = 'room' + (isTarget ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
-    // A member of a multi-speaker group shows a small "grouped" dot (not its own EQ — the
-    // group chip carries the EQ) so you can see which speakers are linked together.
+    // A member of a multi-speaker group shows a small static dot ONLY while its group is
+    // actually playing (a quiet "in progress" marker, without the distracting EQ — the
+    // group chip carries the EQ). Nothing when the group is idle.
     const inGroup = groupMembers(leaderOf(r.id)).length >= 2;
-    const marker = inGroup ? '<span class="room-grouped" aria-hidden="true"></span>' : playMarker(roomPlayState(r.id));
+    const marker = inGroup
+      ? groupPlayState(groupMembers(leaderOf(r.id))) === 'idle'
+        ? ''
+        : '<span class="room-grouped" aria-hidden="true"></span>'
+      : playMarker(roomPlayState(r.id));
     b.innerHTML = marker + escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
     b.onclick = (e) => {
       e.stopPropagation();
@@ -2521,29 +2510,16 @@ function applyShelfFilter(q: string): void {
   reflectShelfFilter();
   closeFind();
 }
+/** Clearing the filter drops you back on the All shelf (unfiltered). */
 function clearShelfFilter(): void {
   shelfFilter = '';
-  reflectShelfFilter();
+  void switchShelf('all'); // rebuilds unfiltered + closes the find bar
 }
 function reflectShelfFilter(): void {
   items.forEach((a, i) => {
     (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
   });
   sizeFaces();
-  renderShelfFilterChip();
-}
-const shelfFilterChip = document.createElement('div');
-shelfFilterChip.id = 'shelf-filter-chip';
-shelfFilterChip.hidden = true;
-document.body.appendChild(shelfFilterChip);
-function renderShelfFilterChip(): void {
-  if (!shelfFilter) {
-    shelfFilterChip.hidden = true;
-    return;
-  }
-  shelfFilterChip.hidden = false;
-  shelfFilterChip.innerHTML = `<span>“${escapeHtml(shelfFilter)}”</span><button aria-label="Clear shelf filter">✕</button>`;
-  (shelfFilterChip.querySelector('button') as HTMLElement).onclick = clearShelfFilter;
 }
 /** Open the search bar pre-filled with a query (e.g. tapping an album's artist) and run it. */
 function openFindWithQuery(q: string): void {
@@ -2656,8 +2632,21 @@ function renderRecents(): void {
   const wrap = document.createElement('div');
   wrap.className = 'find-recents';
   const h = document.createElement('div');
-  h.className = 'find-cat-h';
-  h.textContent = 'Recent searches';
+  h.className = 'find-cat-h find-recents-head';
+  h.innerHTML = '<span>Recent searches</span>';
+  const clear = document.createElement('button');
+  clear.className = 'find-recents-clear';
+  clear.setAttribute('aria-label', 'Clear search history');
+  clear.textContent = '✕';
+  clear.onclick = () => {
+    try {
+      localStorage.removeItem(RECENTS_KEY);
+    } catch {
+      /* ignore */
+    }
+    clearFindResults();
+  };
+  h.appendChild(clear);
   wrap.appendChild(h);
   const strip = document.createElement('div');
   strip.className = 'find-recent-chips';
@@ -3680,7 +3669,6 @@ function clearSearch(): void {
   findClear.hidden = true;
   items.forEach((_, i) => (shelf.children[i] as HTMLElement | undefined)?.classList.remove('sliver'));
   sizeFaces();
-  renderShelfFilterChip();
   clearFindResults();
 }
 
@@ -3704,6 +3692,17 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
 
 function renderShelfList(): void {
   findShelfList.innerHTML = '';
+  // Active shelf filter lives here in the overlay (not on the shelf); clearing it opens All.
+  if (shelfFilter) {
+    const fc = document.createElement('div');
+    fc.className = 'find-filter-active';
+    fc.innerHTML = `<span>Filtering shelf: “${escapeHtml(shelfFilter)}”</span><button aria-label="Clear filter">✕</button>`;
+    (fc.querySelector('button') as HTMLElement).onclick = (e) => {
+      e.stopPropagation();
+      clearShelfFilter();
+    };
+    findShelfList.appendChild(fc);
+  }
   for (const s of shelves.filter((sh) => sh.kind === shelfTab)) {
     const selected = s.id === activeShelf;
     const editable = selected && s.id !== 'all' && s.id !== 'playlists';
@@ -3869,6 +3868,7 @@ async function switchShelf(id: string, close = true): Promise<void> {
   shelfAdding = false;
   shelfDeleteArmed = null;
   shelfRenaming = null;
+  shelfFilter = ''; // switching shelves drops any active filter
   const tok = ++shelfLoadToken;
   const res = await client.getShelf(id === 'all' ? undefined : id);
   if (tok !== shelfLoadToken) return; // a newer load superseded this one
@@ -4168,7 +4168,7 @@ function hideLoupe(): void {
 
 function followOpen(): void {
   if (openIdx === null) return;
-  smoothScrollTo(vp, centeredOpenTarget(openIdx), 320);
+  smoothScrollTo(vp, openScrollTarget(openIdx), 320);
 }
 
 function stepAlbum(dir: number): void {
