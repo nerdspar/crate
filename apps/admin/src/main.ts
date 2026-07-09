@@ -911,17 +911,40 @@ function wirePointerDrag(row: HTMLElement, handle: HTMLElement, container: HTMLE
     e.preventDefault();
     e.stopPropagation();
     row.classList.add('dragging');
-    // Listen on `window`, NOT the handle. Reordering moves `row` (and its child handle) in the
-    // DOM via insertBefore, which on touch (iOS Safari) drops the handle's pointer capture — so
-    // handle-bound pointermove stops firing and the drag "sticks" after the first step. Window
-    // listeners keep receiving the moves regardless. preventDefault stops the page from scrolling.
-    const move = (ev: PointerEvent): void => {
-      if (ev.cancelable) ev.preventDefault();
-      const after = dragAfter(container, ev.clientY);
+    let curY = e.clientY;
+    // Auto-scroll the page while the finger sits near the top/bottom edge, so you can drag a row
+    // past what's currently on screen. preventDefault on the moves stops the browser scrolling on
+    // its own, so this rAF loop is the only thing that scrolls during a drag.
+    const EDGE = 90; // px zone from each edge
+    const MAX_SPEED = 22; // px per frame at the very edge
+    let scrollRaf: number | null = null;
+    const reorder = (): void => {
+      const after = dragAfter(container, curY);
       if (after == null) container.appendChild(row);
       else container.insertBefore(row, after);
     };
+    const autoScroll = (): void => {
+      const h = window.innerHeight;
+      let dy = 0;
+      if (curY < EDGE) dy = -Math.ceil(((EDGE - curY) / EDGE) * MAX_SPEED);
+      else if (curY > h - EDGE) dy = Math.ceil(((curY - (h - EDGE)) / EDGE) * MAX_SPEED);
+      if (dy !== 0) {
+        window.scrollBy(0, dy);
+        reorder(); // the shelf slid under the finger — re-place the row for the new positions
+      }
+      scrollRaf = requestAnimationFrame(autoScroll);
+    };
+    // Listen on `window`, NOT the handle. Reordering moves `row` (and its child handle) in the
+    // DOM via insertBefore, which on touch (iOS Safari) drops the handle's pointer capture — so
+    // handle-bound pointermove stops firing and the drag "sticks" after the first step. Window
+    // listeners keep receiving the moves regardless.
+    const move = (ev: PointerEvent): void => {
+      if (ev.cancelable) ev.preventDefault();
+      curY = ev.clientY;
+      reorder();
+    };
     const up = (): void => {
+      if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
@@ -931,6 +954,7 @@ function wirePointerDrag(row: HTMLElement, handle: HTMLElement, container: HTMLE
     window.addEventListener('pointermove', move, { passive: false });
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+    scrollRaf = requestAnimationFrame(autoScroll);
   });
 }
 
