@@ -996,7 +996,7 @@ function stopOtherRoomsPlayingAlbum(albumId: string, albumUri: string | undefine
   }
 }
 
-async function play(i: number, trackIndex?: number): Promise<void> {
+async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boolean }): Promise<void> {
   const item = items[i]!;
   // Latch the controls to "playing this" up front (before any await) so they never
   // flicker — even for the one frame before the optimistic now-state is set below.
@@ -1023,7 +1023,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
     now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: 0, trackUri: item.albumUri, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
     applyNow();
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
-    scheduleAfterPlayClose();
+    if (!opts?.autoAdvance) scheduleAfterPlayClose();
     showToast(`Sent to ${roomName(activePlayerId)}…`);
     afterAlbumWatch = null; // the playlist queue continues on its own
     playPendingUri = item.albumUri; // the tapped track's uri confirms the room started
@@ -1081,7 +1081,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   }
   applyNow();
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement); // target room EQ now
-  scheduleAfterPlayClose();
+  if (!opts?.autoAdvance) scheduleAfterPlayClose();
   showToast(`Sent to ${roomName(activePlayerId)}…`);
   // Watch for this album ending so we can roll on to the next spine (afterAlbum='next').
   afterAlbumWatch = { albumId: item.albumId, playerId: activePlayerId };
@@ -4640,21 +4640,28 @@ function handleState(states: PlayerState[]): void {
     if (!albumModal.hidden) renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   }
   maybeAfterAlbum();
+  maybeFollowPlaylistSong();
   maybeAutoOpenExternal();
 }
 
 /** When the album we started finishes (no longer playing/paused anywhere), act on the
-    afterAlbum setting: 'next' rolls on to the next spine on the current shelf. 'repeat'
-    is handled by the queue's repeat mode; 'stop' needs nothing. */
+    afterAlbum setting: 'repeat' loops via the queue (nothing to do); 'stop' returns to
+    the shelf; 'next' plays the next spine on this shelf AND opens its card. */
 function maybeAfterAlbum(): void {
   const w = afterAlbumWatch;
-  if (!w || settings.afterAlbum !== 'next' || userPaused) return;
+  if (!w || userPaused || settings.afterAlbum === 'repeat') return;
   if (performance.now() < selfPlayUntil) return; // ignore transient idle during the queue load
   const stillOn = lastStates.some((s) => (s.state === 'playing' || s.state === 'paused') && s.nowPlaying?.albumId === w.albumId);
   if (stillOn) return;
-  // The album stopped on its own (not a user pause, not replaced by another play — that
-  // would have reset the watch) → advance to the next non-hidden spine on this shelf.
+  // The album stopped on its own (a user pause is excluded above; a new play would have
+  // reset the watch).
   afterAlbumWatch = null;
+  const endedIsOpen = openCardAlbumId() === w.albumId;
+  if (settings.afterAlbum === 'stop') {
+    if (endedIsOpen) closeAlbum(); // return to the shelf
+    return;
+  }
+  // 'next' → advance to the next non-hidden spine on this shelf and open its card.
   const idx = items.findIndex((it) => it.albumId === w.albumId);
   if (idx < 0) return;
   for (let j = idx + 1; j < items.length; j++) {
@@ -4664,11 +4671,37 @@ function maybeAfterAlbum(): void {
         activePlayerId = w.playerId;
         activeSolo = groupMembers(leaderOf(w.playerId)).length < 2;
       }
-      void play(j);
+      openAlbum(j); // follow playback: show the next album's card with controls
+      void play(j, undefined, { autoAdvance: true });
       return;
     }
   }
-  // Reached the end of the shelf — nothing more to play.
+  // Reached the end of the shelf — nothing more to play; drop back to the shelf.
+  if (endedIsOpen) closeAlbum();
+}
+
+let followedTrackUri: string | null = null;
+/** Follow a playing playlist through the queue: when the now-playing track advances to a
+    different song spine on the current shelf, open that spine so its card + controls show
+    the song that's actually playing (playlists advance on the MA queue, not afterAlbum). */
+function maybeFollowPlaylistSong(): void {
+  if (now.state === 'idle' || !now.trackUri) {
+    followedTrackUri = null;
+    return;
+  }
+  if (openIdx === null) return;
+  const open = items[openIdx];
+  if (!open || open.kind !== 'playlist' || !open.albumUri) return; // only while a playlist-song card is open
+  if (now.trackUri === open.albumUri) {
+    followedTrackUri = now.trackUri; // already showing the playing song
+    return;
+  }
+  if (now.trackUri === followedTrackUri) return; // this advance already handled
+  const j = items.findIndex((it) => it.kind === 'playlist' && it.albumUri === now.trackUri);
+  if (j >= 0 && j !== openIdx) {
+    followedTrackUri = now.trackUri;
+    openAlbum(j); // the card follows the playlist to the now-playing song
+  }
 }
 
 /** "Open on outside playback" (opt-in setting): when a NEW album starts playing that Crate
