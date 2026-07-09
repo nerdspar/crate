@@ -17,6 +17,7 @@ import type {
   RepeatRequest,
   SearchAlbum,
   SearchSong,
+  ServicesStatus,
   ShelfResponse,
   ShuffleRequest,
   SystemStatus,
@@ -221,6 +222,11 @@ export class CrateClient {
   // --- System / appliance (control center §6) ---
   getSystemStatus(): Promise<SystemStatus> {
     return this.req('/api/system/status');
+  }
+
+  /** Health of the three apps + Music Assistant for the System status view. */
+  getServices(): Promise<ServicesStatus> {
+    return this.req('/api/system/services');
   }
 
   setBrightness(level: number): Promise<SystemStatus> {

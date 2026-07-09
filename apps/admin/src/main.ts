@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, isSpeaker, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1617,6 +1617,38 @@ function renderSystemCat(body: HTMLElement): void {
   );
   body.appendChild(wrap);
 
+  // Service status — the three apps (Server / Shelf / Admin) + Music Assistant.
+  const svcHead = document.createElement('div');
+  svcHead.className = 'set-subhead';
+  svcHead.textContent = 'Services';
+  body.appendChild(svcHead);
+  const svc = document.createElement('div');
+  svc.className = 'svc-list';
+  body.appendChild(svc);
+  const renderSvc = (list: ServiceHealth[]): void => {
+    svc.innerHTML = '';
+    for (const s of list) {
+      const row = document.createElement('div');
+      row.className = 'svc-row';
+      row.innerHTML =
+        `<span class="svc-dot ${s.online ? 'up' : 'down'}"></span>` +
+        `<span class="svc-name">${esc(s.name)}</span>` +
+        `<span class="svc-detail">${esc(s.detail ?? '')}</span>`;
+      svc.appendChild(row);
+    }
+  };
+  const loadSvc = (): void =>
+    void client
+      .getServices()
+      .then((r) => renderSvc(r.services))
+      .catch(() => (svc.innerHTML = '<p class="hint">Status unavailable</p>'));
+  loadSvc();
+  // Poll while this category is on screen; self-clears once the node is detached (nav away).
+  const svcTimer = setInterval(() => {
+    if (!svc.isConnected) return clearInterval(svcTimer);
+    loadSvc();
+  }, 5000);
+
   // Device status — LAN IP address and running app version.
   const status = document.createElement('div');
   status.className = 'sys-status';
@@ -1710,7 +1742,7 @@ async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K])
 // changes re-fetch and re-render the open settings screen; shelf changes reload the index.
 function connectWs(): void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const ws = new WebSocket(`${proto}://${location.host}/ws?app=admin`);
   ws.onmessage = (ev) => {
     let msg: { type?: string; settings?: Settings };
     try {

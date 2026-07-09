@@ -32,8 +32,11 @@ if (existsSync(cfg.adminDist)) {
   await app.register(fastifyStatic, { root: cfg.adminDist, prefix: '/admin/', decorateReply: false });
 }
 
-app.get('/ws', { websocket: true }, (socket) => {
-  hub.add(socket);
+app.get('/ws', { websocket: true }, (socket, req) => {
+  // Clients tag themselves (?app=shelf|admin) so the System view can report which apps
+  // are connected; anything else counts as 'other'.
+  const app = (req.query as { app?: string })?.app;
+  hub.add(socket, app === 'shelf' || app === 'admin' ? app : 'other');
 });
 
 registerRoutes(app, service);

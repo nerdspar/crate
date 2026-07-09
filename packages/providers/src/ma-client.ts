@@ -55,6 +55,11 @@ export class MaClient {
     this.backoff = opts.minBackoffMs ?? 1000;
   }
 
+  /** True while the MA websocket is open and authenticated. */
+  get connected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
   private log(level: 'info' | 'warn' | 'error', msg: string): void {
     this.opts.log?.(level, msg);
   }

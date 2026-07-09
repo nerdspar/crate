@@ -68,6 +68,18 @@ export interface SystemStatus {
   version: string;
 }
 
+/** Health of one Crate service (the three apps + Music Assistant) for the System view. */
+export interface ServiceHealth {
+  id: 'server' | 'shelf' | 'admin' | 'musicAssistant';
+  name: string;
+  online: boolean;
+  /** Short context: version, connected-client count, etc. */
+  detail?: string;
+}
+export interface ServicesStatus {
+  services: ServiceHealth[];
+}
+
 export interface BrightnessRequest {
   /** 0–100. */
   level: number;

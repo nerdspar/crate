@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -4151,6 +4151,26 @@ function applySystemStatus(s: SystemStatus): void {
 }
 function refreshSystem(): void {
   void client.getSystemStatus().then(applySystemStatus).catch(() => {});
+  refreshServices();
+}
+
+// Service status — the three apps (Server / Shelf / Admin) + Music Assistant.
+const wallServicesEl = document.getElementById('wall-services');
+function renderWallServices(list: ServiceHealth[]): void {
+  if (!wallServicesEl) return;
+  wallServicesEl.innerHTML = '';
+  for (const s of list) {
+    const row = document.createElement('div');
+    row.className = 'svc-row';
+    row.innerHTML =
+      `<span class="svc-dot ${s.online ? 'up' : 'down'}"></span>` +
+      `<span class="svc-name">${escapeHtml(s.name)}</span>` +
+      `<span class="svc-detail">${escapeHtml(s.detail ?? '')}</span>`;
+    wallServicesEl.appendChild(row);
+  }
+}
+function refreshServices(): void {
+  void client.getServices().then((r) => renderWallServices(r.services)).catch(() => {});
 }
 
 // Brightness: dim live while dragging, persist (and drive hardware) on release.
@@ -4845,7 +4865,7 @@ function tick(): void {
 
 function connectWs(): void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const ws = new WebSocket(`${proto}://${location.host}/ws?app=shelf`);
   ws.onopen = () => {
     // On (re)connect, pull current playback immediately — a client that connected
     // after playback started (e.g. another app began it) otherwise shows no EQ /

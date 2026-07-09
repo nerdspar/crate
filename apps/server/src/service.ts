@@ -15,6 +15,7 @@ import type {
   SearchAlbum,
   SearchArtist,
   Settings,
+  ServicesStatus,
   Shelf,
   ShelfItem,
   ShelfKind,
@@ -783,6 +784,28 @@ export class Service {
       ip: getLocalIp(),
       appliance: this.cfg.appliance,
       version: this.cfg.version,
+    };
+  }
+
+  /** Health of the three Crate apps (service / admin / screen) + Music Assistant.
+      The service is up if this responds; the apps are "online" when a client of that
+      kind is connected over /ws; MA reflects the provider's websocket. */
+  systemServices(): ServicesStatus {
+    const screens = this.hub.count('shelf');
+    const admins = this.hub.count('admin');
+    const conn = (n: number): string => (n === 1 ? '1 connected' : `${n} connected`);
+    return {
+      services: [
+        { id: 'server', name: 'Server', online: true, detail: `v${this.cfg.version}` },
+        { id: 'shelf', name: 'Shelf', online: screens > 0, detail: screens > 0 ? conn(screens) : 'no client' },
+        { id: 'admin', name: 'Admin', online: admins > 0, detail: admins > 0 ? conn(admins) : 'no client' },
+        {
+          id: 'musicAssistant',
+          name: 'Music Assistant',
+          online: this.ma.connected,
+          detail: this.ma.connected ? (this.ma.serverVersion ? `v${this.ma.serverVersion}` : 'connected') : 'disconnected',
+        },
+      ],
     };
   }
 

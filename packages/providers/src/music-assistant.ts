@@ -110,6 +110,14 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   close(): void {
     this.client.close();
   }
+  /** Whether the MA websocket is currently connected. */
+  get connected(): boolean {
+    return this.client.connected;
+  }
+  /** MA server version, once connected (for the System status detail line). */
+  get serverVersion(): string | undefined {
+    return this.client.serverInfo?.server_version;
+  }
 
   // --- Artwork ------------------------------------------------------------
 
