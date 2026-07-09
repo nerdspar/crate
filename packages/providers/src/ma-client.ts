@@ -50,6 +50,8 @@ export class MaClient {
   private closed = false;
   private backoff: number;
   serverInfo: MaServerInfo | undefined;
+  /** Epoch ms when the current connection authenticated, or undefined if disconnected. */
+  connectedAt: number | undefined;
 
   constructor(private readonly opts: MaClientOptions) {
     this.backoff = opts.minBackoffMs ?? 1000;
@@ -58,6 +60,19 @@ export class MaClient {
   /** True while the MA websocket is open and authenticated. */
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /** Drop the live socket so the auto-reconnect immediately re-establishes it (the
+      "reconnect Music Assistant" action). No-op while already disconnected — the
+      backoff loop is handling that. */
+  reconnect(): void {
+    if (!this.ws) return;
+    this.backoff = this.opts.minBackoffMs ?? 1000; // reconnect fast, not on a grown backoff
+    try {
+      this.ws.close(); // the 'close' handler schedules the reconnect
+    } catch {
+      /* ignore */
+    }
   }
 
   private log(level: 'info' | 'warn' | 'error', msg: string): void {
@@ -96,6 +111,7 @@ export class MaClient {
           this.serverInfo = info;
           try {
             await this.command('auth', { token: this.opts.token });
+            this.connectedAt = Date.now();
             this.backoff = this.opts.minBackoffMs ?? 1000;
             this.log('info', `MA authenticated (v${info.server_version ?? '?'})`);
             for (const cb of this.connectListeners) {
@@ -120,6 +136,7 @@ export class MaClient {
 
       ws.on('close', () => {
         this.ws = undefined;
+        this.connectedAt = undefined;
         this.rejectAllPending(new Error('MA websocket closed'));
         finish(new Error('MA websocket closed before ready'));
         if (!this.closed) this.scheduleReconnect();

@@ -79,6 +79,9 @@ export interface ServiceHealth {
   connections?: number;
   /** Short context: uptime, version, served/built state, etc. */
   detail?: string;
+  /** Whether this service can be restarted from a client (server: appliance only;
+      front-ends: reload their clients; MA: reconnect its websocket). */
+  restartable?: boolean;
 }
 export interface ServicesStatus {
   services: ServiceHealth[];
@@ -277,4 +280,6 @@ export type WsMessage =
   | { type: 'players' }
   | { type: 'sync'; progress: number; message: string }
   | { type: 'settings'; settings: Settings }
-  | { type: 'system'; status: SystemStatus };
+  | { type: 'system'; status: SystemStatus }
+  /** Tell every connected client of one app to reload itself (a service "restart"). */
+  | { type: 'reload'; app: 'shelf' | 'admin' };

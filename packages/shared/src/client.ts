@@ -17,6 +17,7 @@ import type {
   RepeatRequest,
   SearchAlbum,
   SearchSong,
+  ServiceHealth,
   ServicesStatus,
   ShelfResponse,
   ShuffleRequest,
@@ -247,5 +248,11 @@ export class CrateClient {
 
   reboot(): Promise<{ ok: boolean }> {
     return this.post('/api/system/reboot', {});
+  }
+
+  /** Restart one service: the server process, a front-end (reloads its clients), or
+      Music Assistant (reconnects its websocket). */
+  restartService(id: ServiceHealth['id']): Promise<{ ok: boolean }> {
+    return this.post('/api/system/services/restart', { id });
   }
 }

@@ -4166,6 +4166,23 @@ function renderWallServices(list: ServiceHealth[]): void {
       `<span class="svc-dot ${s.online ? 'up' : 'down'}"></span>` +
       `<span class="svc-name">${escapeHtml(s.name)}</span>` +
       `<span class="svc-detail">${escapeHtml(s.detail ?? '')}</span>`;
+    if (s.restartable) {
+      // Restarting the app you're on (Shelf, here) reloads this screen; another app is remote.
+      const reconnect = s.id === 'musicAssistant';
+      const btn = document.createElement('button');
+      btn.className = 'svc-restart';
+      btn.textContent = '↻';
+      btn.setAttribute('aria-label', reconnect ? 'Reconnect Music Assistant' : `Restart ${s.name}`);
+      btn.addEventListener('click', () => {
+        btn.disabled = true;
+        void client
+          .restartService(s.id)
+          .then((r) => showToast(r.ok ? (reconnect ? 'Reconnecting…' : `Restarting ${s.name}…`) : 'Not available'))
+          .catch(() => showToast('Failed'))
+          .finally(() => setTimeout(() => (btn.disabled = false), 1500));
+      });
+      row.appendChild(btn);
+    }
     wallServicesEl.appendChild(row);
   }
 }
@@ -4885,6 +4902,7 @@ function connectWs(): void {
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
     else if (msg.type === 'system') applySystemStatus(msg.status);
+    else if (msg.type === 'reload' && msg.app === 'shelf') location.reload();
   };
   ws.onclose = () => setTimeout(connectWs, 2000);
 }

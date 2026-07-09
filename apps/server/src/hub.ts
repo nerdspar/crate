@@ -8,14 +8,14 @@ export type ClientApp = 'shelf' | 'admin' | 'other';
     tracks how many of each app are connected (for the System service-status view). */
 export class Hub {
   private readonly sockets = new Set<WebSocket>();
-  private readonly app = new Map<WebSocket, ClientApp>();
+  private readonly meta = new Map<WebSocket, { app: ClientApp; at: number }>();
 
   add(ws: WebSocket, app: ClientApp = 'other'): void {
     this.sockets.add(ws);
-    this.app.set(ws, app);
+    this.meta.set(ws, { app, at: Date.now() });
     const drop = (): void => {
       this.sockets.delete(ws);
-      this.app.delete(ws);
+      this.meta.delete(ws);
     };
     ws.on('close', drop);
     ws.on('error', drop);
@@ -24,8 +24,18 @@ export class Hub {
   /** Live count of connected clients of a given app. */
   count(app: ClientApp): number {
     let n = 0;
-    for (const a of this.app.values()) if (a === app) n++;
+    for (const m of this.meta.values()) if (m.app === app) n++;
     return n;
+  }
+
+  /** When the longest-connected client of an app first connected (ms epoch), or
+      undefined if none — i.e. how long that app has had continuous presence. */
+  oldestSince(app: ClientApp): number | undefined {
+    let oldest: number | undefined;
+    for (const m of this.meta.values()) {
+      if (m.app === app && (oldest === undefined || m.at < oldest)) oldest = m.at;
+    }
+    return oldest;
   }
 
   /** Total connected `/ws` clients across all apps. */
@@ -41,7 +51,7 @@ export class Hub {
           ws.send(data);
         } catch {
           this.sockets.delete(ws);
-          this.app.delete(ws);
+          this.meta.delete(ws);
         }
       }
     }

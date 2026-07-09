@@ -847,6 +847,13 @@ body.idle #find-grip::after { opacity: 0; }
 .svc-dot.down { background: #c83a3a; box-shadow: 0 0 0 0.5vh rgba(200,58,58,0.22); }
 .svc-name { color: var(--ink); }
 .svc-detail { color: var(--ink-dim); font-size: 1.7vh; margin-left: 1.2vw; font-variant-numeric: tabular-nums; }
+.svc-restart {
+  flex: 0 0 auto; margin-left: 1vw; width: 3.2vh; height: 3.2vh; border-radius: 50%;
+  border: 1px solid var(--ink-dim); background: transparent; color: var(--ink-dim);
+  cursor: pointer; font-size: 2vh; line-height: 1;
+}
+.svc-restart:active { color: var(--brass); border-color: var(--brass); }
+.svc-restart:disabled { opacity: 0.4; }
 .cc-sysbtn {
   background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;

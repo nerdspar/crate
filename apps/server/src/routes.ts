@@ -232,6 +232,11 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   // Control center system rows (§6).
   app.get('/api/system/status', () => service.systemStatus());
   app.get('/api/system/services', () => service.systemServices());
+  app.post('/api/system/services/restart', (req) => {
+    const { id } = (req.body ?? {}) as { id?: string };
+    if (id === 'server' || id === 'shelf' || id === 'admin' || id === 'musicAssistant') return service.restartService(id);
+    return { ok: false };
+  });
 
   app.post('/api/system/brightness', (req) => {
     const b = req.body as BrightnessRequest;

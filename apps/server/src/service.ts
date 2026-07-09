@@ -799,8 +799,17 @@ export class Service {
       their own); Music Assistant if the provider websocket is up. `connections` is the
       live `/ws` client count — informational, separate from the health dot. */
   systemServices(): ServicesStatus {
-    const shelfN = this.hub.count('shelf');
-    const adminN = this.hub.count('admin');
+    const now = Date.now();
+    // A front-end's "uptime" is how long its longest-lived client has been connected
+    // (resets when it's reloaded); shown only while something is connected.
+    const appDetail = (served: boolean, app: 'shelf' | 'admin'): string => {
+      if (!served) return 'not built';
+      const n = this.hub.count(app);
+      const since = this.hub.oldestSince(app);
+      return n > 0 && since ? `up ${fmtUptime((now - since) / 1000)} · ${plural(n, 'connection')}` : plural(n, 'connection');
+    };
+    const maUp = this.ma.connectedSince;
+    const maVer = this.ma.serverVersion;
     return {
       services: [
         {
@@ -808,30 +817,56 @@ export class Service {
           name: 'Server',
           online: true,
           connections: this.hub.total,
+          restartable: this.cfg.appliance,
           detail: `up ${fmtUptime(process.uptime())} · ${plural(this.hub.total, 'client')}`,
         },
         {
           id: 'shelf',
           name: 'Shelf',
           online: this.frontendsServed.shelf,
-          connections: shelfN,
-          detail: this.frontendsServed.shelf ? `serving · ${plural(shelfN, 'connection')}` : 'not built',
+          connections: this.hub.count('shelf'),
+          restartable: this.frontendsServed.shelf,
+          detail: appDetail(this.frontendsServed.shelf, 'shelf'),
         },
         {
           id: 'admin',
           name: 'Admin',
           online: this.frontendsServed.admin,
-          connections: adminN,
-          detail: this.frontendsServed.admin ? `serving · ${plural(adminN, 'connection')}` : 'not built',
+          connections: this.hub.count('admin'),
+          restartable: this.frontendsServed.admin,
+          detail: appDetail(this.frontendsServed.admin, 'admin'),
         },
         {
           id: 'musicAssistant',
           name: 'Music Assistant',
           online: this.ma.connected,
-          detail: this.ma.connected ? (this.ma.serverVersion ? `v${this.ma.serverVersion}` : 'connected') : 'disconnected',
+          restartable: this.ma.connected,
+          detail: this.ma.connected
+            ? `${maUp ? `up ${fmtUptime((now - maUp) / 1000)}` : 'connected'}${maVer ? ` · v${maVer}` : ''}`
+            : 'disconnected',
         },
       ],
     };
+  }
+
+  /** Restart one service: the server process (appliance only), a front-end (tell its
+      clients to reload), or Music Assistant (reconnect its websocket). */
+  async restartService(id: 'server' | 'shelf' | 'admin' | 'musicAssistant'): Promise<{ ok: boolean }> {
+    switch (id) {
+      case 'server':
+        return this.restart();
+      case 'shelf':
+        this.hub.broadcast({ type: 'reload', app: 'shelf' });
+        return { ok: true };
+      case 'admin':
+        this.hub.broadcast({ type: 'reload', app: 'admin' });
+        return { ok: true };
+      case 'musicAssistant':
+        this.ma.reconnect();
+        return { ok: true };
+      default:
+        return { ok: false };
+    }
   }
 
   async setBrightness(level: number): Promise<SystemStatus> {

@@ -1597,6 +1597,26 @@ function renderAutoOpenCat(body: HTMLElement): void {
   sub('Outside playback');
   body.appendChild(fieldGrid(['openOnExternalPlay']));
 }
+/** A ↻ button that restarts one service (reloads a front-end / reconnects MA / restarts
+    the server process). Restarting the app you're using reloads you; another app is remote. */
+function svcRestartBtn(s: ServiceHealth): HTMLButtonElement {
+  const reconnect = s.id === 'musicAssistant';
+  const btn = document.createElement('button');
+  btn.className = 'svc-restart';
+  btn.textContent = '↻';
+  btn.title = reconnect ? 'Reconnect Music Assistant' : `Restart ${s.name}`;
+  btn.setAttribute('aria-label', btn.title);
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    void client
+      .restartService(s.id)
+      .then((r) => showToast(r.ok ? (reconnect ? 'Reconnecting…' : `Restarting ${s.name}…`) : 'Not available'))
+      .catch(() => showToast('Failed'))
+      .finally(() => setTimeout(() => (btn.disabled = false), 1500));
+  });
+  return btn;
+}
+
 function renderSystemCat(body: HTMLElement): void {
   const wrap = document.createElement('div');
   wrap.className = 'sys-actions';
@@ -1634,6 +1654,7 @@ function renderSystemCat(body: HTMLElement): void {
         `<span class="svc-dot ${s.online ? 'up' : 'down'}"></span>` +
         `<span class="svc-name">${esc(s.name)}</span>` +
         `<span class="svc-detail">${esc(s.detail ?? '')}</span>`;
+      if (s.restartable) row.appendChild(svcRestartBtn(s));
       svc.appendChild(row);
     }
   };
@@ -1744,10 +1765,14 @@ function connectWs(): void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/ws?app=admin`);
   ws.onmessage = (ev) => {
-    let msg: { type?: string; settings?: Settings };
+    let msg: { type?: string; settings?: Settings; app?: string };
     try {
       msg = JSON.parse(ev.data as string);
     } catch {
+      return;
+    }
+    if (msg.type === 'reload' && msg.app === 'admin') {
+      location.reload();
       return;
     }
     if (msg.type === 'players') {

@@ -244,6 +244,12 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .svc-dot.down { background: #c83a3a; box-shadow: 0 0 0 3px color-mix(in srgb, #c83a3a 22%, transparent); }
 .svc-name { color: var(--ink); }
 .svc-detail { color: var(--ink-dim); font-size: 0.82rem; margin-left: auto; font-variant-numeric: tabular-nums; }
+.svc-restart {
+  flex: 0 0 auto; width: 1.8rem; height: 1.8rem; border-radius: 50%; border: 1px solid var(--line);
+  background: transparent; color: var(--ink-dim); cursor: pointer; font-size: 1rem; line-height: 1;
+}
+.svc-restart:hover { color: var(--ink); border-color: var(--ink); }
+.svc-restart:disabled { opacity: 0.4; cursor: default; }
 
 /* Player exposure + preset member chips */
 .chip-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 0.4rem; }

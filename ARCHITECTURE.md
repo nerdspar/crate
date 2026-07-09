@@ -75,4 +75,10 @@ Music Assistant. Because the front-ends have no process of their own, the meanin
 | **Music Assistant** | the provider's websocket is connected | n/a |
 
 So a green **Shelf**/​**Admin** dot means "built & being served," independent of whether a
-browser is currently connected; the connection count is shown separately as context.
+browser is currently connected; the connection count and uptime are shown as context.
+
+Each row has a **restart** control (`POST /api/system/services/restart`): the server
+restarts its process (appliance only), a front-end tells its connected clients to reload
+(`{ type: 'reload', app }` over `/ws`), and Music Assistant reconnects its websocket.
+Restarting the app you're using reloads you (local); restarting the other app reloads it
+(remote).

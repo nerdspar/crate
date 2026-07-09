@@ -114,9 +114,17 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   get connected(): boolean {
     return this.client.connected;
   }
+  /** Epoch ms the current MA connection authenticated, or undefined if disconnected. */
+  get connectedSince(): number | undefined {
+    return this.client.connectedAt;
+  }
   /** MA server version, once connected (for the System status detail line). */
   get serverVersion(): string | undefined {
     return this.client.serverInfo?.server_version;
+  }
+  /** Reconnect the MA websocket (the "reconnect Music Assistant" action). */
+  reconnect(): void {
+    this.client.reconnect();
   }
 
   // --- Artwork ------------------------------------------------------------
