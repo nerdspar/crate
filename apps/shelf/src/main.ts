@@ -152,11 +152,15 @@ function clearOpenCue(): void {
 
 /** Live shelf search (control center). Empty = everything matches; non-matches
     collapse to slivers via spineWidthPx. */
-let filterQuery = '';
+let filterQuery = ''; // the search box text — drives the results list only
+let shelfFilter = ''; // committed filter applied to the shelf spines (via "Filter shelf")
+function matchesQuery(a: ShelfItem, q: string): boolean {
+  if (!q) return true;
+  const s = q.toLowerCase();
+  return a.title.toLowerCase().includes(s) || a.artist.toLowerCase().includes(s);
+}
 function matchesFilter(a: ShelfItem): boolean {
-  if (!filterQuery) return true;
-  const q = filterQuery.toLowerCase();
-  return a.title.toLowerCase().includes(q) || a.artist.toLowerCase().includes(q);
+  return matchesQuery(a, shelfFilter);
 }
 
 function roomName(id: string | null): string {
@@ -641,17 +645,8 @@ function renderRooms(el: HTMLElement): void {
   wrap.innerHTML = '';
   wrap.classList.toggle('grouping', groupSelect !== null);
 
-  // --- Multi-select grouping mode: pick 2+ speakers, then "Group" them into one. ---
+  // --- Multi-select grouping mode: tick speakers, then Apply (or Cancel to discard). ---
   if (groupSelect) {
-    const cancel = document.createElement('button');
-    cancel.className = 'room room-ctl';
-    cancel.textContent = 'Cancel';
-    cancel.onclick = (e) => {
-      e.stopPropagation();
-      groupSelect = null;
-      renderRooms(el);
-    };
-    wrap.appendChild(cancel);
     rooms.forEach((r) => {
       const on = groupSelect!.has(r.id);
       const b = document.createElement('button');
@@ -663,15 +658,27 @@ function renderRooms(el: HTMLElement): void {
       };
       wrap.appendChild(b);
     });
+    // Trailing actions: Apply commits at any size (1 = ungroup); Cancel discards the staging.
     const n = groupSelect.size;
-    const done = document.createElement('button');
-    done.className = 'room room-group' + (n >= 2 ? ' on' : ' disabled');
-    done.textContent = n >= 2 ? `Group ${n}` : 'Pick 2+';
-    done.onclick = (e) => {
+    const onlyId = n === 1 ? [...groupSelect][0]! : null;
+    const onlyGrouped = onlyId ? groupMembers(leaderOf(onlyId)).length >= 2 : false;
+    const apply = document.createElement('button');
+    apply.className = 'room room-group on';
+    apply.textContent = n >= 2 ? `Group ${n}` : onlyGrouped ? 'Ungroup' : 'Done';
+    apply.onclick = (e) => {
       e.stopPropagation();
-      if (n >= 2) commitGroupSelection(el);
+      commitGroupSelection(el);
     };
-    wrap.appendChild(done);
+    wrap.appendChild(apply);
+    const cancel = document.createElement('button');
+    cancel.className = 'room room-ctl';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = (e) => {
+      e.stopPropagation();
+      groupSelect = null;
+      renderRooms(el);
+    };
+    wrap.appendChild(cancel);
     syncVol(el.querySelector('.vol'));
     return;
   }
@@ -2104,10 +2111,12 @@ function toggleGroupSel(id: string, el: HTMLElement): void {
 }
 /** Commit the multi-select group: form one group from the chosen speakers, target it,
     and optimistically split off anyone left behind from an affected group. */
+/** Commit the staged selection: form a group from 2+ speakers, or dissolve the group
+    (ungroup) when only one is left selected. Nothing applies until this is called. */
 function commitGroupSelection(el: HTMLElement): void {
   const sel = groupSelect ? [...groupSelect] : [];
-  if (sel.length < 2) {
-    groupSelect = null;
+  groupSelect = null;
+  if (sel.length === 0) {
     renderRooms(el);
     return;
   }
@@ -2122,12 +2131,12 @@ function commitGroupSelection(el: HTMLElement): void {
   sel.forEach((id) => setLeaderLocal(id, leader));
   armGroupGuard();
   activePlayerId = leader;
-  activeSolo = false;
+  activeSolo = sel.length < 2;
   userPickedPlayer = true;
-  groupSelect = null;
   renderRoomUIs();
   updatePlayButton();
-  showToast(`Grouped ${sel.length} speakers`);
+  showToast(sel.length >= 2 ? `Grouped ${sel.length} speakers` : 'Ungrouped');
+  // group([leader]) with no members dissolves the leader's group (everyone else removed).
   void client.group({ playerIds: [leader, ...sel.filter((x) => x !== leader)] }).catch(() => {});
 }
 
@@ -2434,7 +2443,43 @@ function openFind(): void {
 }
 function closeFind(): void {
   find.classList.remove('open');
+  // Clear the search box + results on close (recent searches bring a query back fast).
+  // The committed shelf filter, if any, persists independently until you clear its chip.
+  findSearch.value = '';
+  filterQuery = '';
+  findClear.hidden = true;
   clearFindResults();
+}
+
+/** Commit the current search text as a filter on the shelf spines, then close the bar. */
+function applyShelfFilter(q: string): void {
+  shelfFilter = q.trim();
+  reflectShelfFilter();
+  closeFind();
+}
+function clearShelfFilter(): void {
+  shelfFilter = '';
+  reflectShelfFilter();
+}
+function reflectShelfFilter(): void {
+  items.forEach((a, i) => {
+    (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
+  });
+  sizeFaces();
+  renderShelfFilterChip();
+}
+const shelfFilterChip = document.createElement('div');
+shelfFilterChip.id = 'shelf-filter-chip';
+shelfFilterChip.hidden = true;
+document.body.appendChild(shelfFilterChip);
+function renderShelfFilterChip(): void {
+  if (!shelfFilter) {
+    shelfFilterChip.hidden = true;
+    return;
+  }
+  shelfFilterChip.hidden = false;
+  shelfFilterChip.innerHTML = `<span>“${escapeHtml(shelfFilter)}”</span><button aria-label="Clear shelf filter">✕</button>`;
+  (shelfFilterChip.querySelector('button') as HTMLElement).onclick = clearShelfFilter;
 }
 /** Open the search bar pre-filled with a query (e.g. tapping an album's artist) and run it. */
 function openFindWithQuery(q: string): void {
@@ -2591,10 +2636,8 @@ findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
   findClear.hidden = !findSearch.value;
   artistView = null; // typing leaves any open artist detail
-  items.forEach((a, i) => {
-    (shelf.children[i] as HTMLElement | undefined)?.classList.toggle('sliver', !matchesFilter(a));
-  });
-  sizeFaces();
+  // Typing no longer filters the shelf (the overlay covers it) — searching is for
+  // playing; the shelf is only filtered when you explicitly hit "Filter shelf".
   if (searchTimer) clearTimeout(searchTimer);
   if (filterQuery.length >= 2) {
     resetSearchPaging(); // a new query starts back at the first page
@@ -2677,7 +2720,7 @@ function renderGlobal(loading: boolean): void {
   // On-shelf hits come from the curated spines (authoritative). Dedupe remote hits
   // against them by album id AND by title+artist (Apple has library-vs-catalog ids),
   // then split the rest into "in your library" (MA favorite) vs catalog-only.
-  const localMatches = items.filter(matchesFilter);
+  const localMatches = items.filter((it) => matchesQuery(it, filterQuery));
   const localIds = new Set(localMatches.map((it) => it.albumId));
   const localKeys = new Set(localMatches.map((it) => albumKey(it.artist, it.title)));
   const remoteNew = remoteAlbums.filter(
@@ -2724,7 +2767,17 @@ function albumsColumn(
     list.appendChild(s);
   };
   if (local.length) {
-    sub('On your shelf');
+    // Header carries a "Filter shelf" action: apply this query to the shelf spines and
+    // close the overlay in one tap (searching never leaves the shelf stuck filtered).
+    const head = document.createElement('div');
+    head.className = 'find-subhead find-subhead-row';
+    head.innerHTML = '<span>On your shelf</span>';
+    const filterBtn = document.createElement('button');
+    filterBtn.className = 'find-filter-shelf';
+    filterBtn.textContent = 'Filter shelf';
+    filterBtn.onclick = () => applyShelfFilter(filterQuery);
+    head.appendChild(filterBtn);
+    list.appendChild(head);
     local.forEach((it) => list.appendChild(shelfCard(it)));
   }
   // Library first, then catalog — paged together so "Load more" reveals the next page.
@@ -3555,13 +3608,15 @@ async function addToNewShelf(providerUri: string): Promise<void> {
   await client.addToShelf({ providerUri, shelfId: sh.id }).catch(() => {});
 }
 
-/** Clear the search query and un-hide every spine. */
+/** Clear the search query AND any committed shelf filter, un-hiding every spine. */
 function clearSearch(): void {
   filterQuery = '';
+  shelfFilter = '';
   findSearch.value = '';
   findClear.hidden = true;
   items.forEach((_, i) => (shelf.children[i] as HTMLElement | undefined)?.classList.remove('sliver'));
   sizeFaces();
+  renderShelfFilterChip();
   clearFindResults();
 }
 

@@ -985,6 +985,27 @@ body.idle #find-grip::after { opacity: 0; }
   text-transform: uppercase; padding: 0 0 0.6vh; border-bottom: 1px solid rgba(236,231,221,0.14); margin-bottom: 0.8vh;
 }
 .find-cat-list { display: flex; flex-direction: column; gap: 0.8vh; overflow-y: auto; max-height: 40vh; padding-right: 0.4vw; }
+/* "Filter shelf" action in the On-your-shelf results header. */
+.find-subhead-row { display: flex; align-items: center; justify-content: space-between; }
+.find-filter-shelf {
+  background: transparent; color: var(--brass); border: 1px solid var(--brass); border-radius: 999px;
+  padding: 0.3vh 1.2vh; font: inherit; font-size: 1.4vh; letter-spacing: 0.06em; text-transform: none; cursor: pointer;
+}
+.find-filter-shelf:active { color: #131114; background: var(--brass); }
+/* Persistent chip on the shelf while a committed filter is active — tap ✕ to clear. */
+#shelf-filter-chip {
+  position: absolute; top: 1.4vh; left: 50%; transform: translateX(-50%); z-index: 12;
+  display: flex; align-items: center; gap: 0.8vh;
+  background: rgba(19,17,20,0.92); border: 1px solid var(--brass); border-radius: 999px;
+  padding: 0.6vh 0.8vh 0.6vh 1.4vh; color: var(--ink); font-size: 1.7vh;
+}
+#shelf-filter-chip[hidden] { display: none; }
+#shelf-filter-chip button {
+  background: transparent; border: none; color: var(--ink-dim); font-size: 1.9vh; line-height: 1;
+  padding: 0 0.4vh; cursor: pointer;
+}
+#shelf-filter-chip button:active { color: var(--ink); }
+
 /* Recent-search chips (shown when the search box is focused + empty). */
 .find-recent-chips { display: flex; flex-wrap: wrap; gap: 1vh; padding: 0.4vh 0; }
 .find-recent-chip {
