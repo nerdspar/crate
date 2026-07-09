@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -1289,13 +1289,12 @@ const SETTING_HELP: Record<string, string> = {
   'sensor-idle-choices': 'Go idle when the proximity sensor stops seeing anyone nearby.',
   'sensor-wake-choices': 'Wake from idle when the proximity sensor detects someone.',
   'idle-after-choices': 'How long with no interaction before the wall goes idle. “Never” keeps it awake.',
-  'idle-screen-choices': 'What the display does when idle — stay on, dim the backlight, or turn off.',
-  'idle-content-choices': 'What the wall shows when idle — nothing, the now-playing album, the current shelf, or a chosen shelf.',
-  'idle-shelf-choices': 'The shelf shown when “When idle — show” is set to a shelf.',
-  'autoopen-enabled-choices': 'A slideshow that flips through album covers on its own while the wall is idle.',
-  'autoopen-every-choices': 'How often the idle slideshow advances to the next album.',
+  'idle-dim-choices': 'Dim the screen while idle (to the brightness set below).',
+  'screen-off-choices': 'Second stage: turn the screen off after this long idle, so the wall can show something for a while and then sleep. “Never” keeps it on.',
+  'idle-content-choices': 'What the wall shows when idle — nothing, the now-playing album, the current shelf, a chosen shelf, or a slideshow that flips through albums.',
+  'idle-shelf-choices': 'The shelf shown for “A shelf”, or the slideshow’s source when it’s set to a shelf.',
+  'autoopen-every-choices': 'How often the slideshow advances to the next album.',
   'autoopen-pool-choices': 'Which albums the slideshow draws from — all, the current shelf, or a chosen shelf.',
-  'autoopen-shelf-choices': 'The shelf the slideshow draws from when “Auto-open from” is set to a shelf.',
   'autoopen-random-choices': 'Slideshow order — shuffle, or follow shelf order.',
   'extopen-choices': "When music starts from another app, the idle wall flips that album open so it matches what's playing.",
 };
@@ -1644,17 +1643,28 @@ function renderChoices(): void {
       updateConditionalRows(); // idle rows depend on whether idle can fire at all
     },
   );
+  // Second idle stage — power the screen off after N minutes idle ("Never" = stays on).
   choiceRow(
-    'idle-screen-choices',
-    [['on', 'Stay on', ''], ['dim', 'Dim', ''], ['off', 'Screen off', '']],
-    (k) => settings.idleScreen === k,
+    'screen-off-choices',
+    [['0', 'Never', ''], ['10', '10 min', ''], ['30', '30 min', ''], ['60', '1 hr', ''], ['120', '2 hr', '']],
+    (k) => String(settings.screenOffAfterMin) === k,
     (k) => {
-      settings.idleScreen = k as IdleScreen;
-      void client.putSettings({ idleScreen: settings.idleScreen }).catch(() => {});
-      updateConditionalRows(); // show/hide the dim slider for the new screen mode
+      settings.screenOffAfterMin = Number(k);
+      void client.putSettings({ screenOffAfterMin: settings.screenOffAfterMin }).catch(() => {});
+      restartIdleWatch();
     },
   );
-  // Idle dim brightness is a slider (see idleDimSlider wiring below); just sync it here.
+  // Dim while idle (on/off); the brightness slider below applies when it's on.
+  choiceRow(
+    'idle-dim-choices',
+    [['1', 'On', ''], ['0', 'Off', '']],
+    (k) => (settings.idleDim ? '1' : '0') === k,
+    (k) => {
+      settings.idleDim = k === '1';
+      void client.putSettings({ idleDim: settings.idleDim }).catch(() => {});
+      updateConditionalRows(); // show/hide the dim brightness slider
+    },
+  );
   if (idleDimSlider) {
     idleDimSlider.value = String(settings.idleDimPercent);
     if (idleDimVal) idleDimVal.textContent = `${settings.idleDimPercent}%`;
@@ -1666,6 +1676,7 @@ function renderChoices(): void {
       ['nowPlaying', 'Now playing', ''],
       ['currentShelf', 'Current shelf', ''],
       ['shelf', 'A shelf', ''],
+      ['slideshow', 'Slideshow', ''],
     ],
     (k) => settings.idleContent === k,
     (k) => {
@@ -1674,20 +1685,17 @@ function renderChoices(): void {
       updateConditionalRows();
     },
   );
-  // Idle / auto-open target shelf — dynamic: "All" plus every album shelf. The idle
-  // ("A shelf" content) and auto-open ("from a shelf" pool) pickers both drive the one
-  // idleShelf setting; they live in separate tabs so each gets its own control.
+  // One shelf picker (All + every album shelf) — drives idleShelf for either the "A shelf"
+  // idle content or a shelf-sourced slideshow (only one is active at a time).
   const shelfOpts = (): ReadonlyArray<readonly [string, string, string]> => [
     ['all', 'All', ''],
     ...shelves.filter((s) => s.kind === 'album' && s.id !== 'all').map((s) => [s.id, s.name, ''] as const),
   ];
-  const pickShelf = (k: string): void => {
+  choiceRow('idle-shelf-choices', shelfOpts(), (k) => (settings.idleShelf ?? 'all') === k, (k) => {
     settings.idleShelf = k === 'all' ? null : k;
     void client.putSettings({ idleShelf: settings.idleShelf }).catch(() => {});
-    renderChoices(); // keep the twin picker in the other tab in sync
-  };
-  choiceRow('idle-shelf-choices', shelfOpts(), (k) => (settings.idleShelf ?? 'all') === k, pickShelf);
-  choiceRow('autoopen-shelf-choices', shelfOpts(), (k) => (settings.idleShelf ?? 'all') === k, pickShelf);
+    renderChoices();
+  });
   choiceRow(
     'autoopen-every-choices',
     [['10', '10s', ''], ['15', '15s', ''], ['25', '25s', ''], ['45', '45s', ''], ['90', '90s', '']],
@@ -1733,11 +1741,6 @@ function renderChoices(): void {
   toggleRow('extopen-choices', () => settings.openOnExternalPlay, (v) => {
     settings.openOnExternalPlay = v;
     void client.putSettings({ openOnExternalPlay: v }).catch(() => {});
-  });
-  toggleRow('autoopen-enabled-choices', () => settings.autoOpenEnabled, (v) => {
-    settings.autoOpenEnabled = v;
-    void client.putSettings({ autoOpenEnabled: v }).catch(() => {});
-    updateConditionalRows(); // the auto-open cadence/pool/order rows depend on this
   });
   renderWallSchedule();
   updateConditionalRows();
@@ -1806,16 +1809,19 @@ function updateConditionalRows(): void {
   show('afterplaylinger-choices', settings.afterPlay === 'linger');
   // The "when idle" behaviors only matter if idle can ever trigger (a timer or the sensor).
   const idleOn = settings.idleAfterMin > 0 || settings.idleUseSensor;
-  // Screen + dim slider live in one .setting-keep block: hide the whole block when
-  // idle is off, and hide the dim row itself unless the screen mode is Dim.
+  // Dim toggle + brightness slider live in one .setting-keep block: hide the whole block
+  // when idle is off, and hide the brightness row unless dimming is on.
   document.querySelector('.setting-keep')?.classList.toggle('hidden-row', !idleOn);
-  show('idle-dim-slider', settings.idleScreen === 'dim');
+  show('idle-dim-slider', settings.idleDim);
+  show('screen-off-choices', idleOn);
   show('idle-content-choices', idleOn);
-  show('idle-shelf-choices', idleOn && settings.idleContent === 'shelf');
-  // Auto-open config follows its master toggle (independent of the idle-content choice).
+  // Slideshow cadence/source/order show only for the 'slideshow' idle content.
+  const slideshow = idleOn && settings.idleContent === 'slideshow';
   for (const id of ['autoopen-every-choices', 'autoopen-pool-choices', 'autoopen-random-choices'])
-    show(id, settings.autoOpenEnabled);
-  show('autoopen-shelf-choices', settings.autoOpenEnabled && settings.autoOpenPool === 'shelf');
+    show(id, slideshow);
+  // The single shelf picker applies to "A shelf" content or a shelf-sourced slideshow.
+  const needsShelf = settings.idleContent === 'shelf' || (slideshow && settings.autoOpenPool === 'shelf');
+  show('idle-shelf-choices', idleOn && needsShelf);
 }
 
 /* =====================================================================
@@ -4689,8 +4695,8 @@ function maybeAutoOpenExternal(): void {
   if (inSleepWindow()) return; // respect sleep — never wake or open
   if (performance.now() - lastTouchAt < AUTO_OPEN_TOUCH_GRACE_MS) return; // don't interrupt active use
   if (openIdx !== null && items[openIdx]?.albumId === albumId) return; // already showing it
-  if (isIdle) {
-    exitIdle(); // wake from idle-dim (restore brightness)…
+  if (isIdle || screenIsOff) {
+    exitIdle(); // wake from idle-dim / screen-off (restore brightness, power on)…
     restartIdleWatch(); // …and let it re-idle after idleAfterMin
   }
   openNowPlaying();
@@ -4995,7 +5001,7 @@ function markActive(): void {
     tempWakeUntil = Date.now() + 120000;
     checkSchedule(); // wake immediately, don't wait for the 30s tick
   }
-  if (isIdle) exitIdle();
+  if (isIdle || screenIsOff) exitIdle();
   restartIdleWatch();
 }
 window.addEventListener('pointerdown', markActive, { passive: true });
@@ -5007,15 +5013,20 @@ window.addEventListener('keydown', markActive);
    sleep schedule work now; the sensor + ambient-light options are settings-only
    until that hardware exists. */
 let isIdle = false;
+let screenIsOff = false;
 let idleActionTimer: ReturnType<typeof setTimeout> | null = null;
+let screenOffTimer: ReturnType<typeof setTimeout> | null = null;
 let attractTimer: ReturnType<typeof setInterval> | null = null;
 let preIdleBrightness: number | null = null;
 let attractIdx = -1;
 
+// Two idle stages off the same inactivity clock: show idle content at idleAfterMin, then
+// (optionally) turn the screen off at screenOffAfterMin. Both reset on any interaction.
 function restartIdleWatch(): void {
   if (idleActionTimer) clearTimeout(idleActionTimer);
-  const min = settings.idleAfterMin;
-  if (min > 0) idleActionTimer = setTimeout(() => void enterIdle(), min * 60000);
+  if (screenOffTimer) clearTimeout(screenOffTimer);
+  if (settings.idleAfterMin > 0) idleActionTimer = setTimeout(() => void enterIdle(), settings.idleAfterMin * 60000);
+  if (settings.screenOffAfterMin > 0) screenOffTimer = setTimeout(() => screenOff(), settings.screenOffAfterMin * 60000);
 }
 
 async function enterIdle(): Promise<void> {
@@ -5029,21 +5040,15 @@ async function enterIdle(): Promise<void> {
     activeSolo = false;
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
   }
-  // Screen
-  if (settings.idleScreen === 'off') {
-    void client.setDisplaySleep(true).catch(() => {});
-  } else if (settings.idleScreen === 'dim') {
+  if (settings.idleDim) {
     preIdleBrightness = system?.brightness ?? 100;
     void client.setBrightness(settings.idleDimPercent).then(applySystemStatus).catch(() => {});
   }
-  // Auto-open (attract) is its own feature: when on, it runs while idle regardless of the
-  // idle-content choice below.
-  if (settings.autoOpenEnabled || settings.idleContent === 'autoOpen') {
+  if (screenIsOff) return; // screen already off (a short screen-off timer) — nothing to show
+  // What to show while idle. 'slideshow' is attract mode (flip through albums).
+  if (settings.idleContent === 'slideshow') {
     await startAttract();
-    return;
-  }
-  // Content
-  if (settings.idleContent === 'nowPlaying') {
+  } else if (settings.idleContent === 'nowPlaying') {
     if (playingIdx !== null) openCover(playingIdx);
   } else if (settings.idleContent === 'currentShelf') {
     closeAlbum(); // stay on whatever shelf is showing; just drop any open album
@@ -5052,12 +5057,22 @@ async function enterIdle(): Promise<void> {
   }
 }
 
+/** Second idle stage — power the display off (still driven by the same inactivity clock). */
+function screenOff(): void {
+  if (screenIsOff) return;
+  screenIsOff = true;
+  stopAttract(); // no point flipping the slideshow behind a dark screen
+  void client.setDisplaySleep(true).catch(() => {});
+}
+
 function exitIdle(): void {
-  if (!isIdle) return;
+  if (!isIdle && !screenIsOff) return;
+  const wasOff = screenIsOff;
   isIdle = false;
+  screenIsOff = false;
   stopAttract();
-  if (settings.idleScreen === 'off') void client.setDisplaySleep(false).catch(() => {});
-  else if (settings.idleScreen === 'dim' && preIdleBrightness != null) {
+  if (wasOff) void client.setDisplaySleep(false).catch(() => {});
+  if (preIdleBrightness != null) {
     void client.setBrightness(preIdleBrightness).then(applySystemStatus).catch(() => {});
     preIdleBrightness = null;
   }

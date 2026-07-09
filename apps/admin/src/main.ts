@@ -1133,21 +1133,21 @@ const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> 
   ['pinchZoom', 'Pinch to zoom', [['spines', 'Resize spines'], ['loupe', 'Magnifier loupe'], ['off', 'Off']]],
   ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open']]],
   ['afterAlbum', 'When an album ends', [['next', 'Play next on shelf'], ['repeat', 'Repeat album'], ['stop', 'Stop']]],
-  ['idleScreen', 'When idle — screen', [['on', 'Stay on'], ['dim', 'Dim'], ['off', 'Screen off']]],
-  ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf']]],
-  ['autoOpenPool', 'Auto-open from', [['all', 'All albums'], ['current', 'Current shelf'], ['shelf', 'A specific shelf']]],
+  ['idleContent', 'When idle, show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf'], ['slideshow', 'Slideshow']]],
+  ['autoOpenPool', 'Slideshow from', [['all', 'All albums'], ['current', 'Current shelf'], ['shelf', 'A specific shelf']]],
 ];
 const SETTING_NUMBERS: Array<[keyof Settings, string, number, number]> = [
   ['afterPlayLingerSec', 'Linger seconds', 1, 60],
   ['longPressMs', 'Long-press (ms)', 100, 1500],
   ['idleAfterMin', 'Go idle after (min, 0=never)', 0, 240],
   ['idleDimPercent', 'Idle dim brightness (%)', 1, 100],
-  ['autoOpenEverySec', 'Auto-open every (sec)', 5, 300],
+  ['screenOffAfterMin', 'Screen off after (min, 0=never)', 0, 240],
+  ['autoOpenEverySec', 'Slideshow every (sec)', 5, 300],
 ];
 const SETTING_TOGGLES: Array<[keyof Settings, string]> = [
   ['openOnExternalPlay', 'Open album on outside playback'],
-  ['autoOpenEnabled', 'Auto-open albums when idle'],
-  ['autoOpenRandom', 'Auto-open in random order'],
+  ['idleDim', 'Dim while idle'],
+  ['autoOpenRandom', 'Slideshow in random order'],
   ['idleUseSensor', 'Idle from proximity sensor (needs sensor)'],
   ['wakeOnSensor', 'Wake from proximity sensor (needs sensor)'],
   ['autoBrightness', 'Auto-brightness from ambient light (needs sensor)'],
@@ -1183,18 +1183,17 @@ const SETTING_DESC: Partial<Record<keyof Settings, string>> = {
   glowIntensity: 'How strong the opened-album glow is — Soft, Medium, or Bold. (Only when Album glow is on.)',
   // Display
   autoBrightness: 'Adjust screen brightness automatically from the ambient-light sensor. Requires sensor hardware.',
-  // Idle
+  // Idle (a timeline: go idle → show something → optionally screen off)
   idleAfterMin: 'Minutes with no interaction before the wall goes idle. 0 = never go idle.',
   idleUseSensor: 'Go idle when the proximity sensor stops detecting anyone nearby. Requires sensor hardware.',
   wakeOnSensor: 'Wake from idle when the proximity sensor detects someone approaching. Requires sensor hardware.',
-  idleScreen: 'What the display does when idle: stay on, dim the backlight, or turn the screen off.',
-  idleDimPercent: 'Backlight level while idle, used when the idle screen mode is “Dim.” 1–100%.',
-  idleContent: 'What the wall shows when idle: nothing, the now-playing album, the current shelf, or a specific shelf.',
-  idleShelf: 'The shelf used whenever an idle option is set to “a specific shelf.”',
-  // Auto-open
-  autoOpenEnabled: 'Turn on the idle slideshow that flips through album covers on its own while the wall is idle.',
-  autoOpenEverySec: 'How often the idle slideshow advances to the next album. 5–300 seconds.',
-  autoOpenPool: 'Which albums the idle slideshow draws from: all albums, the current shelf, or a specific shelf.',
+  idleDim: 'Dim the screen while idle, to the brightness set below.',
+  idleDimPercent: 'Backlight level while idle when “Dim while idle” is on. 1–100%.',
+  screenOffAfterMin: 'Second idle stage: turn the screen off after this many minutes idle — so the wall can show idle content for a while, then sleep. 0 = never.',
+  idleContent: 'What the wall shows when idle: nothing, the now-playing album, the current shelf, a specific shelf, or a slideshow that flips through albums.',
+  idleShelf: 'The shelf shown for “A shelf”, or the slideshow’s source when it’s set to a specific shelf.',
+  autoOpenEverySec: 'How often the slideshow advances to the next album. 5–300 seconds.',
+  autoOpenPool: 'Which albums the slideshow draws from: all albums, the current shelf, or a specific shelf.',
   autoOpenRandom: 'Slideshow visits albums in random order instead of shelf order.',
   openOnExternalPlay: 'When music starts from another app (Sonos, a voice assistant, etc.), the idle wall flips that album open so it matches what’s playing.',
 };
@@ -1312,7 +1311,6 @@ const CAT_ICON: Record<string, string> = {
   albums: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.2"/></svg>',
   display: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M6.9 16.9l-2.1 2.1"/></svg>',
   idle: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
-  autoopen: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M13 9l3 3-3 3"/></svg>',
   sleep: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
   system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
 };
@@ -1340,7 +1338,6 @@ const SETTINGS_CATS: SettingsCat[] = [
   },
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },
-  { id: 'autoopen', name: 'Auto-open', render: renderAutoOpenCat },
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
   { id: 'system', name: 'System', render: renderSystemCat },
 ];
@@ -1544,53 +1541,28 @@ function renderIdleCat(body: HTMLElement): void {
     body.appendChild(h);
   };
 
-  // When to go idle
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = 'Idle is a short timeline: after a while the wall goes idle and shows something (a shelf, now-playing, or a slideshow), then optionally turns the screen off after longer.';
+  body.appendChild(hint);
+
+  // Stage 1 — when to go idle.
   sub('Go idle');
   body.appendChild(fieldGrid(['idleAfterMin', 'idleUseSensor', 'wakeOnSensor']));
 
-  // Screen — dim brightness only when the screen dims
-  sub('Screen');
-  body.appendChild(gate(fieldGrid(s.idleScreen === 'dim' ? ['idleScreen', 'idleDimPercent'] : ['idleScreen']), 'idleScreen'));
+  // While idle — dim (brightness only when dimming on) + the screen-off stage.
+  sub('While idle');
+  body.appendChild(gate(fieldGrid(s.idleDim ? ['idleDim', 'idleDimPercent'] : ['idleDim']), 'idleDim'));
+  body.appendChild(fieldGrid(['screenOffAfterMin']));
 
-  // What the shelf shows when idle (auto-opening a card — slideshow + external reveal
-  // — lives in the Auto-open category).
+  // What to show, incl. the slideshow sub-options + the single shelf picker.
   sub('When idle, show');
   body.appendChild(gate(fieldGrid(['idleContent']), 'idleContent'));
-  if (s.idleContent === 'shelf') body.appendChild(idleShelfField());
-}
-
-/** Auto-open — the ways the wall opens an album card on its own while idle: a timed
-    slideshow ("attract mode") and revealing whatever starts playing from another app.
-    Both are independent of the idle-content choice. */
-function renderAutoOpenCat(body: HTMLElement): void {
-  const s = settings!;
-  const redraw = (): void => {
-    body.innerHTML = '';
-    renderAutoOpenCat(body);
-  };
-  const gate = (grid: HTMLElement, key: string): HTMLElement => {
-    grid.querySelector(`[data-key="${key}"] select`)?.addEventListener('change', redraw);
-    return grid;
-  };
-  const sub = (label: string): void => {
-    const h = document.createElement('div');
-    h.className = 'set-subhead';
-    h.textContent = label;
-    body.appendChild(h);
-  };
-  const hint = document.createElement('p');
-  hint.className = 'hint';
-  hint.textContent = 'How the wall opens an album card by itself while idle — a timed slideshow, and/or revealing whatever starts playing from another app.';
-  body.appendChild(hint);
-
-  // Timed slideshow ("attract mode").
-  sub('Slideshow while idle');
-  const toggle = toggleField('autoOpenEnabled', 'Auto-open albums when idle');
-  toggle.querySelector('input')?.addEventListener('change', redraw);
-  body.appendChild(toggle);
-  if (s.autoOpenEnabled) {
+  if (s.idleContent === 'slideshow') {
     body.appendChild(gate(fieldGrid(['autoOpenEverySec', 'autoOpenPool', 'autoOpenRandom']), 'autoOpenPool'));
-    if (s.autoOpenPool === 'shelf') body.appendChild(idleShelfField());
+  }
+  if (s.idleContent === 'shelf' || (s.idleContent === 'slideshow' && s.autoOpenPool === 'shelf')) {
+    body.appendChild(idleShelfField());
   }
 
   // Reactive reveal when audio starts from outside Crate.

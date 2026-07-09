@@ -112,7 +112,6 @@
       <button class="set-tab" data-pane="albums">Albums</button>
       <button class="set-tab" data-pane="display">Display</button>
       <button class="set-tab" data-pane="idle">Idle</button>
-      <button class="set-tab" data-pane="autoopen">Auto-open</button>
       <button class="set-tab" data-pane="sleep">Sleep</button>
       <button class="set-tab" data-pane="system">System</button>
     </div>
@@ -152,26 +151,21 @@
       <div class="setting-row"><div class="label">Auto-brightness <span class="hint">(needs sensor)</span></div><div class="choices" id="autobright-choices"></div></div>
     </div>
 
-    <!-- IDLE — when to go idle and what the screen does. -->
+    <!-- IDLE — a timeline: go idle → show something → (optionally) screen off. -->
     <div class="set-pane" data-pane="idle">
       <div class="setting-row"><div class="label">Go idle after</div><div class="choices" id="idle-after-choices"></div></div>
       <div class="setting-row"><div class="label">Proximity — go idle <span class="hint">(needs sensor)</span></div><div class="choices" id="sensor-idle-choices"></div></div>
       <div class="setting-row"><div class="label">Proximity — wake <span class="hint">(needs sensor)</span></div><div class="choices" id="sensor-wake-choices"></div></div>
       <div class="setting-keep">
-        <div class="setting-row"><div class="label">When idle — screen</div><div class="choices" id="idle-screen-choices"></div></div>
+        <div class="setting-row"><div class="label">Dim while idle</div><div class="choices" id="idle-dim-choices"></div></div>
         <div class="setting-row"><div class="label">Idle dim brightness <span class="hint" id="idle-dim-val">20%</span></div><input id="idle-dim-slider" type="range" min="5" max="100" value="20"></div>
       </div>
-      <div class="setting-row"><div class="label">When idle — show</div><div class="choices" id="idle-content-choices"></div></div>
+      <div class="setting-row"><div class="label">Screen off after</div><div class="choices" id="screen-off-choices"></div></div>
+      <div class="setting-row"><div class="label">When idle, show</div><div class="choices" id="idle-content-choices"></div></div>
+      <div class="setting-row"><div class="label">Slideshow — every</div><div class="choices" id="autoopen-every-choices"></div></div>
+      <div class="setting-row"><div class="label">Slideshow — from</div><div class="choices" id="autoopen-pool-choices"></div></div>
+      <div class="setting-row"><div class="label">Slideshow — order</div><div class="choices" id="autoopen-random-choices"></div></div>
       <div class="setting-row"><div class="label">Idle shelf</div><div class="choices" id="idle-shelf-choices"></div></div>
-    </div>
-
-    <!-- AUTO-OPEN — the idle slideshow + reveal-on-outside-playback. -->
-    <div class="set-pane" data-pane="autoopen">
-      <div class="setting-row"><div class="label">Auto-open albums when idle</div><div class="choices" id="autoopen-enabled-choices"></div></div>
-      <div class="setting-row"><div class="label">Auto-open every</div><div class="choices" id="autoopen-every-choices"></div></div>
-      <div class="setting-row"><div class="label">Auto-open from</div><div class="choices" id="autoopen-pool-choices"></div></div>
-      <div class="setting-row"><div class="label">Auto-open shelf</div><div class="choices" id="autoopen-shelf-choices"></div></div>
-      <div class="setting-row"><div class="label">Auto-open order</div><div class="choices" id="autoopen-random-choices"></div></div>
       <div class="setting-row"><div class="label">Open on outside playback <span class="hint">(follows idle rules · not during sleep)</span></div><div class="choices" id="extopen-choices"></div></div>
     </div>
 

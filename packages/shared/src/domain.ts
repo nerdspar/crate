@@ -193,8 +193,7 @@ export type AfterPlay = 'close' | 'linger' | 'stay';
 export type AfterAlbum = 'stop' | 'repeat' | 'next';
 /** Unified idle / presence / sleep (§7). Timer + schedule work today; the sensor +
     ambient-light options are wired but dormant until that hardware exists. */
-export type IdleScreen = 'on' | 'dim' | 'off'; // what the display does when idle
-export type IdleContent = 'nothing' | 'nowPlaying' | 'currentShelf' | 'shelf' | 'autoOpen'; // what it shows
+export type IdleContent = 'nothing' | 'nowPlaying' | 'currentShelf' | 'shelf' | 'slideshow'; // what it shows while idle
 // 'currentShelf' = close any open album, stay on whatever shelf is showing; 'shelf' = jump to a chosen one
 export type AutoOpenPool = 'all' | 'current' | 'shelf';
 /** One weekday's lights-out window (index 0 = Sunday). */
@@ -280,16 +279,18 @@ export interface Settings {
   /** Also trigger idle from the proximity sensor seeing nobody (inert until hardware). */
   idleUseSensor: boolean;
   /** What the display does when idle. */
-  idleScreen: IdleScreen;
-  /** Brightness % when idleScreen is 'dim'. */
+  /** Dim the screen while idle (to idleDimPercent). */
+  idleDim: boolean;
+  /** Brightness % while idle when idleDim is on. */
   idleDimPercent: number;
-  /** What the shelf shows when idle. */
+  /** Second idle stage: turn the screen off after this many minutes idle (>= idleAfterMin);
+      0 = never. Lets the wall show idle content for a while, then sleep. */
+  screenOffAfterMin: number;
+  /** What the shelf shows when idle — 'slideshow' flips through albums (attract mode). */
   idleContent: IdleContent;
-  /** Shelf id for idleContent 'shelf' (and autoOpen pool 'shelf'); null = All. */
+  /** Shelf id for idleContent 'shelf' or the slideshow pool 'shelf'; null = All. */
   idleShelf: string | null;
-  /** Auto-open ("attract mode"): cycle open albums when idle. Its own feature, independent
-      of the idle-content choice — when on, it runs while idle regardless of idleContent. */
-  autoOpenEnabled: boolean;
+  /** Slideshow cadence / source / order — used when idleContent is 'slideshow'. */
   autoOpenEverySec: number;
   autoOpenPool: AutoOpenPool;
   autoOpenRandom: boolean;
@@ -337,11 +338,11 @@ export const DEFAULT_SETTINGS: Settings = {
   afterPlayLingerSec: 8,
   idleAfterMin: 5,
   idleUseSensor: false,
-  idleScreen: 'dim',
+  idleDim: true,
   idleDimPercent: 20,
+  screenOffAfterMin: 0,
   idleContent: 'nowPlaying',
   idleShelf: null,
-  autoOpenEnabled: false,
   autoOpenEverySec: 25,
   autoOpenPool: 'all',
   autoOpenRandom: true,

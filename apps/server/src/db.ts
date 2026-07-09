@@ -460,6 +460,7 @@ export class Db {
     }
     const merged = { ...DEFAULT_SETTINGS, ...stored } as Settings;
     if (merged.defaultPlayerId === null) merged.defaultPlayerId = this.getDefaultPlayerId();
+    migrateIdleSettings(merged, stored);
     return merged;
   }
 
@@ -491,5 +492,21 @@ export class Db {
     this.db
       .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .run(key, JSON.stringify(value));
+  }
+}
+
+/** Forward-migrate the pre-redesign idle settings to the new fields, in memory only
+    (persisted on the next putSettings). Old `idleScreen` (on/dim/off) → `idleDim` +
+    `screenOffAfterMin`; the auto-open slideshow (`autoOpenEnabled` / legacy
+    idleContent='autoOpen') → idleContent='slideshow'. */
+function migrateIdleSettings(merged: Settings, stored: Record<string, unknown>): void {
+  if (stored['idleDim'] === undefined && stored['idleScreen'] !== undefined) {
+    const scr = stored['idleScreen'];
+    merged.idleDim = scr === 'dim';
+    // 'off' turned the screen off at idle time — replicate with the new second-stage timer.
+    if (scr === 'off' && stored['screenOffAfterMin'] === undefined) merged.screenOffAfterMin = merged.idleAfterMin;
+  }
+  if (stored['idleContent'] === 'autoOpen' || stored['autoOpenEnabled'] === true) {
+    merged.idleContent = 'slideshow';
   }
 }
