@@ -405,7 +405,10 @@ button {
 
 .tracks {
   margin-top: 0.6vh;
-  max-height: 22vh;
+  /* Show ~the first 5 songs (don't let the flex column collapse it), then scroll the rest;
+     the panel itself grows up/down (safe-center + overflow) within the card height. */
+  flex: 0 0 auto;
+  max-height: 26vh;
   overflow-y: auto;
   scrollbar-width: none;
   border-top: 1px solid rgba(236,231,221,0.12);

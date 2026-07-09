@@ -4077,6 +4077,12 @@ let vel = 0,
   downTarget: HTMLElement | null = null;
 let stepping = false,
   stepAccum = 0;
+// Vertical swipe on the open cover: expand (up) / collapse or close (down). vSwipe:
+// 0 = undetermined, 1 = locked vertical, -1 = locked horizontal (stepping).
+let startY = 0,
+  vSwipe = 0,
+  vSwipeDone = false,
+  downOnOpenCover = false;
 
 /* ---- Pinch to zoom (§ pinchZoom setting): spine-density resize OR a magnifier loupe.
    Tracks live pointers; two down => pinch, which suspends scroll/open for those fingers. */
@@ -4195,6 +4201,7 @@ vp.addEventListener('pointerdown', (e) => {
   pDown = true;
   moved = false;
   startX = lastX = e.clientX;
+  startY = e.clientY;
   scrollStart = vp.scrollLeft;
   if (raf !== null) cancelAnimationFrame(raf);
   vel = 0;
@@ -4202,6 +4209,11 @@ vp.addEventListener('pointerdown', (e) => {
 
   stepping = openIdx !== null;
   stepAccum = 0;
+  // A vertical drag that starts on the OPEN album's cover (not its panel, which scrolls)
+  // toggles the extended view — a faster trigger than the ⋯ button.
+  vSwipe = 0;
+  vSwipeDone = false;
+  downOnOpenCover = openIdx !== null && !!(e.target as HTMLElement).closest('.spine.open .flap');
 
   if (downTarget && openIdx === null) {
     holdTimer = setTimeout(() => {
@@ -4224,6 +4236,29 @@ window.addEventListener('pointermove', (e) => {
   if (!pDown) return;
 
   if (stepping) {
+    // Vertical swipe on the open cover → expand / collapse (once per gesture).
+    if (downOnOpenCover && vSwipe >= 0) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (vSwipe === 0) {
+        if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.3) vSwipe = 1;
+        else if (Math.abs(dx) > 12) vSwipe = -1;
+      }
+      if (vSwipe === 1) {
+        if (!vSwipeDone && Math.abs(dy) > 40 && openIdx !== null) {
+          vSwipeDone = true;
+          const el = shelf.children[openIdx] as HTMLElement;
+          if (dy < 0) {
+            if (!el.classList.contains('expanded')) expand(el, true); // up → expand
+          } else if (el.classList.contains('expanded')) {
+            expand(el, false); // down → collapse to cover
+          } else {
+            closeAlbum(); // down from cover → close
+          }
+        }
+        return; // consumed as a vertical swipe, don't step
+      }
+    }
     stepAccum += e.clientX - lastX;
     lastX = e.clientX;
     while (stepAccum <= -STEP_PX) {
@@ -4265,7 +4300,8 @@ window.addEventListener('pointerup', (e) => {
 
   if (stepping) {
     stepping = false;
-    if (Math.abs(e.clientX - startX) <= 8) {
+    if (vSwipe === 1) return; // a vertical swipe already expanded/collapsed — not a tap
+    if (Math.abs(e.clientX - startX) <= 8 && Math.abs(e.clientY - startY) <= 8) {
       // A tap closes the open album — on empty space (no spine under the finger) or on
       // the open album itself; tapping a DIFFERENT spine opens that one instead.
       // (Resolve by layout position so a LEFT neighbor isn't masked by the open cover.)
