@@ -188,6 +188,9 @@ export type SpineWidthMode = 'uniform' | 'duration';
 export type SpineTextDir = 'ttb' | 'btt';
 /** What happens to the open album after you hit play. */
 export type AfterPlay = 'close' | 'linger' | 'stay';
+/** What happens when an album's last track finishes: stop, repeat the album, or
+    roll on to the next album on the current shelf. */
+export type AfterAlbum = 'stop' | 'repeat' | 'next';
 /** Unified idle / presence / sleep (§7). Timer + schedule work today; the sensor +
     ambient-light options are wired but dormant until that hardware exists. */
 export type IdleScreen = 'on' | 'dim' | 'off'; // what the display does when idle
@@ -266,6 +269,8 @@ export interface Settings {
   defaultPlayerId: string | null;
   longPressMs: number;
   afterPlay: AfterPlay;
+  /** What to do when an album's last track finishes (stop / repeat / next on shelf). */
+  afterAlbum: AfterAlbum;
   /** Seconds the card lingers before closing when afterPlay is 'linger'. */
   afterPlayLingerSec: number;
 
@@ -326,6 +331,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultPlayerId: null,
   longPressMs: 420,
   afterPlay: 'linger',
+  afterAlbum: 'next',
   afterPlayLingerSec: 8,
   idleAfterMin: 5,
   idleUseSensor: false,

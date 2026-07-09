@@ -1096,6 +1096,7 @@ const SETTING_SELECTS: Array<[keyof Settings, string, Array<[string, string]>]> 
   ['openMode', 'Opening an album', [['cover', 'Cover only'], ['card', 'Full card']]],
   ['pinchZoom', 'Pinch to zoom', [['spines', 'Resize spines'], ['loupe', 'Magnifier loupe'], ['off', 'Off']]],
   ['afterPlay', 'After playing', [['close', 'Close'], ['linger', 'Linger'], ['stay', 'Stay open']]],
+  ['afterAlbum', 'When an album ends', [['next', 'Play next on shelf'], ['repeat', 'Repeat album'], ['stop', 'Stop']]],
   ['idleScreen', 'When idle — screen', [['on', 'Stay on'], ['dim', 'Dim'], ['off', 'Screen off']]],
   ['idleContent', 'When idle — show', [['nothing', 'Nothing'], ['nowPlaying', 'Now playing'], ['currentShelf', 'Current shelf'], ['shelf', 'A shelf'], ['autoOpen', 'Auto-open']]],
   ['autoOpenPool', 'Auto-open from', [['all', 'All albums'], ['current', 'Current shelf'], ['shelf', 'A specific shelf']]],
@@ -1240,7 +1241,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   {
     id: 'albums',
     name: 'Albums',
-    render: (b) => renderKeyGroups(b, [{ keys: ['openMode', 'pinchZoom', 'afterPlay', 'afterPlayLingerSec', 'longPressMs', 'glowEnabled', 'glowRadius', 'glowIntensity'] }]),
+    render: (b) => renderKeyGroups(b, [{ keys: ['openMode', 'pinchZoom', 'afterPlay', 'afterPlayLingerSec', 'afterAlbum', 'longPressMs', 'glowEnabled', 'glowRadius', 'glowIntensity'] }]),
   },
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },

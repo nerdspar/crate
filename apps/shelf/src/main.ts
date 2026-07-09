@@ -136,6 +136,8 @@ let lastNowAlbumId: string | null = null;
 let firstStateSeen = false;
 let lastTouchAt = 0;
 let selfPlayUntil = 0;
+/** The album+target we last started, watched so 'afterAlbum' can act when it ends. */
+let afterAlbumWatch: { albumId: string; playerId: string | null } | null = null;
 const AUTO_OPEN_TOUCH_GRACE_MS = 20000; // don't auto-open if the wall was touched this recently
 
 const trackCache = new Map<string, Track[]>();
@@ -1013,6 +1015,8 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement); // target room EQ now
   scheduleAfterPlayClose();
   showToast(`Sent to ${roomName(activePlayerId)}…`);
+  // Watch for this album ending so we can roll on to the next spine (afterAlbum='next').
+  afterAlbumWatch = { albumId: item.albumId, playerId: activePlayerId };
   client
     .play({
       albumId: item.albumId,
@@ -1020,10 +1024,18 @@ async function play(i: number, trackIndex?: number): Promise<void> {
       ...(providerUri ? { providerUri } : {}),
       ...(cue > 0 ? { trackIndex: cue } : {}),
     })
+    .then(() => applyAfterAlbumRepeat(activePlayerId))
     .catch((e) => {
       console.error('play failed', e);
       showToast('Playback failed');
     });
+}
+
+/** afterAlbum='repeat' loops the album via the queue's repeat mode; the play path
+    otherwise forces repeat off, so we only need to switch it on for 'repeat'. */
+function applyAfterAlbumRepeat(playerId: string | null): void {
+  if (!playerId) return;
+  if (settings.afterAlbum === 'repeat') void client.setRepeat({ playerId, mode: 'all' }).catch(() => {});
 }
 
 let afterPlayTimer: ReturnType<typeof setTimeout> | undefined;
@@ -4355,7 +4367,36 @@ function handleState(states: PlayerState[]): void {
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
     if (!albumModal.hidden) renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   }
+  maybeAfterAlbum();
   maybeAutoOpenExternal();
+}
+
+/** When the album we started finishes (no longer playing/paused anywhere), act on the
+    afterAlbum setting: 'next' rolls on to the next spine on the current shelf. 'repeat'
+    is handled by the queue's repeat mode; 'stop' needs nothing. */
+function maybeAfterAlbum(): void {
+  const w = afterAlbumWatch;
+  if (!w || settings.afterAlbum !== 'next' || userPaused) return;
+  if (performance.now() < selfPlayUntil) return; // ignore transient idle during the queue load
+  const stillOn = lastStates.some((s) => (s.state === 'playing' || s.state === 'paused') && s.nowPlaying?.albumId === w.albumId);
+  if (stillOn) return;
+  // The album stopped on its own (not a user pause, not replaced by another play — that
+  // would have reset the watch) → advance to the next non-hidden spine on this shelf.
+  afterAlbumWatch = null;
+  const idx = items.findIndex((it) => it.albumId === w.albumId);
+  if (idx < 0) return;
+  for (let j = idx + 1; j < items.length; j++) {
+    const nextItem = items[j];
+    if (nextItem && matchesFilter(nextItem)) {
+      if (w.playerId) {
+        activePlayerId = w.playerId;
+        activeSolo = groupMembers(leaderOf(w.playerId)).length < 2;
+      }
+      void play(j);
+      return;
+    }
+  }
+  // Reached the end of the shelf — nothing more to play.
 }
 
 /** "Open on outside playback" (opt-in setting): when a NEW album starts playing that Crate
