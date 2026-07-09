@@ -619,6 +619,8 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 .set-pane > * { break-inside: avoid; }
 /* Sleep + System hold one wide custom block each — full width, no column flow. */
 .set-pane[data-pane='sleep'].on, .set-pane[data-pane='system'].on { columns: auto; }
+/* Players: its three rows are the three columns — spread them across the whole frame. */
+.set-pane[data-pane='players'].on { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4vw; align-items: start; }
 .set-col { flex: 1 1 0; min-width: 0; }
 /* Keeps grouped rows (e.g. When-idle-screen + its dim slider) together in one column. */
 .setting-keep { break-inside: avoid; }
