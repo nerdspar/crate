@@ -1155,6 +1155,59 @@ const SETTING_TOGGLES: Array<[keyof Settings, string]> = [
 // Settings persisted as booleans but edited via a two-option select.
 const BOOL_SELECTS = new Set<keyof Settings>(['glowEnabled']);
 
+/* One-line explainer for every setting — what it does and what its options mean.
+   Rendered as a footnote under the control and mirrored to a title= hover tooltip. */
+const SETTING_DESC: Partial<Record<keyof Settings, string>> = {
+  // Spines
+  spineMode: 'How each spine looks: “Real when available” uses the album’s own cover art; “Generated” always draws a typographic spine.',
+  spineThickness: 'How chunky each jewel case appears — Thin, Medium, or Thick.',
+  spineWidthMode: 'Spine widths: “Uniform” makes them equal; “By length” scales width to the album’s run time, so longer albums are wider.',
+  spineTextDir: 'Direction the vertical spine text reads — top-to-bottom or bottom-to-top.',
+  inkMode: 'Spine text color: “Contrast” picks light or dark for legibility; “Match accent” tints it with the album’s dominant color.',
+  inkSize: 'Size of the spine text — Small, Medium, or Large.',
+  inkWeight: 'Thickness of the spine text — Light, Regular, or Bold.',
+  labelLayout: 'Where artist and title sit on the spine: “Split” separates them; Centered / Top / Bottom group them; “Varied” mixes placements across the shelf.',
+  labelVary: '“Uniform” gives every spine the same type treatment; “Varied” randomizes fonts and sizes for a hand-made crate look.',
+  yearDisplay: 'Show the release year on the spine: Off, Vertical (along the spine), or Horizontal.',
+  yearPos: 'Which end of the spine shows the year — Top or Bottom.',
+  yearEmphasis: 'How prominent the year looks — Thin or Bold.',
+  // Albums
+  openMode: 'What tapping a spine reveals: “Cover only” flips to the artwork; “Full card” also opens the track list and playback controls.',
+  pinchZoom: 'What a two-finger pinch on the shelf does: “Resize spines” scales the shelf, “Magnifier loupe” shows a zoom lens, “Off” disables it.',
+  afterPlay: 'What the open album card does once playback starts: Close it, Linger a few seconds, or Stay open.',
+  afterPlayLingerSec: 'How long the card stays open after playback starts before closing — used when “After playing” is set to Linger. 1–60 seconds.',
+  afterAlbum: 'What happens when an album’s last track ends: play the next album on the shelf, repeat the album, or stop.',
+  longPressMs: 'How long you must hold a spine to trigger its long-press menu. 100–1500 milliseconds.',
+  glowEnabled: 'Whether an opened album casts a soft colored glow behind it.',
+  glowRadius: 'How far the opened-album glow spreads — Small, Medium, or Large. (Only when Album glow is on.)',
+  glowIntensity: 'How strong the opened-album glow is — Soft, Medium, or Bold. (Only when Album glow is on.)',
+  // Display
+  autoBrightness: 'Adjust screen brightness automatically from the ambient-light sensor. Requires sensor hardware.',
+  // Idle
+  idleAfterMin: 'Minutes with no interaction before the wall goes idle. 0 = never go idle.',
+  idleUseSensor: 'Go idle when the proximity sensor stops detecting anyone nearby. Requires sensor hardware.',
+  wakeOnSensor: 'Wake from idle when the proximity sensor detects someone approaching. Requires sensor hardware.',
+  idleScreen: 'What the display does when idle: stay on, dim the backlight, or turn the screen off.',
+  idleDimPercent: 'Backlight level while idle, used when the idle screen mode is “Dim.” 1–100%.',
+  idleContent: 'What the wall shows when idle: nothing, the now-playing album, the current shelf, or a specific shelf.',
+  idleShelf: 'The shelf used whenever an idle option is set to “a specific shelf.”',
+  // Auto-open
+  autoOpenEnabled: 'Turn on the idle slideshow that flips through album covers on its own while the wall is idle.',
+  autoOpenEverySec: 'How often the idle slideshow advances to the next album. 5–300 seconds.',
+  autoOpenPool: 'Which albums the idle slideshow draws from: all albums, the current shelf, or a specific shelf.',
+  autoOpenRandom: 'Slideshow visits albums in random order instead of shelf order.',
+  openOnExternalPlay: 'When music starts from another app (Sonos, a voice assistant, etc.), the idle wall flips that album open so it matches what’s playing.',
+};
+function appendDesc(field: HTMLElement, key: keyof Settings): void {
+  const d = SETTING_DESC[key];
+  if (!d) return;
+  const p = document.createElement('p');
+  p.className = 'field-desc';
+  p.textContent = d;
+  field.appendChild(p);
+  field.title = d; // desktop hover tooltip; the footnote covers touch
+}
+
 async function loadSettingsPanel(): Promise<void> {
   try {
     const [players, s] = [await client.getPlayers(), await client.getSettings()];
@@ -1182,6 +1235,7 @@ function selectField(key: keyof Settings, label: string, opts: Array<[string, st
   });
   field.innerHTML = `<label>${label}</label>`;
   field.appendChild(sel);
+  appendDesc(field, key);
   return field;
 }
 function numberField(key: keyof Settings, label: string, min: number, max: number): HTMLElement {
@@ -1195,6 +1249,7 @@ function numberField(key: keyof Settings, label: string, min: number, max: numbe
   inp.addEventListener('change', () => void saveSetting(key, Math.max(min, Math.min(max, Number(inp.value))) as Settings[typeof key]));
   field.innerHTML = `<label>${label}</label>`;
   field.appendChild(inp);
+  appendDesc(field, key);
   return field;
 }
 function toggleField(key: keyof Settings, label: string): HTMLElement {
@@ -1208,6 +1263,7 @@ function toggleField(key: keyof Settings, label: string): HTMLElement {
   lab.appendChild(cb);
   lab.append(' ' + label);
   tf.appendChild(lab);
+  appendDesc(tf, key);
   return tf;
 }
 function idleShelfField(): HTMLElement {
@@ -1225,6 +1281,7 @@ function idleShelfField(): HTMLElement {
   sel.addEventListener('change', () => void saveSetting('idleShelf', sel.value || null));
   f.innerHTML = '<label>Idle / auto-open shelf</label>';
   f.appendChild(sel);
+  appendDesc(f, 'idleShelf');
   return f;
 }
 function settingField(key: keyof Settings): HTMLElement | null {
@@ -1368,6 +1425,10 @@ function renderPresetsSection(body: HTMLElement): void {
   h.className = 'set-subhead';
   h.textContent = 'Group presets';
   body.appendChild(h);
+  const phint = document.createElement('p');
+  phint.className = 'hint';
+  phint.textContent = 'Named sets of speakers the wall offers as one-tap options in its play-to picker — e.g. “Downstairs” = Kitchen + Living Room.';
+  body.appendChild(phint);
   const list = document.createElement('div');
   list.className = 'preset-list';
   body.appendChild(list);
@@ -1455,6 +1516,10 @@ function renderDisplayCat(body: HTMLElement): void {
   range.value = '100';
   range.addEventListener('change', () => void client.setBrightness(Number(range.value)).catch(() => {}));
   f.appendChild(range);
+  const bhint = document.createElement('p');
+  bhint.className = 'field-desc';
+  bhint.textContent = 'Screen backlight level right now, 8–100%. (Idle dimming is set under Idle.)';
+  f.appendChild(bhint);
   body.appendChild(f);
   void client.getSystemStatus().then((st) => (range.value = String(st.brightness ?? 100))).catch(() => {});
   const auto = settingField('autoBrightness');
