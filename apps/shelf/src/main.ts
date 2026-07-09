@@ -1661,11 +1661,10 @@ function updateConditionalRows(): void {
   show('idle-dim-slider', settings.idleScreen === 'dim');
   show('idle-content-choices', idleOn);
   // Target shelf is used by "A shelf" content and by auto-open when its pool is "A shelf".
-  const needsShelf =
-    settings.idleContent === 'shelf' ||
-    (settings.idleContent === 'autoOpen' && settings.autoOpenPool === 'shelf');
+  const autoOpenOn = settings.autoOpenEnabled || settings.idleContent === 'autoOpen';
+  const needsShelf = settings.idleContent === 'shelf' || (autoOpenOn && settings.autoOpenPool === 'shelf');
   show('idle-shelf-choices', idleOn && needsShelf);
-  const attract = idleOn && settings.idleContent === 'autoOpen';
+  const attract = idleOn && autoOpenOn;
   for (const id of ['autoopen-every-choices', 'autoopen-pool-choices', 'autoopen-random-choices'])
     show(id, attract);
 }
@@ -4843,6 +4842,12 @@ async function enterIdle(): Promise<void> {
     preIdleBrightness = system?.brightness ?? 100;
     void client.setBrightness(settings.idleDimPercent).then(applySystemStatus).catch(() => {});
   }
+  // Auto-open (attract) is its own feature: when on, it runs while idle regardless of the
+  // idle-content choice below.
+  if (settings.autoOpenEnabled || settings.idleContent === 'autoOpen') {
+    await startAttract();
+    return;
+  }
   // Content
   if (settings.idleContent === 'nowPlaying') {
     if (playingIdx !== null) openCover(playingIdx);
@@ -4850,8 +4855,6 @@ async function enterIdle(): Promise<void> {
     closeAlbum(); // stay on whatever shelf is showing; just drop any open album
   } else if (settings.idleContent === 'shelf') {
     await switchShelf(settings.idleShelf ?? 'all', true);
-  } else if (settings.idleContent === 'autoOpen') {
-    await startAttract();
   }
 }
 

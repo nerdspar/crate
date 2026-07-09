@@ -287,7 +287,9 @@ export interface Settings {
   idleContent: IdleContent;
   /** Shelf id for idleContent 'shelf' (and autoOpen pool 'shelf'); null = All. */
   idleShelf: string | null;
-  /** Auto-open (attract) cadence, source pool, and order. */
+  /** Auto-open ("attract mode"): cycle open albums when idle. Its own feature, independent
+      of the idle-content choice — when on, it runs while idle regardless of idleContent. */
+  autoOpenEnabled: boolean;
   autoOpenEverySec: number;
   autoOpenPool: AutoOpenPool;
   autoOpenRandom: boolean;
@@ -339,6 +341,7 @@ export const DEFAULT_SETTINGS: Settings = {
   idleDimPercent: 20,
   idleContent: 'nowPlaying',
   idleShelf: null,
+  autoOpenEnabled: false,
   autoOpenEverySec: 25,
   autoOpenPool: 'all',
   autoOpenRandom: true,
