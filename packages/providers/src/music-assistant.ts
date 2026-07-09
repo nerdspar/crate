@@ -473,6 +473,16 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       void this.client.command('player_queues/play_media', { queue_id: playerId, media: rest, option: 'add' }).catch(() => {});
   }
 
+  /** Play an explicit ordered list of track uris (e.g. a curated playlist shelf): the
+      first replaces the queue and starts, the rest are appended so it plays through. */
+  async playTracks(playerId: string, trackUris: string[]): Promise<void> {
+    const [first, ...rest] = trackUris;
+    if (!first) return;
+    void this.client.command('player_queues/repeat', { queue_id: playerId, repeat_mode: 'off' }).catch(() => {});
+    await this.client.command('player_queues/play_media', { queue_id: playerId, media: first, option: 'replace' });
+    if (rest.length) void this.client.command('player_queues/play_media', { queue_id: playerId, media: rest, option: 'add' }).catch(() => {});
+  }
+
   async transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void> {
     const map: Record<TransportCommand, string> = {
       // `resume` continues from the last position whether the queue was paused or

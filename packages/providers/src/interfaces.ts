@@ -103,6 +103,7 @@ export interface PlayerTarget {
   readonly id: string;
   listPlayers(): Promise<ProviderPlayer[]>;
   play(playerId: string, providerUri: string, opts?: { trackIndex?: number }): Promise<void>;
+  playTracks(playerId: string, trackUris: string[]): Promise<void>;
   transport(playerId: string, cmd: TransportCommand, positionSec?: number): Promise<void>;
   setVolume(playerId: string, level: number): Promise<void>;
   setMembers(targetPlayerId: string, add: string[], remove: string[]): Promise<void>;

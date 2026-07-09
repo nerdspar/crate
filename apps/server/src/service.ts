@@ -705,9 +705,14 @@ export class Service {
     return next;
   }
 
-  async play(albumId: string, trackIndex?: number, playerId?: string, providerUri?: string): Promise<void> {
+  async play(albumId: string, trackIndex?: number, playerId?: string, providerUri?: string, trackUris?: string[]): Promise<void> {
     const player = playerId ?? this.defaultPlayerId();
     if (!player) throw new Error('no player available');
+    // An explicit track list (a playlist shelf played from a song) — play it in order.
+    if (trackUris && trackUris.length) {
+      await this.ma.playTracks(player, trackUris);
+      return;
+    }
     // Off-shelf album (e.g. a song tapped in a playlist's song view) — play by uri.
     if (providerUri) {
       await this.ma.play(player, providerUri, trackIndex !== undefined ? { trackIndex } : undefined);

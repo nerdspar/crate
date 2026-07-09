@@ -968,6 +968,36 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   if (activePlayerId) focusedPlayerId = activePlayerId;
   if (openIdx === i) updatePlayButton();
   await ungroupActiveSoloIfNeeded();
+
+  // A playlist-shelf song plays the PLAYLIST from here on — the tapped song then the rest
+  // of the shelf's songs in its curated order — so it continues through the playlist rather
+  // than rolling into the tapped song's album. (Each playlist song spine carries its own
+  // track uri in `albumUri`; the shelf order is the curation.)
+  if (item.kind === 'playlist' && item.albumUri) {
+    const uris = items
+      .slice(i)
+      .filter((it) => it.kind === 'playlist' && it.albumUri)
+      .map((it) => it.albumUri as string);
+    userPaused = false;
+    pauseGuardUntil = 0;
+    resumeGuardUntil = performance.now() + 8000;
+    selfPlayUntil = performance.now() + 8000;
+    songCue.delete(item.albumId);
+    now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: 0, trackUri: item.albumUri, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+    applyNow();
+    if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+    scheduleAfterPlayClose();
+    showToast(`Sent to ${roomName(activePlayerId)}…`);
+    afterAlbumWatch = null; // the playlist queue continues on its own
+    client
+      .play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), trackUris: uris })
+      .catch((e) => {
+        console.error('play failed', e);
+        showToast('Playback failed');
+      });
+    return;
+  }
+
   // A song spine plays its ALBUM: resolve the real album uri (its `albumUri` is
   // the track uri) and cue either the explicitly-tapped row or the song's index.
   const song = !!item.albumUri;

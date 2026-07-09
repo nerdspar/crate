@@ -80,6 +80,10 @@ export interface PlayRequest {
   /** Off-shelf album to play by provider uri (a song tapped in a playlist song
       view). When set, albumId is ignored server-side. */
   providerUri?: string;
+  /** An explicit ordered list of track uris to play as the queue (a song tapped in
+      a playlist shelf → the playlist continues in the shelf's curated order). When
+      set, albumId/providerUri are ignored. */
+  trackUris?: string[];
 }
 
 /** Detail for an off-shelf provider album (song→album card; not ingested). */

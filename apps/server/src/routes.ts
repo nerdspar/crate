@@ -84,7 +84,7 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
 
   app.post('/api/play', async (req) => {
     const b = req.body as PlayRequest;
-    await service.play(b.albumId, b.trackIndex, b.playerId, b.providerUri);
+    await service.play(b.albumId, b.trackIndex, b.playerId, b.providerUri, b.trackUris);
     return { ok: true };
   });
 
