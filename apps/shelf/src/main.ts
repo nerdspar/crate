@@ -422,7 +422,7 @@ function buildShelf(): void {
     });
     el.querySelector('.card-shuffle')!.addEventListener('click', (e) => {
       stop(e);
-      toggleCardShuffle(i);
+      toggleShuffle();
     });
     el.querySelector('.card-repeat')!.addEventListener('click', (e) => {
       stop(e);
@@ -1141,22 +1141,34 @@ function albumIsPlayingHere(i: number): boolean {
 }
 // The repeat button cycles the global "when an album ends" behavior (synced with admin).
 const AFTERALBUM_CYCLE: AfterAlbum[] = ['stop', 'repeat', 'next'];
-/** Reflect shuffle (live queue when playing, else the pending intent) + the after-album
-    button (repeat glyph for stop/repeat, next glyph for 'next'; bold when not 'stop'). */
-function renderCardModes(): void {
-  if (openIdx === null) return;
-  const el = shelf.children[openIdx] as HTMLElement | undefined;
-  const shuf = el?.querySelector('.card-shuffle');
-  const rep = el?.querySelector('.card-repeat') as HTMLElement | null;
+/** True if whatever surface is showing (the open card OR the play-now overlay) is showing
+    the album that's actually playing — so its shuffle button reflects the live queue. */
+function shownAlbumIsPlaying(): boolean {
+  if (openIdx !== null) return albumIsPlayingHere(openIdx);
+  if (!albumModal.hidden) return modalIsPlaying();
+  return false;
+}
+/** Render the shuffle + after-album buttons inside one card/overlay root. Both surfaces
+    read the same shared state (cardShuffle + settings.afterAlbum), so they never drift. */
+function renderModesIn(root: HTMLElement | null, playing: boolean): void {
+  const shuf = root?.querySelector('.card-shuffle');
+  const rep = root?.querySelector('.card-repeat') as HTMLElement | null;
   if (!shuf || !rep) return;
-  shuf.classList.toggle('on', albumIsPlayingHere(openIdx) ? queueModes().shuffle : cardShuffle);
+  shuf.classList.toggle('on', playing ? queueModes().shuffle : cardShuffle);
   const aa = settings.afterAlbum;
   rep.classList.toggle('on', aa !== 'stop');
   rep.innerHTML = aa === 'next' ? ICON_NEXT : ICON_REPEAT;
   rep.setAttribute('aria-label', aa === 'next' ? 'Play next album' : aa === 'repeat' ? 'Repeat album' : 'Stop after album');
 }
-function toggleCardShuffle(i: number): void {
-  const playing = albumIsPlayingHere(i);
+/** Reflect the shuffle + after-album buttons on every surface currently showing. */
+function renderCardModes(): void {
+  if (openIdx !== null) renderModesIn(shelf.children[openIdx] as HTMLElement, albumIsPlayingHere(openIdx));
+  if (!albumModal.hidden) renderModesIn(albumModal.querySelector('.am-card') as HTMLElement, modalIsPlaying());
+}
+/** Toggle shuffle (shared across card + overlay); drive the live queue if what's shown
+    is playing, else it's the pre-play intent applied on the next Play. */
+function toggleShuffle(): void {
+  const playing = shownAlbumIsPlaying();
   cardShuffle = !(playing ? queueModes().shuffle : cardShuffle);
   if (playing) {
     const pid = modeTarget();
@@ -1165,12 +1177,12 @@ function toggleCardShuffle(i: number): void {
   renderCardModes();
 }
 /** Cycle the after-album behavior (stop → repeat → next), persist it (syncs with the
-    admin), and reflect repeat on the live queue if this album is playing. */
+    admin + the other surface), and reflect repeat on the live queue if what's shown plays. */
 function cycleAfterAlbum(): void {
   const next = AFTERALBUM_CYCLE[(AFTERALBUM_CYCLE.indexOf(settings.afterAlbum) + 1) % AFTERALBUM_CYCLE.length]!;
   settings.afterAlbum = next;
   void client.putSettings({ afterAlbum: next }).catch(() => {});
-  if (openIdx !== null && albumIsPlayingHere(openIdx)) {
+  if (shownAlbumIsPlaying()) {
     const pid = modeTarget();
     if (pid) void client.setRepeat({ playerId: pid, mode: next === 'repeat' ? 'all' : 'off' }).catch(() => {});
   }
@@ -3223,6 +3235,9 @@ let modalIsPlaylist = false; // the overlay is showing a playlist (plays the pla
 (albumModal.querySelector('.am-next') as HTMLElement).addEventListener('click', () => {
   if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
 });
+// Shuffle + after-album (repeat) — the SAME shared controls as the card, so they stay in sync.
+(albumModal.querySelector('.card-shuffle') as HTMLElement).addEventListener('click', () => toggleShuffle());
+(albumModal.querySelector('.card-repeat') as HTMLElement).addEventListener('click', () => cycleAfterAlbum());
 // Volume slider (mirrors the card's) — icons are JS SVG constants, so fill them here.
 {
   const icons = albumModal.querySelectorAll('.am-vol .vol-ico');
@@ -3292,6 +3307,7 @@ function updateModalTransport(): void {
   prev.hidden = !toggle;
   next.hidden = !toggle;
   play.textContent = toggle ? (now.state === 'playing' ? 'Pause' : 'Resume') : 'Play';
+  renderModesIn(albumModal.querySelector('.am-card') as HTMLElement, modalIsPlaying());
 }
 /** Mark the currently-playing track in the overlay with the EQ (when its album plays). */
 function updateModalNowTrack(): void {
