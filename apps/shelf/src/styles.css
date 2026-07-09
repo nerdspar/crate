@@ -168,7 +168,10 @@ body {
    intended 1.5vw gap from the neighbor, not a spine-width past it. */
 /* Right margin is small (vh, not vw — 1.5vw is ~39px on the wide wall, a big black band
    past the panel). Left keeps its calc so the flipped cover still overlaps its neighbor. */
-.spine.open { z-index: 3; margin: 0 1.2vh; margin-left: calc(1.5vw - var(--spine-w)); }
+/* Symmetric neighbour gap: same gap term (3vh) on both sides. The left also subtracts the
+   collapsed spine width so the flipped-open cover lands where the spine was — but the gap the
+   eye sees (neighbour → cover, and panel → neighbour) is 3vh + column-gap on each side. */
+.spine.open { z-index: 3; margin: 0 3vh; margin-left: calc(3vh - var(--spine-w)); }
 /* Open = rotate the whole case 90° left about the seam: spine turns away, cover faces you. */
 .spine.open .flap { transform: rotateY(-90deg); }
 
@@ -951,18 +954,23 @@ body.idle #find-grip::after { opacity: 0; }
 /* Sort buttons match the Settings button's size (smaller than the default .choice) to free space. */
 .find-row .choices .choice { font-size: 1.9vh; padding: 1vh 3vw; border-radius: 999px; }
 
-/* Shelf switcher (top of the Find bar): Albums/Playlists tabs stacked vertically on the left
-   (frees the vertical band a horizontal tab row used) + the list of shelves to their right. */
-#find-shelves { display: flex; flex-direction: row; align-items: flex-start; gap: 2.4vw; }
-.find-shelf-tabs { display: flex; flex-direction: column; gap: 0.6vh; flex: 0 0 auto; }
+/* Shelf switcher: the Albums/Playlists tabs live as rotated (sideways) labels in the empty
+   black margin on the LEFT of the sheet — out of the content flow — so the shelf list and
+   results keep the full width. The tabs are absolutely placed against the sheet's left edge. */
+#find-shelves { display: flex; flex-direction: column; gap: 1.2vh; }
+.find-shelf-tabs {
+  position: absolute; left: 0.3vw; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: row; gap: 0.4vw; z-index: 3;
+}
 .find-shelf-tab {
+  writing-mode: vertical-rl; /* text reads top-to-bottom, sideways */
   background: transparent; border: none; border-left: 3px solid transparent; border-radius: 0;
-  color: var(--ink-dim); text-align: left;
-  font-family: 'Newsreader Variable', serif; font-size: 2.8vh; font-weight: 500;
-  padding: 0.3vh 0.9vw;
+  color: var(--ink-dim);
+  font-family: 'Newsreader Variable', serif; font-size: 2.6vh; font-weight: 500;
+  padding: 0.8vh 0.15vw;
 }
 .find-shelf-tab.on { color: var(--ink); border-left-color: var(--brass); }
-#find-shelf-list { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
+#find-shelf-list { display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
 .find-shelf {
   text-align: left; background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.18); border-radius: 999px;
