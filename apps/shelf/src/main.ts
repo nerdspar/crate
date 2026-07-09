@@ -718,10 +718,11 @@ function renderRooms(el: HTMLElement): void {
     // follows before you pick anything (inActiveGroup is only set when a GROUP is targeted).
     const isTarget = r.id === activePlayerId && inActiveGroup.size === 0;
     b.className = 'room' + (isTarget ? ' on' : inActiveGroup.has(r.id) ? ' in-group' : '');
-    // A member of a multi-speaker group doesn't get its own EQ marker — the group chip already
-    // represents it (otherwise the solo leader, e.g. Kitchen, double-shows the EQ).
+    // A member of a multi-speaker group shows a small "grouped" dot (not its own EQ — the
+    // group chip carries the EQ) so you can see which speakers are linked together.
     const inGroup = groupMembers(leaderOf(r.id)).length >= 2;
-    b.innerHTML = (inGroup ? '' : playMarker(roomPlayState(r.id))) + escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
+    const marker = inGroup ? '<span class="room-grouped" aria-hidden="true"></span>' : playMarker(roomPlayState(r.id));
+    b.innerHTML = marker + escapeHtml(r.name) + (r.id === settings.defaultPlayerId ? '<span class="room-def">default</span>' : '');
     b.onclick = (e) => {
       e.stopPropagation();
       activePlayerId = r.id;
@@ -793,7 +794,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       row.className = 'track' + (isNow ? ' now' : ti === cueIdx ? ' cued' : '');
       if (t.uri) row.dataset.uri = t.uri;
       const dur = t.duration ? fmtDur(t.duration) : '';
-      row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span>${escapeHtml(t.title)}<span class="dur">${dur}</span>`;
+      row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span><span class="tt">${escapeHtml(t.title)}${t.explicit ? ' <span class="ex-badge" title="Explicit">E</span>' : ''}</span><span class="dur">${dur}</span>`;
       // Tap = select/highlight only; the card's Play button plays the selected track.
       row.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2464,6 +2465,60 @@ let artistView: SearchArtist | null = null; // non-null = the artist detail is s
 let artistSeq = 0; // cancels stale artist-detail fetches
 let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
+/* Recent searches: the last handful of queries, shown as tappable chips when the
+   search box is focused and empty so you can re-run one without retyping. */
+const RECENTS_KEY = 'crate.recentSearches';
+const RECENTS_MAX = 8;
+function loadRecents(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function addRecent(q: string): void {
+  const t = q.trim();
+  if (t.length < 2) return;
+  const next = [t, ...loadRecents().filter((r) => r.toLowerCase() !== t.toLowerCase())].slice(0, RECENTS_MAX);
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    /* storage full / disabled — recents are best-effort */
+  }
+}
+/** Show recent-search chips in the results area (when focused + empty). */
+function renderRecents(): void {
+  const recents = loadRecents();
+  if (!recents.length || filterQuery) {
+    if (!filterQuery) clearFindResults();
+    return;
+  }
+  artistView = null;
+  findResults.hidden = false;
+  findResults.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'find-recents';
+  const h = document.createElement('div');
+  h.className = 'find-cat-h';
+  h.textContent = 'Recent searches';
+  wrap.appendChild(h);
+  const strip = document.createElement('div');
+  strip.className = 'find-recent-chips';
+  for (const q of recents) {
+    const chip = document.createElement('button');
+    chip.className = 'find-recent-chip';
+    chip.textContent = q;
+    chip.onclick = () => {
+      findSearch.value = q;
+      findSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    strip.appendChild(chip);
+  }
+  wrap.appendChild(strip);
+  findResults.appendChild(wrap);
+}
+
 /* Search paging: show 20 per section, "Load more" raises the fetch limit + reveals
    the next 20. MA search has no offset, so we re-fetch with a larger per-section cap. */
 const SEARCH_PAGE = 20;
@@ -2498,9 +2553,15 @@ findSearch.addEventListener('input', () => {
     resetSearchPaging(); // a new query starts back at the first page
     renderGlobal(true); // show the loading scaffold immediately
     searchTimer = setTimeout(() => void runGlobalSearch(), 400);
+  } else if (!filterQuery) {
+    renderRecents(); // empty box → offer the last few searches
   } else {
     clearFindResults();
   }
+});
+// Focusing the (empty) box surfaces recent searches.
+findSearch.addEventListener('focus', () => {
+  if (!filterQuery) renderRecents();
 });
 findClear.addEventListener('click', () => {
   findSearch.value = '';
@@ -2530,6 +2591,7 @@ async function runGlobalSearch(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
   const seq = ++searchSeq;
+  addRecent(q); // remember it for the recent-searches list
   try {
     const res = await client.globalSearch(q, searchSource, searchLimit);
     if (seq !== searchSeq) return;
@@ -2789,6 +2851,7 @@ function pickSource(id: string): void {
     lives; inside album/playlist track lists, tapping only selects — see the top Play). */
 function songResultCard(s: SearchSong): HTMLElement {
   const card = cardShell(s.title, s.artist + (s.album ? ` · ${s.album}` : ''), s.artworkUrl, '');
+  if (s.explicit) card.querySelector('.find-card-meta .t')?.insertAdjacentHTML('beforeend', ' <span class="ex-badge" title="Explicit">E</span>');
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap');
   card.addEventListener('click', () => void openProviderAlbum(s.trackUri));
@@ -2986,7 +3049,8 @@ function renderModalTracks(tracks: Track[], cueIndex: number, withArtist = false
     if (t.uri) row.dataset.uri = t.uri;
     const dur = t.duration ? fmtDur(t.duration) : '';
     const label = withArtist && t.artist ? `${escapeHtml(t.title)} · ${escapeHtml(t.artist)}` : escapeHtml(t.title);
-    row.innerHTML = `<span class="n">${ti + 1}</span>${label}<span class="dur">${dur}</span>`;
+    const ex = t.explicit ? ' <span class="ex-badge" title="Explicit">E</span>' : '';
+    row.innerHTML = `<span class="n">${ti + 1}</span><span class="tt">${label}${ex}</span><span class="dur">${dur}</span>`;
     row.addEventListener('click', () => {
       modalCue = ti;
       tw.querySelectorAll('.track').forEach((r, idx) => r.classList.toggle('cued', idx === ti));
@@ -3502,10 +3566,12 @@ function renderShelfList(): void {
       chip.append(input, ok, no);
       requestAnimationFrame(() => input.focus({ preventScroll: true }));
     } else {
+      // The whole pill switches shelves (not just the name); the edit/delete
+      // sub-buttons stopPropagation so they don't also switch.
+      chip.onclick = () => void switchShelf(s.id);
       const name = document.createElement('span');
       name.className = 'find-shelf-name';
       name.textContent = s.name;
-      name.onclick = () => void switchShelf(s.id);
       chip.appendChild(name);
       if (editable) {
         const edit = document.createElement('button');

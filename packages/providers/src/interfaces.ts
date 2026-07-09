@@ -32,6 +32,7 @@ export interface ProviderTrackHit {
   artist: string;
   album: string;
   artworkUrl: string | null;
+  explicit: boolean | null;
 }
 
 export interface ProviderPlaylist {

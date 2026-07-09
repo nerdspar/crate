@@ -38,6 +38,8 @@ export interface Track {
   artist: string;
   duration: number | null;
   uri: string | null;
+  /** Explicit content: true/false, or null/undefined when the provider doesn't say. */
+  explicit?: boolean | null;
   /** For playlist tracks: the provider uri of the track's album, so tapping a
       song can open its album with the track cued. Null for plain album tracks. */
   albumUri?: string | null;

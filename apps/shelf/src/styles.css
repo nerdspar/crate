@@ -213,7 +213,6 @@ body {
   font-size: 3.2vh;
   background: var(--ink); color: #131114;
   border: none;
-  padding-left: 0.6vh;
 }
 .cover-play:active { transform: scale(0.92); }
 .cover-menu {
@@ -312,6 +311,11 @@ button {
 /* Play-state markers on picker chips (monochrome): EQ = playing THIS album (safe to
    view), hollow dot = playing OTHER music (playing here would override it). */
 .room .track-eq { height: 1.4vh; margin-right: 0.5vh; vertical-align: middle; }
+/* Filled "grouped" dot: this speaker is linked into a multi-room group. */
+.room-grouped {
+  display: inline-block; width: 1.1vh; height: 1.1vh; margin-right: 0.5vh;
+  background: currentColor; border-radius: 50%; opacity: 0.8; vertical-align: middle;
+}
 /* Hollow bullet (CSS-drawn, tight to the label) — not a glyph that varies by font. */
 .room-busy {
   display: inline-block; width: 1.1vh; height: 1.1vh; margin-right: 0.5vh;
@@ -387,7 +391,7 @@ button {
 .np-btn:active { color: var(--brass); }
 /* Transport icons scale with each button's font-size (replaces color-emoji glyphs). */
 .tico { width: 1em; height: 1em; display: inline-block; vertical-align: middle; pointer-events: none; }
-.cover-play .tico { width: 44%; height: 44%; margin-left: 6%; } /* optical-center the play triangle */
+.cover-play .tico { width: 54%; height: 54%; margin-left: 3%; } /* larger; small nudge optically centers the triangle */
 .seek {
   height: 5px; border-radius: 3px; cursor: pointer;
   background: rgba(236,231,221,0.2); overflow: hidden;
@@ -698,6 +702,9 @@ body.idle #find-grip::after { opacity: 0; }
   align-self: center; width: 12vw; height: 0.6vh; border-radius: 999px;
   background: rgba(236,231,221,0.28); margin-bottom: 0.6vh; cursor: grab;
 }
+/* The control center drops down from the top, so its grab handle belongs at the
+   sheet's BOTTOM edge (the grab edge nearest the content) — mirroring the find bar. */
+#cc-sheet .cc-handle { order: 2; margin: 0.4vh 0 0; }
 
 /* Now playing — a full-width hero: art · title/seek · transport. */
 .cc-np { display: flex; gap: 4vw; align-items: center; }
@@ -967,6 +974,14 @@ body.idle #find-grip::after { opacity: 0; }
   text-transform: uppercase; padding: 0 0 0.6vh; border-bottom: 1px solid rgba(236,231,221,0.14); margin-bottom: 0.8vh;
 }
 .find-cat-list { display: flex; flex-direction: column; gap: 0.8vh; overflow-y: auto; max-height: 40vh; padding-right: 0.4vw; }
+/* Recent-search chips (shown when the search box is focused + empty). */
+.find-recent-chips { display: flex; flex-wrap: wrap; gap: 1vh; padding: 0.4vh 0; }
+.find-recent-chip {
+  background: rgba(0,0,0,0.28); color: var(--ink); border: 1px solid rgba(236,231,221,0.18);
+  border-radius: 999px; padding: 0.8vh 1.6vh; font: inherit; font-size: 1.9vh; cursor: pointer;
+}
+.find-recent-chip:active { background: rgba(255,255,255,0.06); border-color: var(--ink); }
+
 /* Tier sub-header inside the Albums column (On your shelf / In your library / From your sources). */
 .find-subhead {
   color: var(--ink-dim); font-size: 1.25vh; font-weight: 700; letter-spacing: 0.1em;

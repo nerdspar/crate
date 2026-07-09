@@ -147,6 +147,8 @@ export interface SearchSong {
   artist: string;
   album: string;
   artworkUrl: string | null;
+  /** Explicit content: true/false, or null when unknown. */
+  explicit: boolean | null;
   source: string;
 }
 

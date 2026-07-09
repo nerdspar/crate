@@ -361,7 +361,7 @@ export class Service {
       for (const p of r.playlists)
         playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
       for (const t of r.tracks)
-        songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, source: s.name });
+        songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: s.name });
     }
     return { artists, albums, playlists, songs, sources };
   }
@@ -396,7 +396,7 @@ export class Service {
       this.ma.getArtistTopTracks(providerUri).catch((): ProviderTrackHit[] => []),
     ]);
     const primary = sources[0]?.name ?? 'Music';
-    return tracks.map((t) => ({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, source: primary }));
+    return tracks.map((t) => ({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: primary }));
   }
 
   async addToShelf(providerUri: string, shelfId?: string, opts?: { quiet?: boolean }): Promise<{ albumId: string; duplicate: boolean }> {

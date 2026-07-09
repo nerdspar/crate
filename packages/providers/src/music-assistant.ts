@@ -51,6 +51,12 @@ function firstArtistName(item: Record<string, unknown>): string {
   return single ?? '(unknown artist)';
 }
 
+/** MA marks explicit content on the item's metadata; tri-state (true/false/unknown). */
+function trackExplicit(item: Record<string, unknown>): boolean | null {
+  const e = rec(item['metadata'])['explicit'];
+  return typeof e === 'boolean' ? e : null;
+}
+
 function mapPlayerType(provider: string, name: string): PlayerType {
   const p = provider.toLowerCase();
   const n = name.toLowerCase();
@@ -175,6 +181,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       artist: firstArtistName(item),
       album: str(rec(item['album'])['name']) ?? '',
       artworkUrl: this.artworkUrl(item),
+      explicit: trackExplicit(item),
     };
   }
 
@@ -312,6 +319,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         artist: firstArtistName(item),
         duration: num(item['duration']) ?? null,
         uri: str(item['uri']) ?? null,
+        explicit: trackExplicit(item),
       };
     });
     this.trackCache.set(providerUri, { tracks, at: Date.now() });
@@ -335,6 +343,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         artist: arr(item['artists']).length ? firstArtistName(item) : '',
         duration: num(item['duration']) ?? null,
         uri: str(item['uri']) ?? null,
+        explicit: trackExplicit(item),
         albumUri: str(item['uri']) ?? null,
       };
     });
