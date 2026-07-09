@@ -535,13 +535,15 @@ function openAlbum(i: number, autoscroll = true): void {
   positionGlow(i);
   if (!autoscroll) return;
   requestAnimationFrame(() => {
-    smoothScrollTo(vp, settledLeft(i) - vp.clientWidth * 0.12);
+    smoothScrollTo(vp, centeredOpenTarget(i));
   });
 }
 
 function expand(el: HTMLElement, on: boolean): void {
   el.classList.toggle('expanded', on);
   el.style.width = openWidth(el) + 'px';
+  // Re-center: expanding adds the panel width, so the cover+panel stay centered together.
+  if (openIdx !== null) requestAnimationFrame(() => smoothScrollTo(vp, centeredOpenTarget(openIdx as number), 300));
 }
 
 function closeAlbum(): void {
@@ -563,6 +565,26 @@ function settledLeft(i: number): number {
     x += parseFloat((shelf.children[j] as HTMLElement).style.getPropertyValue('--spine-w')) + gap;
   }
   return x;
+}
+
+/** Scroll target that centers the OPEN album's visible face — the cover, plus the
+    details panel when expanded (the thin spine binding sits just left of it) — in the
+    viewport, so opening keeps the cover centered and expanding keeps the pair centered.
+    Measures the rendered cover/panel (their horizontal layout is stable even mid-flip)
+    for pixel accuracy, falling back to a computed estimate. */
+function centeredOpenTarget(i: number): number {
+  const el = shelf.children[i] as HTMLElement | undefined;
+  if (!el) return 0;
+  const cover = el.querySelector('.face-cover') as HTMLElement | null;
+  if (cover) {
+    const rightEl = (el.classList.contains('expanded') ? el.querySelector('.panel') : null) ?? cover;
+    const faceLeft = cover.getBoundingClientRect().left + vp.scrollLeft; // → shelf space
+    const faceRight = (rightEl as HTMLElement).getBoundingClientRect().right + vp.scrollLeft;
+    return Math.max(0, (faceLeft + faceRight) / 2 - vp.clientWidth / 2);
+  }
+  const sw = parseFloat(el.style.getPropertyValue('--spine-w')) || 0;
+  const faceW = coverW() + (el.classList.contains('expanded') ? panelW() : 0);
+  return Math.max(0, settledLeft(i) + sw + faceW / 2 - vp.clientWidth / 2);
 }
 
 let scrollToken = 0;
@@ -4140,7 +4162,7 @@ function hideLoupe(): void {
 
 function followOpen(): void {
   if (openIdx === null) return;
-  smoothScrollTo(vp, settledLeft(openIdx) - vp.clientWidth * 0.12, 320);
+  smoothScrollTo(vp, centeredOpenTarget(openIdx), 320);
 }
 
 function stepAlbum(dir: number): void {
