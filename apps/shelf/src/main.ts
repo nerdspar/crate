@@ -2957,9 +2957,16 @@ function renderRecents(): void {
 const SEARCH_PAGE = 20;
 let searchLimit = SEARCH_PAGE;
 const searchShown = { albums: SEARCH_PAGE, playlists: SEARCH_PAGE, songs: SEARCH_PAGE };
+// Growth-based "is there more?" tracking, independent of the server's hasMore hint: a bigger
+// fetch that returns MORE than the previous one means the source still has more to give. Once a
+// bigger limit stops growing the count, we've hit the source's ceiling and hide "Load more".
+const lastFetchCount = { albums: -1, playlists: -1, songs: -1 };
+const searchGrew = { albums: true, playlists: true, songs: true };
 function resetSearchPaging(): void {
   searchLimit = SEARCH_PAGE;
   searchShown.albums = searchShown.playlists = searchShown.songs = SEARCH_PAGE;
+  lastFetchCount.albums = lastFetchCount.playlists = lastFetchCount.songs = -1;
+  searchGrew.albums = searchGrew.playlists = searchGrew.songs = true;
 }
 function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
   searchShown[key] += SEARCH_PAGE;
@@ -3027,6 +3034,12 @@ async function runGlobalSearch(): Promise<void> {
     const res = await client.globalSearch(q, searchSource, searchLimit);
     if (seq !== searchSeq) return;
     globalResults = res;
+    // Did this (larger) fetch return more than the previous one? If so, keep offering more.
+    const counts = { albums: res.albums.length, playlists: res.playlists.length, songs: res.songs.length };
+    (['albums', 'playlists', 'songs'] as const).forEach((k) => {
+      searchGrew[k] = counts[k] > lastFetchCount[k];
+      lastFetchCount[k] = counts[k];
+    });
   } catch {
     if (seq !== searchSeq) return;
     globalResults = null;
@@ -3071,7 +3084,14 @@ function renderGlobal(loading: boolean): void {
   const catalogAlbums = remoteNew.filter((a) => !a.inLibrary);
   const playlists = g?.playlists ?? [];
   const songs = g?.songs ?? [];
-  const more = g?.hasMore ?? { albums: false, playlists: false, songs: false };
+  // More to load if the server says so (a source page came back full) OR our own growth check
+  // saw the last bigger fetch return more than the one before it.
+  const hm = g?.hasMore ?? { albums: false, playlists: false, songs: false };
+  const more = {
+    albums: hm.albums || searchGrew.albums,
+    playlists: hm.playlists || searchGrew.playlists,
+    songs: hm.songs || searchGrew.songs,
+  };
   cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, more.albums));
   cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', more.playlists));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', more.songs));
@@ -3138,9 +3158,10 @@ function albumsColumn(
     e.textContent = loading ? 'Searching…' : 'None';
     list.appendChild(e);
   }
-  // Offer more when there are fetched-but-hidden cards to reveal, or the server says a bigger
-  // fetch would return more. Keeps working page after page until the sources are exhausted.
-  if (!loading && (remote.length > searchShown.albums || more)) {
+  // Offer more only once the page is actually full (else a tiny result set would show a dead
+  // button): either there are fetched-but-hidden cards to reveal, or a bigger fetch would
+  // return more. Pages on until the sources run dry.
+  if (!loading && remote.length >= searchShown.albums && (remote.length > searchShown.albums || more)) {
     const moreBtn = document.createElement('button');
     moreBtn.className = 'find-more';
     moreBtn.textContent = 'Load more';
@@ -3247,9 +3268,9 @@ function catColumn(
   if (cards.length) {
     const shown = searchShown[key];
     cards.slice(0, shown).forEach((c) => list.appendChild(c));
-    // Offer more when we have extra fetched-but-hidden cards, or the server says a bigger
-    // fetch would return more — so paging continues until the sources are exhausted.
-    if (!loading && (cards.length > shown || more)) {
+    // Offer more only once the page is full (else a tiny result set shows a dead button):
+    // extra hidden cards to reveal, or a bigger fetch would return more.
+    if (!loading && cards.length >= shown && (cards.length > shown || more)) {
       const moreBtn = document.createElement('button');
       moreBtn.className = 'find-more';
       moreBtn.textContent = 'Load more';
