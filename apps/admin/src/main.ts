@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, isSpeaker, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1281,7 +1281,8 @@ function renderPlayersCat(body: HTMLElement): void {
   renderPresetsSection(body);
 }
 
-/** Which players the wall may show/target. null (or all-checked) = expose everything. */
+/** Which players the wall may show/target. null = the default (real speakers only —
+    matching the wall); an explicit list = exactly those players (any type). */
 function renderExposureSection(body: HTMLElement): void {
   const h = document.createElement('div');
   h.className = 'set-subhead';
@@ -1289,25 +1290,32 @@ function renderExposureSection(body: HTMLElement): void {
   body.appendChild(h);
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent = 'Uncheck speakers to hide them from the wall’s picker. All shown by default.';
+  hint.textContent = 'Speakers are shown by default; other devices (web / computer) are hidden — check one to add it.';
   body.appendChild(hint);
+  // Speakers first, then other devices; each marked so the wall and admin agree.
+  const ordered = [...settingsPlayers].sort((a, b) => Number(isSpeaker(b.type)) - Number(isSpeaker(a.type)));
+  // The default (null) exposes real speakers only — reflect that in the chip state.
+  const effectiveOn = (p: Player): boolean => {
+    const ex = settings!.exposedPlayers;
+    return ex && ex.length ? ex.includes(p.id) : isSpeaker(p.type);
+  };
+  const speakerDefault = new Set(settingsPlayers.filter((p) => isSpeaker(p.type)).map((p) => p.id));
+  const sameAsDefault = (s: Set<string>): boolean => s.size === speakerDefault.size && [...s].every((id) => speakerDefault.has(id));
   const grid = document.createElement('div');
   grid.className = 'chip-grid';
-  const exposed = settings!.exposedPlayers;
-  const isOn = (id: string): boolean => !exposed || exposed.length === 0 || exposed.includes(id);
-  for (const p of settingsPlayers) {
+  for (const p of ordered) {
     const chip = document.createElement('button');
-    chip.className = 'pick-chip' + (isOn(p.id) ? ' on' : '');
-    chip.textContent = p.name;
+    chip.className = 'pick-chip' + (isSpeaker(p.type) ? '' : ' other') + (p.available ? '' : ' offline') + (effectiveOn(p) ? ' on' : '');
+    chip.textContent = p.available ? p.name : `${p.name} (offline)`;
+    if (!isSpeaker(p.type)) chip.title = 'Not a speaker (web / computer)';
     chip.addEventListener('click', () => {
-      const cur = new Set(settings!.exposedPlayers && settings!.exposedPlayers.length ? settings!.exposedPlayers : settingsPlayers.map((x) => x.id));
+      const cur = new Set(settingsPlayers.filter(effectiveOn).map((x) => x.id));
       if (cur.has(p.id)) cur.delete(p.id);
       else cur.add(p.id);
-      // All selected → store null (expose everything); never store an empty list.
-      const all = settingsPlayers.every((x) => cur.has(x.id));
-      const next = all || cur.size === 0 ? null : [...cur];
+      // Back to the plain speaker default → store null; else an explicit list.
+      const next = cur.size === 0 || sameAsDefault(cur) ? null : [...cur];
       void saveSetting('exposedPlayers', next);
-      chip.classList.toggle('on', next === null || next.includes(p.id));
+      chip.classList.toggle('on', next === null ? isSpeaker(p.type) : next.includes(p.id));
     });
     grid.appendChild(chip);
   }

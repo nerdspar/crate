@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterPlay, type IdleScreen, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type SearchAlbum, type SearchArtist, type SearchSong, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
@@ -4430,14 +4430,14 @@ async function reloadShelf(): Promise<void> {
   renderShelfList();
 }
 
-/** Derive `rooms` (the pickable speakers) from `players`, honoring the admin's
-    player-exposure subset — but never leave the wall with zero rooms. */
+/** Derive `rooms` (the pickable speakers) from `players`. With an exposure list set,
+    show exactly those available players (any type). With none, default to real audio
+    outputs (speakers), hiding web/computer players. Never leave the wall with zero. */
 function computeRooms(): void {
-  let base = players.filter((p) => p.type === 'sonos' && p.available);
-  if (base.length === 0) base = players.filter((p) => p.available);
+  const avail = players.filter((p) => p.available);
   const ex = settings.exposedPlayers;
-  const exposed = ex && ex.length ? base.filter((p) => ex.includes(p.id)) : base;
-  rooms = exposed.length ? exposed : base;
+  rooms = ex && ex.length ? avail.filter((p) => ex.includes(p.id)) : avail.filter((p) => isSpeaker(p.type));
+  if (rooms.length === 0) rooms = avail;
 }
 
 async function reloadPlayers(): Promise<void> {

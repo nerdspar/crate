@@ -45,6 +45,13 @@ export interface Track {
 
 export type PlayerType = 'sonos' | 'homepod' | 'airplay' | 'cast' | 'web' | 'other';
 
+/** Player types that are real audio outputs — shown on the wall by default (web
+    browsers / computers are hidden unless the admin explicitly exposes them). */
+export const SPEAKER_TYPES: readonly PlayerType[] = ['sonos', 'homepod', 'airplay', 'cast'];
+export function isSpeaker(type: PlayerType): boolean {
+  return SPEAKER_TYPES.includes(type);
+}
+
 export interface Player {
   /** Provider player id (the Sonos RINCON uuid for Sonos players). */
   id: string;
