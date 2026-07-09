@@ -108,167 +108,98 @@
   <button id="settings-close" class="room" style="position:absolute; top:4vh; right:4vw; z-index:2;">Done</button>
   <div id="settings-card">
     <div class="set-tabs">
-      <button class="set-tab on" data-pane="shelf">Shelf</button>
-      <button class="set-tab" data-pane="device">Device</button>
+      <button class="set-tab on" data-pane="spines">Spines</button>
+      <button class="set-tab" data-pane="albums">Albums</button>
+      <button class="set-tab" data-pane="display">Display</button>
+      <button class="set-tab" data-pane="idle">Idle</button>
+      <button class="set-tab" data-pane="autoopen">Auto-open</button>
+      <button class="set-tab" data-pane="sleep">Sleep</button>
+      <button class="set-tab" data-pane="system">System</button>
     </div>
-    <div class="set-pane on" data-pane="shelf">
-      <div class="setting-row">
-        <div class="label">Spine art</div>
-        <div class="choices" id="spine-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Spine thickness</div>
-        <div class="choices" id="thickness-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Spine width</div>
-        <div class="choices" id="width-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Spine text direction</div>
-        <div class="choices" id="dir-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Label ink</div>
-        <div class="choices" id="ink-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Label size</div>
-        <div class="choices" id="inksize-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Label weight</div>
-        <div class="choices" id="inkweight-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Album year</div>
-        <div class="choices" id="year-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Year position</div>
-        <div class="choices" id="yearpos-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Year emphasis</div>
-        <div class="choices" id="yearemph-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Label layout</div>
-        <div class="choices" id="layout-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Typography</div>
-        <div class="choices" id="vary-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Opening an album shows</div>
-        <div class="choices" id="open-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Album glow</div>
-        <div class="choices" id="glow-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Glow radius</div>
-        <div class="choices" id="glowradius-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">Glow intensity</div>
-        <div class="choices" id="glowintensity-choices"></div>
-      </div>
-      <div class="setting-row">
-        <div class="label">After playing</div>
-        <div class="choices" id="afterplay-choices"></div>
-      </div>
+
+    <!-- SPINES — how each CD spine and its label look. -->
+    <div class="set-pane on" data-pane="spines">
+      <div class="setting-row"><div class="label">Spine art</div><div class="choices" id="spine-choices"></div></div>
+      <div class="setting-row"><div class="label">Spine thickness</div><div class="choices" id="thickness-choices"></div></div>
+      <div class="setting-row"><div class="label">Spine width</div><div class="choices" id="width-choices"></div></div>
+      <div class="setting-row"><div class="label">Spine text direction</div><div class="choices" id="dir-choices"></div></div>
+      <div class="setting-row"><div class="label">Label ink</div><div class="choices" id="ink-choices"></div></div>
+      <div class="setting-row"><div class="label">Label size</div><div class="choices" id="inksize-choices"></div></div>
+      <div class="setting-row"><div class="label">Label weight</div><div class="choices" id="inkweight-choices"></div></div>
+      <div class="setting-row"><div class="label">Label layout</div><div class="choices" id="layout-choices"></div></div>
+      <div class="setting-row"><div class="label">Typography</div><div class="choices" id="vary-choices"></div></div>
+      <div class="setting-row"><div class="label">Album year</div><div class="choices" id="year-choices"></div></div>
+      <div class="setting-row"><div class="label">Year position</div><div class="choices" id="yearpos-choices"></div></div>
+      <div class="setting-row"><div class="label">Year emphasis</div><div class="choices" id="yearemph-choices"></div></div>
     </div>
-    <div class="set-pane" data-pane="device">
-      <div class="set-col">
-        <div class="setting-row">
-          <div class="label">Brightness</div>
-          <input id="cc-brightness" type="range" min="8" max="100" value="100">
-        </div>
-        <div class="setting-row">
-          <div class="label">Auto-brightness <span class="hint">(needs sensor)</span></div>
-          <div class="choices" id="autobright-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Proximity — go idle <span class="hint">(needs sensor)</span></div>
-          <div class="choices" id="sensor-idle-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Proximity — wake <span class="hint">(needs sensor)</span></div>
-          <div class="choices" id="sensor-wake-choices"></div>
-        </div>
+
+    <!-- ALBUMS — opening a spine, playback behavior, glow. -->
+    <div class="set-pane" data-pane="albums">
+      <div class="setting-row"><div class="label">Opening an album shows</div><div class="choices" id="open-choices"></div></div>
+      <div class="setting-row"><div class="label">Pinch to zoom</div><div class="choices" id="pinchzoom-choices"></div></div>
+      <div class="setting-row"><div class="label">After playing</div><div class="choices" id="afterplay-choices"></div></div>
+      <div class="setting-row"><div class="label">Linger for</div><div class="choices" id="afterplaylinger-choices"></div></div>
+      <div class="setting-row"><div class="label">When an album ends</div><div class="choices" id="afteralbum-choices"></div></div>
+      <div class="setting-row"><div class="label">Long-press to open</div><div class="choices" id="longpress-choices"></div></div>
+      <div class="setting-row"><div class="label">Album glow</div><div class="choices" id="glow-choices"></div></div>
+      <div class="setting-row"><div class="label">Glow radius</div><div class="choices" id="glowradius-choices"></div></div>
+      <div class="setting-row"><div class="label">Glow intensity</div><div class="choices" id="glowintensity-choices"></div></div>
+    </div>
+
+    <!-- DISPLAY — screen brightness. -->
+    <div class="set-pane" data-pane="display">
+      <div class="setting-row"><div class="label">Brightness</div><input id="cc-brightness" type="range" min="8" max="100" value="100"></div>
+      <div class="setting-row"><div class="label">Auto-brightness <span class="hint">(needs sensor)</span></div><div class="choices" id="autobright-choices"></div></div>
+    </div>
+
+    <!-- IDLE — when to go idle and what the screen does. -->
+    <div class="set-pane" data-pane="idle">
+      <div class="setting-row"><div class="label">Go idle after</div><div class="choices" id="idle-after-choices"></div></div>
+      <div class="setting-row"><div class="label">Proximity — go idle <span class="hint">(needs sensor)</span></div><div class="choices" id="sensor-idle-choices"></div></div>
+      <div class="setting-row"><div class="label">Proximity — wake <span class="hint">(needs sensor)</span></div><div class="choices" id="sensor-wake-choices"></div></div>
+      <div class="setting-keep">
+        <div class="setting-row"><div class="label">When idle — screen</div><div class="choices" id="idle-screen-choices"></div></div>
+        <div class="setting-row"><div class="label">Idle dim brightness <span class="hint" id="idle-dim-val">20%</span></div><input id="idle-dim-slider" type="range" min="5" max="100" value="20"></div>
       </div>
-      <div class="set-col">
-        <div class="setting-row">
-          <div class="label">Go idle after</div>
-          <div class="choices" id="idle-after-choices"></div>
-        </div>
-        <div class="setting-keep">
-          <div class="setting-row">
-            <div class="label">When idle — screen</div>
-            <div class="choices" id="idle-screen-choices"></div>
+      <div class="setting-row"><div class="label">When idle — show</div><div class="choices" id="idle-content-choices"></div></div>
+      <div class="setting-row"><div class="label">Idle shelf</div><div class="choices" id="idle-shelf-choices"></div></div>
+    </div>
+
+    <!-- AUTO-OPEN — the idle slideshow + reveal-on-outside-playback. -->
+    <div class="set-pane" data-pane="autoopen">
+      <div class="setting-row"><div class="label">Auto-open albums when idle</div><div class="choices" id="autoopen-enabled-choices"></div></div>
+      <div class="setting-row"><div class="label">Auto-open every</div><div class="choices" id="autoopen-every-choices"></div></div>
+      <div class="setting-row"><div class="label">Auto-open from</div><div class="choices" id="autoopen-pool-choices"></div></div>
+      <div class="setting-row"><div class="label">Auto-open shelf</div><div class="choices" id="autoopen-shelf-choices"></div></div>
+      <div class="setting-row"><div class="label">Auto-open order</div><div class="choices" id="autoopen-random-choices"></div></div>
+      <div class="setting-row"><div class="label">Open on outside playback <span class="hint">(follows idle rules · not during sleep)</span></div><div class="choices" id="extopen-choices"></div></div>
+    </div>
+
+    <!-- SLEEP — per-weekday lights-out schedule. -->
+    <div class="set-pane" data-pane="sleep">
+      <div class="setting-row set-schedule-row"><div class="label">Sleep schedule</div><div id="wall-schedule"></div></div>
+    </div>
+
+    <!-- SYSTEM — device actions + status. -->
+    <div class="set-pane" data-pane="system">
+      <div class="cc-syscols">
+        <div class="cc-syscol">
+          <div class="cc-block-label">Display</div>
+          <div class="cc-sys-actions">
+            <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
           </div>
-          <div class="setting-row">
-            <div class="label">Idle dim brightness <span class="hint" id="idle-dim-val">20%</span></div>
-            <input id="idle-dim-slider" type="range" min="5" max="100" value="20">
+        </div>
+        <div class="cc-syscol">
+          <div class="cc-block-label">System</div>
+          <div class="cc-sys-actions">
+            <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
+            <button id="cc-restart" class="cc-sysbtn">Restart app</button>
+            <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
           </div>
         </div>
-        <div class="setting-row">
-          <div class="label">When idle — show</div>
-          <div class="choices" id="idle-content-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Open on outside playback <span class="hint">(follows idle rules · not during sleep)</span></div>
-          <div class="choices" id="extopen-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Idle / auto-open shelf</div>
-          <div class="choices" id="idle-shelf-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Auto-open every</div>
-          <div class="choices" id="autoopen-every-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Auto-open from</div>
-          <div class="choices" id="autoopen-pool-choices"></div>
-        </div>
-        <div class="setting-row">
-          <div class="label">Auto-open order</div>
-          <div class="choices" id="autoopen-random-choices"></div>
-        </div>
-      </div>
-      <div class="set-col">
-        <div class="setting-row set-schedule-row">
-          <div class="label">Sleep schedule</div>
-          <div id="wall-schedule"></div>
-        </div>
-      </div>
-      <div class="set-col">
-        <div class="setting-row">
-          <div class="label">Display &amp; system</div>
-          <div class="cc-syscols">
-            <div class="cc-syscol">
-              <div class="cc-block-label">Display</div>
-              <div class="cc-sys-actions">
-                <button id="cc-sleep" class="cc-sysbtn">Sleep now</button>
-              </div>
-            </div>
-            <div class="cc-syscol">
-              <div class="cc-block-label">System</div>
-              <div class="cc-sys-actions">
-                <button id="cc-refresh" class="cc-sysbtn">Refresh art</button>
-                <button id="cc-restart" class="cc-sysbtn">Restart app</button>
-                <button id="cc-reboot" class="cc-sysbtn">Reboot</button>
-              </div>
-            </div>
-            <div class="cc-syscol">
-              <div class="cc-block-label">Status</div>
-              <div class="cc-sysline"><span id="cc-ip">—</span><span class="cc-ver" id="cc-ver"></span></div>
-            </div>
-          </div>
+        <div class="cc-syscol">
+          <div class="cc-block-label">Status</div>
+          <div class="cc-sysline"><span id="cc-ip">—</span><span class="cc-ver" id="cc-ver"></span></div>
         </div>
       </div>
     </div>

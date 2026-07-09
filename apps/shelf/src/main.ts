@@ -1269,16 +1269,35 @@ const SETTING_HELP: Record<string, string> = {
   'width-choices': "Give every spine the same width, or scale each by the album's runtime.",
   'dir-choices': 'Which way the spine text reads — top-to-bottom or bottom-to-top.',
   'ink-choices': "Guaranteed-contrast white/black label text, or tint the title with the album's accent color.",
+  'inksize-choices': 'Size of the spine label text.',
+  'inkweight-choices': 'Thickness of the spine label text.',
   'year-choices': 'Show the release year on the spine (vertical or horizontal), or hide it.',
   'yearpos-choices': 'Which end of the spine the year sits at.',
   'yearemph-choices': 'A faint catalog stamp, or bolder text readable from across the room.',
   'layout-choices': 'Where the artist and title sit along the spine.',
   'vary-choices': 'One shared font for every spine, or a different type style per artist.',
   'open-choices': 'Tapping a spine shows just the cover, or a full details card.',
+  'pinchzoom-choices': 'What a two-finger pinch on the shelf does — resize the whole shelf, show a magnifier loupe, or nothing.',
+  'afterplay-choices': 'What the open card does after you hit play.',
+  'afterplaylinger-choices': 'How long the card lingers before closing, when “After playing” is set to Linger.',
+  'afteralbum-choices': "When an album's last track ends: play the next album on the shelf, repeat it, or stop.",
+  'longpress-choices': 'How long you hold a spine before it opens.',
   'glow-choices': "A soft halo of the cover's art cast behind an opened album.",
   'glowradius-choices': 'How far the glow spreads out around the cover.',
   'glowintensity-choices': 'How bright and saturated the glow is.',
-  'afterplay-choices': 'What the open card does after you hit play.',
+  'autobright-choices': 'Adjust screen brightness automatically from the ambient-light sensor.',
+  'sensor-idle-choices': 'Go idle when the proximity sensor stops seeing anyone nearby.',
+  'sensor-wake-choices': 'Wake from idle when the proximity sensor detects someone.',
+  'idle-after-choices': 'How long with no interaction before the wall goes idle. “Never” keeps it awake.',
+  'idle-screen-choices': 'What the display does when idle — stay on, dim the backlight, or turn off.',
+  'idle-content-choices': 'What the wall shows when idle — nothing, the now-playing album, the current shelf, or a chosen shelf.',
+  'idle-shelf-choices': 'The shelf shown when “When idle — show” is set to a shelf.',
+  'autoopen-enabled-choices': 'A slideshow that flips through album covers on its own while the wall is idle.',
+  'autoopen-every-choices': 'How often the idle slideshow advances to the next album.',
+  'autoopen-pool-choices': 'Which albums the slideshow draws from — all, the current shelf, or a chosen shelf.',
+  'autoopen-shelf-choices': 'The shelf the slideshow draws from when “Auto-open from” is set to a shelf.',
+  'autoopen-random-choices': 'Slideshow order — shuffle, or follow shelf order.',
+  'extopen-choices': "When music starts from another app, the idle wall flips that album open so it matches what's playing.",
 };
 
 /* ---------- Settings help tooltip ---------- */
@@ -1565,7 +1584,53 @@ function renderChoices(): void {
     (k) => {
       settings.afterPlay = k as AfterPlay;
       renderChoices();
+      updateConditionalRows(); // the linger-duration row only applies to "Linger"
       void client.putSettings({ afterPlay: settings.afterPlay }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'afterplaylinger-choices',
+    [['3', '3s', ''], ['5', '5s', ''], ['8', '8s', ''], ['15', '15s', ''], ['30', '30s', '']],
+    (k) => String(settings.afterPlayLingerSec) === k,
+    (k) => {
+      settings.afterPlayLingerSec = Number(k);
+      renderChoices(); // the "After playing → Linger ~Ns" hint reflects this
+      void client.putSettings({ afterPlayLingerSec: settings.afterPlayLingerSec }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'pinchzoom-choices',
+    [
+      ['spines', 'Resize spines', 'Scale the whole shelf'],
+      ['loupe', 'Magnifier', 'A zoom lens follows your fingers'],
+      ['off', 'Off', 'Disabled'],
+    ],
+    (k) => settings.pinchZoom === k,
+    (k) => {
+      settings.pinchZoom = k as typeof settings.pinchZoom;
+      void client.putSettings({ pinchZoom: settings.pinchZoom }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'afteralbum-choices',
+    [
+      ['next', 'Play next', 'Roll to the next album on the shelf'],
+      ['repeat', 'Repeat', 'Loop this album'],
+      ['stop', 'Stop', 'Stop when it ends'],
+    ],
+    (k) => settings.afterAlbum === k,
+    (k) => {
+      settings.afterAlbum = k as typeof settings.afterAlbum;
+      void client.putSettings({ afterAlbum: settings.afterAlbum }).catch(() => {});
+    },
+  );
+  choiceRow(
+    'longpress-choices',
+    [['250', '0.25s', ''], ['420', '0.4s', ''], ['600', '0.6s', ''], ['900', '0.9s', ''], ['1200', '1.2s', '']],
+    (k) => String(settings.longPressMs) === k,
+    (k) => {
+      settings.longPressMs = Number(k);
+      void client.putSettings({ longPressMs: settings.longPressMs }).catch(() => {});
     },
   );
   choiceRow(
@@ -1601,7 +1666,6 @@ function renderChoices(): void {
       ['nowPlaying', 'Now playing', ''],
       ['currentShelf', 'Current shelf', ''],
       ['shelf', 'A shelf', ''],
-      ['autoOpen', 'Auto-open', ''],
     ],
     (k) => settings.idleContent === k,
     (k) => {
@@ -1610,16 +1674,20 @@ function renderChoices(): void {
       updateConditionalRows();
     },
   );
-  // Idle / auto-open target shelf — dynamic: "All" plus every album shelf.
-  choiceRow(
-    'idle-shelf-choices',
-    [['all', 'All', ''], ...shelves.filter((s) => s.kind === 'album' && s.id !== 'all').map((s) => [s.id, s.name, ''] as const)],
-    (k) => (settings.idleShelf ?? 'all') === k,
-    (k) => {
-      settings.idleShelf = k === 'all' ? null : k;
-      void client.putSettings({ idleShelf: settings.idleShelf }).catch(() => {});
-    },
-  );
+  // Idle / auto-open target shelf — dynamic: "All" plus every album shelf. The idle
+  // ("A shelf" content) and auto-open ("from a shelf" pool) pickers both drive the one
+  // idleShelf setting; they live in separate tabs so each gets its own control.
+  const shelfOpts = (): ReadonlyArray<readonly [string, string, string]> => [
+    ['all', 'All', ''],
+    ...shelves.filter((s) => s.kind === 'album' && s.id !== 'all').map((s) => [s.id, s.name, ''] as const),
+  ];
+  const pickShelf = (k: string): void => {
+    settings.idleShelf = k === 'all' ? null : k;
+    void client.putSettings({ idleShelf: settings.idleShelf }).catch(() => {});
+    renderChoices(); // keep the twin picker in the other tab in sync
+  };
+  choiceRow('idle-shelf-choices', shelfOpts(), (k) => (settings.idleShelf ?? 'all') === k, pickShelf);
+  choiceRow('autoopen-shelf-choices', shelfOpts(), (k) => (settings.idleShelf ?? 'all') === k, pickShelf);
   choiceRow(
     'autoopen-every-choices',
     [['10', '10s', ''], ['15', '15s', ''], ['25', '25s', ''], ['45', '45s', ''], ['90', '90s', '']],
@@ -1665,6 +1733,11 @@ function renderChoices(): void {
   toggleRow('extopen-choices', () => settings.openOnExternalPlay, (v) => {
     settings.openOnExternalPlay = v;
     void client.putSettings({ openOnExternalPlay: v }).catch(() => {});
+  });
+  toggleRow('autoopen-enabled-choices', () => settings.autoOpenEnabled, (v) => {
+    settings.autoOpenEnabled = v;
+    void client.putSettings({ autoOpenEnabled: v }).catch(() => {});
+    updateConditionalRows(); // the auto-open cadence/pool/order rows depend on this
   });
   renderWallSchedule();
   updateConditionalRows();
@@ -1727,23 +1800,22 @@ function updateConditionalRows(): void {
   for (const id of ['glowradius-choices', 'glowintensity-choices']) {
     document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !settings.glowEnabled);
   }
-  // The "when idle" behaviors only matter if idle can ever trigger (a timer or the sensor).
-  const idleOn = settings.idleAfterMin > 0 || settings.idleUseSensor;
   const show = (id: string, on: boolean): void =>
     void document.getElementById(id)?.closest('.setting-row')?.classList.toggle('hidden-row', !on);
+  // The linger duration only applies when "After playing" is Linger.
+  show('afterplaylinger-choices', settings.afterPlay === 'linger');
+  // The "when idle" behaviors only matter if idle can ever trigger (a timer or the sensor).
+  const idleOn = settings.idleAfterMin > 0 || settings.idleUseSensor;
   // Screen + dim slider live in one .setting-keep block: hide the whole block when
-  // idle is off, and hide the dim row itself unless the screen mode is Dim. The
-  // Device columns are independent, so collapsing this row only reflows column 2.
+  // idle is off, and hide the dim row itself unless the screen mode is Dim.
   document.querySelector('.setting-keep')?.classList.toggle('hidden-row', !idleOn);
   show('idle-dim-slider', settings.idleScreen === 'dim');
   show('idle-content-choices', idleOn);
-  // Target shelf is used by "A shelf" content and by auto-open when its pool is "A shelf".
-  const autoOpenOn = settings.autoOpenEnabled || settings.idleContent === 'autoOpen';
-  const needsShelf = settings.idleContent === 'shelf' || (autoOpenOn && settings.autoOpenPool === 'shelf');
-  show('idle-shelf-choices', idleOn && needsShelf);
-  const attract = idleOn && autoOpenOn;
+  show('idle-shelf-choices', idleOn && settings.idleContent === 'shelf');
+  // Auto-open config follows its master toggle (independent of the idle-content choice).
   for (const id of ['autoopen-every-choices', 'autoopen-pool-choices', 'autoopen-random-choices'])
-    show(id, attract);
+    show(id, settings.autoOpenEnabled);
+  show('autoopen-shelf-choices', settings.autoOpenEnabled && settings.autoOpenPool === 'shelf');
 }
 
 /* =====================================================================

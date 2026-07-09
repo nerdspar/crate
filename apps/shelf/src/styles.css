@@ -601,25 +601,24 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 
 #settings-card { display: flex; flex-direction: column; gap: 3vh; width: 92vw; max-width: 92vw; margin: 0 auto; }
 
-/* Tabs: Shelf appearance vs Device (hardware). Underline style so they read as
+/* Category tabs (mirrors the admin's groups). Underline style so they read as
    section tabs, clearly distinct from the pill option buttons below. */
-.set-tabs { display: flex; gap: 4vw; border-bottom: 1px solid rgba(236,231,221,0.14); }
+.set-tabs { display: flex; flex-wrap: wrap; gap: 3vw; border-bottom: 1px solid rgba(236,231,221,0.14); }
 .set-tab {
   background: transparent; border: none; border-bottom: 3px solid transparent;
   border-radius: 0; margin-bottom: -1px;
   color: var(--ink-dim); font-family: 'Newsreader Variable', serif;
   font-size: 3.4vh; font-weight: 500; letter-spacing: 0.01em;
-  padding: 0 0.5vw 1.2vh;
+  padding: 0 0.3vw 1.2vh;
 }
 .set-tab.on { color: var(--ink); border-bottom-color: var(--brass); }
 
-/* Each pane is multi-column so it fits the wide, short kiosk; rows never split. */
+/* Each pane flows into columns so it fits the wide, short kiosk; rows never split. */
 .set-pane { display: none; }
 .set-pane.on { display: block; columns: 20vw; column-gap: 4vw; }
 .set-pane > * { break-inside: avoid; }
-/* Device pane uses explicit, independent columns (fixed placement; a hidden row in
-   one column never reflows another). */
-.set-pane[data-pane='device'].on { display: flex; column-gap: 4vw; align-items: flex-start; }
+/* Sleep + System hold one wide custom block each — full width, no column flow. */
+.set-pane[data-pane='sleep'].on, .set-pane[data-pane='system'].on { columns: auto; }
 .set-col { flex: 1 1 0; min-width: 0; }
 /* Keeps grouped rows (e.g. When-idle-screen + its dim slider) together in one column. */
 .setting-keep { break-inside: avoid; }
