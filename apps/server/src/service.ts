@@ -391,10 +391,10 @@ export class Service {
   }
 
   /** An artist's top songs (slow on the first fetch per artist; the provider caches). */
-  async artistTopSongs(providerUri: string): Promise<SearchSong[]> {
+  async artistTopSongs(providerUri: string, artistName?: string): Promise<SearchSong[]> {
     const [sources, tracks] = await Promise.all([
       this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
-      this.ma.getArtistTopTracks(providerUri).catch((): ProviderTrackHit[] => []),
+      this.ma.getArtistTopTracks(providerUri, artistName).catch((): ProviderTrackHit[] => []),
     ]);
     const primary = sources[0]?.name ?? 'Music';
     return tracks.map((t) => ({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: primary }));

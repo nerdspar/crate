@@ -97,9 +97,11 @@ export class CrateClient {
   getArtistAlbums(providerUri: string): Promise<SearchAlbum[]> {
     return this.req(`/api/artist/albums?uri=${encodeURIComponent(providerUri)}`);
   }
-  /** An artist's top songs (slow on the first fetch per artist, cached after). */
-  getArtistTopSongs(providerUri: string): Promise<SearchSong[]> {
-    return this.req(`/api/artist/songs?uri=${encodeURIComponent(providerUri)}`);
+  /** An artist's top songs, popularity-ranked. Pass the artist name so the server can
+      rank via the provider's search (the ordering the streaming app itself shows). */
+  getArtistTopSongs(providerUri: string, artistName?: string): Promise<SearchSong[]> {
+    const q = artistName ? `&name=${encodeURIComponent(artistName)}` : '';
+    return this.req(`/api/artist/songs?uri=${encodeURIComponent(providerUri)}${q}`);
   }
 
   play(body: PlayRequest): Promise<{ ok: true }> {

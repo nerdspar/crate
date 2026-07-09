@@ -234,21 +234,21 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return arr(raw).map((a) => this.toProviderAlbum(rec(a))).filter((a): a is ProviderAlbum => a !== null);
   }
 
-  /** An artist's top tracks, in the provider's popularity order. The FIRST call for
-      an artist is slow (MA fetches the full track list ~30–40s) then MA caches it, so
-      we also cache here and give the command a long timeout. Returned already trimmed. */
+  /** An artist's top tracks, popularity-ranked. Uses the provider's own text search
+      (`music/search` for tracks) — the exact ranking the streaming app shows for an
+      artist name — rather than `artist_tracks`, which returns an album-grouped catalog
+      dump with no popularity. Results are cached per artist. */
   private artistTrackCache = new Map<string, { tracks: ProviderTrackHit[]; at: number }>();
   private static readonly ARTIST_TRACK_TTL_MS = 60 * 60_000; // top tracks change rarely — hold an hour
   private artistTrackInflight = new Map<string, Promise<ProviderTrackHit[]>>();
-  async getArtistTopTracks(providerUri: string): Promise<ProviderTrackHit[]> {
-    const parsed = parseProviderUri(providerUri);
-    if (!parsed) return [];
+  async getArtistTopTracks(providerUri: string, artistName?: string): Promise<ProviderTrackHit[]> {
+    if (!parseProviderUri(providerUri)) return [];
     const cached = this.artistTrackCache.get(providerUri);
     if (cached && Date.now() - cached.at < MusicAssistantProvider.ARTIST_TRACK_TTL_MS) return cached.tracks;
-    // Coalesce concurrent requests (a prefetch + a tap) onto one slow MA call.
+    // Coalesce concurrent requests (a prefetch + a tap) onto one MA call.
     const inflight = this.artistTrackInflight.get(providerUri);
     if (inflight) return inflight;
-    const p = this.fetchArtistTopTracks(providerUri, parsed.id, parsed.provider);
+    const p = this.fetchArtistTopTracks(providerUri, artistName);
     this.artistTrackInflight.set(providerUri, p);
     try {
       return await p;
@@ -256,28 +256,35 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       this.artistTrackInflight.delete(providerUri);
     }
   }
-  private async fetchArtistTopTracks(providerUri: string, id: string, provider: string): Promise<ProviderTrackHit[]> {
-    const parsed = { id, provider };
-    const raw = await this.client.command(
-      'music/artists/artist_tracks',
-      { item_id: parsed.id, provider_instance_id_or_domain: parsed.provider },
-      60_000,
+  private async fetchArtistTopTracks(providerUri: string, artistName?: string): Promise<ProviderTrackHit[]> {
+    const name = artistName?.trim();
+    if (!name) return [];
+    const wantProvider = parseProviderUri(providerUri)?.provider;
+    const result = rec(
+      await this.client.command('music/search', {
+        search_query: name,
+        media_types: ['track'],
+        limit: 30,
+        library_only: false,
+      }),
     );
-    const all = arr(raw).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null);
-    // MA returns tracks grouped by album (no popularity) — so unfiltered you get one album's
-    // worth. Cap tracks-per-album + drop title duplicates so the list spans the catalog.
-    const perAlbum = new Map<string, number>();
+    // Provider search already ranks by popularity — keep that order. Filter to songs
+    // actually crediting this artist (search can surface collabs/covers by others) and
+    // to the artist's own provider, then drop title duplicates (e.g. "(… Version)").
+    const target = name.toLowerCase();
     const seenTitle = new Set<string>();
     const tracks: ProviderTrackHit[] = [];
-    for (const t of all) {
-      const tkey = t.title.toLowerCase().replace(/\s*\(.*$/, '').trim(); // ignore "(… version)" suffixes
+    for (const raw of arr(result['tracks'])) {
+      const item = rec(raw);
+      const hit = this.toTrackHit(item);
+      if (!hit) continue;
+      const byArtist = arr(item['artists']).some((a) => (str(rec(a)['name']) ?? '').toLowerCase() === target);
+      if (!byArtist) continue;
+      if (wantProvider && str(item['provider']) && str(item['provider']) !== wantProvider) continue;
+      const tkey = hit.title.toLowerCase().replace(/\s*\(.*$/, '').trim();
       if (seenTitle.has(tkey)) continue;
-      const alb = t.album || '?';
-      const n = perAlbum.get(alb) ?? 0;
-      if (n >= 4) continue;
-      perAlbum.set(alb, n + 1);
       seenTitle.add(tkey);
-      tracks.push(t);
+      tracks.push(hit);
       if (tracks.length >= 25) break;
     }
     this.artistTrackCache.set(providerUri, { tracks, at: Date.now() });

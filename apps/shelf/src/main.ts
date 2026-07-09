@@ -2668,7 +2668,7 @@ function prefetchArtistSongs(artists: SearchArtist[]): void {
   for (const a of artists.slice(0, 2)) {
     if (prefetchedArtists.has(a.providerUri)) continue;
     prefetchedArtists.add(a.providerUri);
-    void client.getArtistTopSongs(a.providerUri).catch(() => prefetchedArtists.delete(a.providerUri));
+    void client.getArtistTopSongs(a.providerUri, a.name).catch(() => prefetchedArtists.delete(a.providerUri));
   }
 }
 let libPlaylistsCache: LibraryPlaylist[] | null = null;
@@ -2999,9 +2999,9 @@ async function openArtist(a: SearchArtist): Promise<void> {
       albumsList.innerHTML = '<div class="find-empty">Couldn’t load albums.</div>';
     });
 
-  // Top songs — slow on the first fetch per artist (spinner stays until it lands).
+  // Top songs — popularity-ranked via the provider's search (fast).
   client
-    .getArtistTopSongs(a.providerUri)
+    .getArtistTopSongs(a.providerUri, a.name)
     .then((songs) => {
       if (seq !== artistSeq) return;
       songsList.innerHTML = '';

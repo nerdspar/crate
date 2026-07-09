@@ -72,14 +72,14 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     return service.globalSearch(query, source, n);
   });
 
-  // Artist detail: albums (fast) and top songs (slow first fetch per artist, then cached).
+  // Artist detail: albums (fast) and top songs (popularity-ranked via provider search).
   app.get('/api/artist/albums', async (req) => {
     const { uri } = req.query as { uri?: string };
     return uri ? service.artistAlbums(uri) : [];
   });
   app.get('/api/artist/songs', async (req) => {
-    const { uri } = req.query as { uri?: string };
-    return uri ? service.artistTopSongs(uri) : [];
+    const { uri, name } = req.query as { uri?: string; name?: string };
+    return uri ? service.artistTopSongs(uri, name) : [];
   });
 
   app.post('/api/play', async (req) => {
