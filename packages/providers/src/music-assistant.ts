@@ -263,7 +263,23 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       { item_id: parsed.id, provider_instance_id_or_domain: parsed.provider },
       60_000,
     );
-    const tracks = arr(raw).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null).slice(0, 25);
+    const all = arr(raw).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null);
+    // MA returns tracks grouped by album (no popularity) — so unfiltered you get one album's
+    // worth. Cap tracks-per-album + drop title duplicates so the list spans the catalog.
+    const perAlbum = new Map<string, number>();
+    const seenTitle = new Set<string>();
+    const tracks: ProviderTrackHit[] = [];
+    for (const t of all) {
+      const tkey = t.title.toLowerCase().replace(/\s*\(.*$/, '').trim(); // ignore "(… version)" suffixes
+      if (seenTitle.has(tkey)) continue;
+      const alb = t.album || '?';
+      const n = perAlbum.get(alb) ?? 0;
+      if (n >= 4) continue;
+      perAlbum.set(alb, n + 1);
+      seenTitle.add(tkey);
+      tracks.push(t);
+      if (tracks.length >= 25) break;
+    }
     this.artistTrackCache.set(providerUri, { tracks, at: Date.now() });
     return tracks;
   }

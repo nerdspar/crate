@@ -128,6 +128,9 @@ let resumeGuardUntil = 0;
     until the real state catches up, so the controls don't flicker to Play. */
 let playPendingIdx = -1;
 let playPendingUntil = 0;
+/** The album provider uri we just asked to play — used to confirm the target room is
+    really playing THIS album (playback frames carry albumUri, not the Crate albumId). */
+let playPendingUri: string | null = null;
 /** "Open on outside playback": track the last now-playing album so we can tell when a NEW
     one starts; `lastTouchAt` gates against interrupting active use; `selfPlayUntil` marks a
     Crate-initiated play so it isn't mistaken for external; `firstStateSeen` skips the first
@@ -1000,6 +1003,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
     scheduleAfterPlayClose();
     showToast(`Sent to ${roomName(activePlayerId)}…`);
     afterAlbumWatch = null; // the playlist queue continues on its own
+    playPendingUri = item.albumUri; // the tapped track's uri confirms the room started
     client
       .play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), trackUris: uris })
       .catch((e) => {
@@ -1058,6 +1062,7 @@ async function play(i: number, trackIndex?: number): Promise<void> {
   showToast(`Sent to ${roomName(activePlayerId)}…`);
   // Watch for this album ending so we can roll on to the next spine (afterAlbum='next').
   afterAlbumWatch = { albumId: item.albumId, playerId: activePlayerId };
+  playPendingUri = providerUri ?? item.providerUri ?? null; // to confirm the room really started
   client
     .play({
       albumId: item.albumId,
@@ -4516,11 +4521,17 @@ function maybeAutoOpenExternal(): void {
     "connecting" rather than a dead/instant EQ. Capped by the play latch. */
 function playBuffering(): boolean {
   if (playPendingIdx < 0 || userPaused || performance.now() >= playPendingUntil) return false;
-  const albumId = items[playPendingIdx]?.albumId;
-  if (!albumId) return false;
-  const confirmed = lastStates.some(
-    (s) => s.state === 'playing' && s.nowPlaying?.albumId === albumId && (!now.playerId || s.playerId === now.playerId),
-  );
+  // Playback frames carry albumUri/trackUri (not the Crate albumId), so confirm the target
+  // room is really playing what we asked for by matching the uri — clears the spinner/frozen
+  // seek the moment audio starts, instead of riding the full latch.
+  const confirmed =
+    !!playPendingUri &&
+    lastStates.some(
+      (s) =>
+        s.state === 'playing' &&
+        (!now.playerId || s.playerId === now.playerId) &&
+        (s.nowPlaying?.albumUri === playPendingUri || s.nowPlaying?.trackUri === playPendingUri),
+    );
   return !confirmed;
 }
 
