@@ -166,7 +166,9 @@ body {
 /* The case pivots about its seam, so the spine's footprint (--spine-w) on the left
    ends up empty — pull the open element left by that much so the cover sits at the
    intended 1.5vw gap from the neighbor, not a spine-width past it. */
-.spine.open { z-index: 3; margin: 0 1.5vw; margin-left: calc(1.5vw - var(--spine-w)); }
+/* Right margin is small (vh, not vw — 1.5vw is ~39px on the wide wall, a big black band
+   past the panel). Left keeps its calc so the flipped cover still overlaps its neighbor. */
+.spine.open { z-index: 3; margin: 0 1.2vh; margin-left: calc(1.5vw - var(--spine-w)); }
 /* Open = rotate the whole case 90° left about the seam: spine turns away, cover faces you. */
 .spine.open .flap { transform: rotateY(-90deg); }
 
