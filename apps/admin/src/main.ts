@@ -1616,6 +1616,28 @@ function renderSystemCat(body: HTMLElement): void {
     mk('Reboot', () => client.reboot(), true),
   );
   body.appendChild(wrap);
+
+  // Device status — LAN IP address and running app version.
+  const status = document.createElement('div');
+  status.className = 'sys-status';
+  const ipEl = document.createElement('div');
+  ipEl.className = 'sys-line';
+  ipEl.innerHTML = '<span class="sys-key">IP address</span><span class="sys-val" id="sys-ip">…</span>';
+  const verEl = document.createElement('div');
+  verEl.className = 'sys-line';
+  verEl.innerHTML = '<span class="sys-key">Version</span><span class="sys-val" id="sys-ver">…</span>';
+  status.append(ipEl, verEl);
+  body.appendChild(status);
+  void client
+    .getSystemStatus()
+    .then((st) => {
+      (status.querySelector('#sys-ip') as HTMLElement).textContent = st.ip ?? 'Unavailable';
+      (status.querySelector('#sys-ver') as HTMLElement).textContent = st.version || '—';
+    })
+    .catch(() => {
+      (status.querySelector('#sys-ip') as HTMLElement).textContent = 'Unavailable';
+      (status.querySelector('#sys-ver') as HTMLElement).textContent = '—';
+    });
 }
 
 const settingsIndexEl = document.getElementById('settings-index') as HTMLElement;
