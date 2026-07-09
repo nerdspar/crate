@@ -4498,10 +4498,10 @@ function hideLoupe(): void {
 
 function followOpen(): void {
   if (openIdx === null) return;
-  // Drag-stepping glides the shelf so each stepped album comes into view (~12% from the
-  // left) — unlike a direct tap-open, which stays in place (openScrollTarget). This is what
-  // makes dragging toward an edge reveal/open the albums along the way.
-  smoothScrollTo(vp, settledLeft(openIdx) - vp.clientWidth * 0.12, 320);
+  // Track the stepped album to ~12% from the left with NO animation. During a drag (and
+  // especially an edge-hold) steps arrive fast; a smooth glide can't keep up on a full shelf
+  // and lags several albums behind, which reads as sluggish. The discrete step IS the motion.
+  vp.scrollLeft = settledLeft(openIdx) - vp.clientWidth * 0.12;
 }
 
 function stepAlbum(dir: number): void {
@@ -4510,6 +4510,65 @@ function stepAlbum(dir: number): void {
   if (next === openIdx) return;
   openAlbum(next, false);
   followOpen();
+}
+
+// Edge-hold auto-stepping. On a full shelf a single drag runs out of screen before you reach
+// the end. While an album is open and the finger rests near a screen edge, keep stepping in
+// that direction so the whole shelf is reachable without lifting — faster the closer to the
+// very edge. The left edge steps forward (+1), the right edge back (-1): the same direction
+// the drag was already carrying (drag left = content moves left = step forward).
+let edgeDir = 0,
+  edgeRaf: number | null = null,
+  edgeLast = 0,
+  edgeCadence = 90;
+function edgeLoop(t: number): void {
+  if (edgeDir === 0) {
+    edgeRaf = null;
+    return;
+  }
+  if (t - edgeLast >= edgeCadence) {
+    edgeLast = t;
+    const before = openIdx;
+    stepAlbum(edgeDir);
+    if (openIdx === before) {
+      edgeDir = 0; // hit an end of the shelf — stop
+      edgeRaf = null;
+      return;
+    }
+  }
+  edgeRaf = requestAnimationFrame(edgeLoop);
+}
+function updateEdgeStep(clientX: number): void {
+  const w = window.innerWidth;
+  const zone = Math.max(140, w * 0.12);
+  const dl = clientX,
+    dr = w - clientX;
+  let dir = 0,
+    depth = 0;
+  if (dl < zone) {
+    dir = 1;
+    depth = 1 - dl / zone;
+  } else if (dr < zone) {
+    dir = -1;
+    depth = 1 - dr / zone;
+  }
+  if (dir === 0) {
+    edgeDir = 0; // out of the edge zone — edgeLoop will self-stop
+    return;
+  }
+  edgeCadence = 150 - depth * 110; // ~150ms/album at the zone's inner lip → ~40ms at the very edge
+  if (edgeDir !== dir) {
+    edgeDir = dir;
+    edgeLast = 0; // entering the zone (or reversing) steps immediately
+  }
+  if (edgeRaf === null) edgeRaf = requestAnimationFrame(edgeLoop);
+}
+function stopEdgeStep(): void {
+  edgeDir = 0;
+  if (edgeRaf !== null) {
+    cancelAnimationFrame(edgeRaf);
+    edgeRaf = null;
+  }
 }
 
 /** Which spine (by LAYOUT position) sits under this client X. Used for taps while
@@ -4543,6 +4602,7 @@ vp.addEventListener('pointerdown', (e) => {
   stepping = openIdx !== null;
   stepAccum = 0;
   heldOpen = false;
+  stopEdgeStep(); // clear any lingering edge-hold from a previous gesture
   // A vertical drag that starts on the OPEN album's cover (not its panel, which scrolls)
   // toggles the extended view — a faster trigger than the ⋯ button.
   vSwipe = 0;
@@ -4604,6 +4664,7 @@ window.addEventListener('pointermove', (e) => {
       stepAlbum(-1);
       stepAccum -= STEP_PX;
     }
+    updateEdgeStep(e.clientX); // finger resting near a screen edge → keep stepping through the shelf
     return;
   }
 
@@ -4618,6 +4679,7 @@ window.addEventListener('pointermove', (e) => {
 
 function releasePointer(e: PointerEvent): void {
   pointers.delete(e.pointerId);
+  stopEdgeStep(); // lifting (or cancel) ends any edge-hold auto-stepping
   if (pinching && pointers.size < 2) {
     endPinch();
     pDown = false; // the remaining finger (if any) shouldn't resume scroll/tap
