@@ -188,7 +188,9 @@ body {
   z-index: 0; pointer-events: none; /* behind the spines (z-index 1); never a negative layer */
   background-size: cover; background-position: center;
   filter: blur(4vh) saturate(1.5); /* fallback; JS sets blur/saturate from the Glow settings */
-  opacity: 0; transition: opacity 0.5s ease;
+  /* Fade on the SAME clock + curve as the flip (--flip-t) so the halo blooms in step with the
+     cover turning to face you, instead of popping in mid-flip. */
+  opacity: 0; transition: opacity var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
 }
 .shelf-glow.on { opacity: var(--glow-op, 0.68); }
 .spine.open:active { filter: none; }
