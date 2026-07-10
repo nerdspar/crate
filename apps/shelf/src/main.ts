@@ -2179,10 +2179,18 @@ function renderCCNow(): void {
   }
   const art = it?.artworkUrl ?? np?.artworkUrl ?? null;
   ccArt.style.backgroundImage = art ? `url('${art}')` : '';
-  // Show the SONG as the headline, artist + album beneath.
-  ccTitle.textContent = title;
   const artist = it?.artist ?? np?.artist ?? '';
-  ccArtistEl.textContent = [artist, albumName && albumName !== title ? albumName : null].filter(Boolean).join(' · ');
+  const sub = [artist, albumName && albumName !== title ? albumName : null].filter(Boolean).join(' · ');
+  if (sub) {
+    // Normal track: SONG as the headline, artist + album beneath.
+    ccTitle.textContent = title;
+    ccArtistEl.textContent = sub;
+  } else {
+    // External single-line source (e.g. "TV Audio", line-in): no artist/album, so put the one
+    // line down in the artist slot next to the seek instead of a lone headline up top.
+    ccTitle.textContent = '';
+    ccArtistEl.textContent = title;
+  }
   ccPlayPauseBtn.innerHTML = now.state === 'playing' ? ICON_PAUSE : ICON_PLAY;
   updateCCSeek();
 }

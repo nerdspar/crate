@@ -753,13 +753,14 @@ body.find-open #cc-grip { pointer-events: none; }
 #cc-sheet .cc-handle { order: 2; margin: 0.4vh 0 0; }
 
 /* Now playing — a full-width hero: art · title/seek · transport. */
-/* The meta stretches to the artwork's height; margin-top:auto on the seek pins title+artist to the
-   art's top edge and pushes seek+times to its foot — so the seek sits low, close to the transport
-   row below. A title that wraps grows downward from the top, shrinking the auto gap; once the meta
-   is taller than the art the whole block grows and pushes the transport + rooms down — never clips. */
-.cc-np { display: flex; gap: 4vw; align-items: stretch; }
+/* The meta is its natural height and centered on the artwork, so the details stay balanced beside
+   the (larger) cover. A title that wraps grows the meta from its centre; once the meta is taller
+   than the art the whole block grows and pushes the transport + rooms down — it never clips.
+   For external single-line sources the one line is rendered in the artist slot (just above the
+   seek) instead of as a lone headline, so it sits close to the seek bar. */
+.cc-np { display: flex; gap: 4vw; align-items: center; }
 .cc-art {
-  width: 16vh; height: 16vh; flex-shrink: 0; border-radius: 1vh;
+  width: 18vh; height: 18vh; flex-shrink: 0; border-radius: 1vh;
   background: #26232a center/cover no-repeat;
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
 }
@@ -768,8 +769,9 @@ body.find-open #cc-grip { pointer-events: none; }
   font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 600;
   color: var(--ink); line-height: 1.12; /* wrap long titles (they grow the sheet, not clip) */
 }
+.cc-title:empty { display: none; } /* external single-line: no headline, line goes in the artist slot */
 .cc-sub { font-size: 2.4vh; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cc-seek { height: 0.7vh; border-radius: 999px; background: rgba(236,231,221,0.15); margin-top: auto; }
+.cc-seek { height: 0.7vh; border-radius: 999px; background: rgba(236,231,221,0.15); margin-top: 0.6vh; }
 .cc-seek-fill { height: 100%; width: 0; border-radius: 999px; background: var(--ink); }
 .cc-times { display: flex; justify-content: space-between; font-size: 1.9vh; color: var(--ink); opacity: 0.72; font-variant-numeric: tabular-nums; }
 
