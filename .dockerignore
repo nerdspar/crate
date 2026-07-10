@@ -1,0 +1,20 @@
+# Rebuilt inside the image
+node_modules
+**/node_modules
+dist
+**/dist
+
+# VCS + local-only / secret / data
+.git
+.gitignore
+.env
+.env.*
+apps/*/data
+data
+
+# Not needed in the server image
+site
+logo
+scripts
+*.log
+.DS_Store

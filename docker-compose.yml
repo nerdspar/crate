@@ -1,0 +1,38 @@
+name: crate
+
+services:
+  crate:
+    build: .
+    image: crate:latest
+    container_name: crate
+    restart: unless-stopped
+    ports:
+      - "${CRATE_PORT:-8080}:8080"
+    environment:
+      # MA connection — see .env / .env.example.
+      MA_URL: "${MA_URL:?set MA_URL in .env}"
+      MA_TOKEN: "${MA_TOKEN:?set MA_TOKEN in .env}"
+      CRATE_MANAGES_MA: "${CRATE_MANAGES_MA:-0}"
+      CRATE_VERSION: "${CRATE_VERSION:-0.1.0}"
+    # Lets the co-hosted profile reach a host-networked MA at http://host.docker.internal:8095.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - crate-data:/data
+
+  # Optional: run Music Assistant alongside Crate (co-hosted install). Start with:
+  #   docker compose --profile cohosted up -d --build
+  # MA uses host networking so it can discover speakers (Sonos/Chromecast/AirPlay via mDNS);
+  # with the profile on, set MA_URL=http://host.docker.internal:8095 and CRATE_MANAGES_MA=1.
+  music-assistant:
+    image: ghcr.io/music-assistant/server:latest
+    container_name: music-assistant
+    profiles: ["cohosted"]
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ma-data:/data
+
+volumes:
+  crate-data:
+  ma-data:
