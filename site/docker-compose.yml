@@ -1,0 +1,53 @@
+name: crate-site
+
+# Crate landing page, fronted by a Cloudflare Tunnel.
+#
+#   [ Internet ] --TLS--> [ Cloudflare edge ] ==tunnel==> [ cloudflared ] --HTTP--> [ nginx ]
+#
+# The tunnel is OUTBOUND only: cloudflared dials Cloudflare, so nothing needs to
+# be port-forwarded on your router or exposed on TrueNAS. nginx has no published
+# ports — only cloudflared reaches it, over the private compose network.
+#
+# Two ways to ship the site (pick one in the `site` service below):
+#   A. Bind-mount  — copy this folder to a TrueNAS dataset; stock nginx image. No registry.
+#   B. Baked image — `docker build`/push this dir (see Dockerfile); pull anywhere.
+# See DEPLOY.md for the full walkthrough.
+
+services:
+  site:
+    image: nginx:1.27-alpine
+    container_name: crate-site
+    restart: unless-stopped
+    # --- Option A: bind-mount the static files (default; no image build) ---
+    # SITE_DIR defaults to this folder for local runs; on TrueNAS set it to the
+    # dataset you copied the site into, e.g. SITE_DIR=/mnt/tank/apps/crate-site
+    volumes:
+      - "${SITE_DIR:-.}/index.html:/usr/share/nginx/html/index.html:ro"
+      - "${SITE_DIR:-.}/screenshots:/usr/share/nginx/html/screenshots:ro"
+      - "${SITE_DIR:-.}/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
+    # --- Option B: use the baked image instead of the mounts above ---
+    #   Comment out `image:` + `volumes:` above and uncomment:
+    # build: .
+    # image: ghcr.io/nerdspar/crate-site:latest
+    networks: [edge]
+    # Uncomment to preview locally at http://localhost:8088 (not needed in prod —
+    # cloudflared reaches nginx over the internal network without a host port).
+    # ports:
+    #   - "8088:80"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: crate-site-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # From the Cloudflare Zero Trust dashboard: Networks -> Tunnels -> your
+      # tunnel -> the connector token. Put it in a .env file next to this compose.
+      TUNNEL_TOKEN: "${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env (Cloudflare Zero Trust tunnel token)}"
+    depends_on:
+      - site
+    networks: [edge]
+
+networks:
+  edge:
+    driver: bridge

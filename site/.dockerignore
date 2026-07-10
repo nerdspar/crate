@@ -1,0 +1,7 @@
+# Not part of the served site
+.DS_Store
+**/.DS_Store
+Dockerfile
+docker-compose.yml
+.dockerignore
+DEPLOY.md

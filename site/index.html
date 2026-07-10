@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crate — Your streaming library, rendered as a wall of albums.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
+
+:root {
+  --cr-bg: #14110d;
+  --cr-surface: #1d1813;
+  --cr-elevated: #251f18;
+  --cr-wood: #5c4632;
+  --cr-wood-line: #7a5f45;
+  --cr-gold: #caa03c;
+  --cr-gold-dim: rgba(202,160,60,0.12);
+  --cr-gold-border: rgba(202,160,60,0.28);
+  --cr-cream: #ece7dd;
+  --cr-text: #ece7dd;
+  --cr-muted: #a89f8f;
+  --cr-faint: #6b6154;
+  --cr-border: rgba(236,231,221,0.09);
+  --cr-border-hover: rgba(236,231,221,0.16);
+  /* spine palette (from the logo) */
+  --sp1:#5a6fb5; --sp2:#b5543a; --sp3:#2f4f6f; --sp4:#caa03c; --sp5:#6b8f5a;
+  --sp6:#7a6a8f; --sp7:#4ea6a0; --sp8:#8a3a2e; --sp9:#9aa3ad;
+}
+
+.site { background: var(--cr-bg); color: var(--cr-text); min-height: 100vh; }
+h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sans-serif; }
+
+/* NAV */
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 48px; height: 62px;
+  background: rgba(20,17,13,0.82); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--cr-border);
+  position: sticky; top: 0; z-index: 100;
+}
+.nav-logo { display: flex; align-items: center; gap: 11px; text-decoration: none; cursor: pointer; }
+.nav-logo-mark { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; }
+.nav-brand { font-size: 17px; font-weight: 600; letter-spacing: 0.02em; color: var(--cr-cream); }
+.nav-links { display: flex; gap: 6px; align-items: center; }
+.nav-link {
+  font-size: 13px; color: var(--cr-muted); text-decoration: none; cursor: pointer;
+  padding: 7px 13px; border-radius: 7px; background: none; border: none; font-family: inherit;
+}
+.nav-link:hover { color: var(--cr-text); background: var(--cr-surface); }
+.nav-link.active { color: var(--cr-gold); background: var(--cr-gold-dim); }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-github {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--cr-cream); color: #14110d; border: none;
+  padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: inherit; text-decoration: none;
+}
+.nav-github:hover { background: #fff; }
+.nav-github svg { width: 16px; height: 16px; fill: #14110d; }
+
+/* PAGE SWITCH */
+.page { display: none; }
+.page.active { display: block; }
+
+/* HERO */
+.hero {
+  text-align: center; padding: 92px 48px 0;
+  border-bottom: 1px solid var(--cr-border);
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--cr-gold-dim); border: 1px solid var(--cr-gold-border);
+  border-radius: 999px; padding: 5px 15px; margin-bottom: 28px;
+  font-size: 12px; color: var(--cr-gold); font-weight: 500;
+}
+.hero-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cr-gold); flex-shrink: 0; }
+.hero h1 {
+  font-size: 54px; font-weight: 600; line-height: 1.08;
+  color: var(--cr-text); margin-bottom: 22px; letter-spacing: -0.02em;
+}
+.hero h1 span { color: var(--cr-gold); }
+.hero-sub {
+  font-size: 18px; color: var(--cr-muted); max-width: 600px;
+  margin: 0 auto 34px; line-height: 1.6;
+}
+.hero-actions { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 64px; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--cr-gold); color: #14110d; border: none;
+  padding: 13px 24px; border-radius: 8px; font-size: 14px; font-weight: 600;
+  cursor: pointer; font-family: inherit; text-decoration: none;
+}
+.btn-primary:hover { background: #d9b04e; }
+.btn-primary svg { width: 16px; height: 16px; fill: #14110d; }
+.btn-secondary {
+  background: transparent; color: var(--cr-text);
+  border: 1px solid var(--cr-border-hover);
+  padding: 13px 24px; border-radius: 8px; font-size: 14px;
+  cursor: pointer; font-family: inherit; text-decoration: none;
+}
+.btn-secondary:hover { border-color: var(--cr-muted); }
+
+/* HERO SHELF DECORATION */
+.hero-shelf-wrap { max-width: 1180px; margin: 0 auto; padding: 0 12px; }
+.hero-shelf-img {
+  width: 100%; display: block;
+  border: 1px solid var(--cr-border); border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -1px 0 rgba(202,160,60,0.15) inset;
+}
+
+/* SECTION SHELL */
+.section { padding: 80px 48px; border-bottom: 1px solid var(--cr-border); }
+.section-inner { max-width: 1100px; margin: 0 auto; }
+.section-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.1em; margin-bottom: 16px; color: var(--cr-gold);
+}
+.section-heading {
+  font-size: 32px; font-weight: 600; line-height: 1.15;
+  color: var(--cr-text); margin-bottom: 14px; letter-spacing: -0.01em;
+}
+.section-body { font-size: 15px; color: var(--cr-muted); line-height: 1.7; }
+.section-center { text-align: center; }
+.section-center .section-body { max-width: 560px; margin: 0 auto; }
+
+/* SCREENSHOTS */
+.shots-lead { text-align: center; margin-bottom: 40px; }
+.shot-hero { margin-bottom: 16px; }
+.shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.shot-grid.admin { grid-template-columns: repeat(3, 1fr); gap: 30px; max-width: 940px; margin: 0 auto; }
+.shot-card {
+  background: var(--cr-surface); border: 1px solid var(--cr-border);
+  border-radius: 12px; overflow: hidden;
+}
+.shot-ph {
+  /* REPLACE: swap this block for <img src="..." alt="..." style="width:100%;display:block"> */
+  background:
+    repeating-linear-gradient(135deg, transparent 0 22px, rgba(236,231,221,0.02) 22px 44px),
+    var(--cr-elevated);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  border-bottom: 1px solid var(--cr-border);
+  position: relative;
+}
+.shot-ph.tall { height: 300px; }
+.shot-ph.wide { height: 340px; }
+.shot-ph.small { height: 200px; }
+.shot-ph.phone { aspect-ratio: 10 / 16; height: auto; padding: 14px; text-align: center; }
+.shot-img { width: 100%; display: block; border-bottom: 1px solid var(--cr-border); background: var(--cr-elevated); }
+.shot-ph-icon {
+  width: 40px; height: 40px; border-radius: 9px;
+  background: var(--cr-gold-dim); border: 1px solid var(--cr-gold-border);
+  display: flex; align-items: center; justify-content: center;
+}
+.shot-ph-icon svg { width: 18px; height: 18px; stroke: var(--cr-gold); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.shot-ph-label { font-size: 11px; color: var(--cr-faint); letter-spacing: 0.02em; }
+.shot-ph-badge {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--cr-gold); background: var(--cr-gold-dim);
+  border: 1px solid var(--cr-gold-border); border-radius: 999px; padding: 3px 9px;
+}
+.shot-cap { padding: 13px 15px; }
+.shot-cap-title { font-size: 13px; font-weight: 600; color: var(--cr-text); margin-bottom: 3px; font-family: 'Space Grotesk', sans-serif; }
+.shot-cap-desc { font-size: 12px; color: var(--cr-muted); line-height: 1.5; }
+
+/* FEATURES */
+.feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 900px; margin: 0 auto; }
+.feature-card {
+  background: var(--cr-surface); border: 1px solid var(--cr-border);
+  border-radius: 10px; padding: 15px 15px 16px;
+}
+.feature-card:hover { border-color: var(--cr-border-hover); }
+.feature-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--cr-gold-dim); border: 1px solid var(--cr-gold-border);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 11px;
+}
+.feature-icon svg { width: 14px; height: 14px; stroke: var(--cr-gold); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.feature-title { font-size: 13.5px; font-weight: 600; color: var(--cr-text); margin-bottom: 5px; font-family: 'Space Grotesk', sans-serif; }
+.feature-desc { font-size: 12px; color: var(--cr-muted); line-height: 1.5; }
+
+/* PROBLEM / SOLUTION */
+.ps-grid { display: grid; grid-template-columns: 1fr 1px 1fr; }
+.ps-side { padding: 0 52px; }
+.ps-side:first-child { padding-left: 0; }
+.ps-side:last-child { padding-right: 0; }
+.ps-divider { background: var(--cr-border); }
+.ps-statement { font-size: 23px; font-weight: 500; line-height: 1.3; letter-spacing: -0.01em; margin-bottom: 14px; }
+.ps-statement.problem { color: var(--cr-faint); font-style: italic; }
+.ps-statement.solution { color: var(--cr-text); font-family: 'Space Grotesk', sans-serif; }
+.ps-sub { font-size: 14px; line-height: 1.65; }
+.ps-sub.problem { color: #5a5044; }
+.ps-sub.solution { color: var(--cr-muted); }
+.label-problem { color: #c0654a; }
+
+/* WORKFLOW */
+.wf-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; margin-top: 44px; }
+.wf-step { text-align: center; }
+.wf-num {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--cr-gold-dim); border: 1px solid var(--cr-gold-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600; color: var(--cr-gold);
+  margin: 0 auto 14px; font-family: 'Space Grotesk', sans-serif;
+}
+.wf-title { font-size: 14px; font-weight: 600; color: var(--cr-text); margin-bottom: 6px; font-family: 'Space Grotesk', sans-serif; }
+.wf-desc { font-size: 13px; color: var(--cr-muted); line-height: 1.6; }
+
+/* SPECS / STACK */
+.chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 28px; }
+.chip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--cr-surface); border: 1px solid var(--cr-border);
+  border-radius: 999px; padding: 7px 16px; font-size: 13px; color: var(--cr-muted);
+}
+.chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cr-gold); flex-shrink: 0; }
+
+/* CTA */
+.cta { padding: 92px 48px; text-align: center; border-bottom: 1px solid var(--cr-border); }
+.cta h2 { font-size: 38px; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.01em; color: var(--cr-text); }
+.cta p { font-size: 16px; color: var(--cr-muted); margin-bottom: 32px; }
+
+/* FOOTER */
+.footer {
+  padding: 26px 48px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--cr-faint); flex-wrap: wrap; gap: 12px;
+}
+.footer a { color: var(--cr-muted); text-decoration: none; }
+.footer a:hover { color: var(--cr-text); }
+
+/* ===== DOCUMENTATION PAGE ===== */
+.docs-wrap { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 240px 1fr; gap: 48px; padding: 48px; }
+.docs-sidebar { position: sticky; top: 90px; align-self: start; }
+.docs-nav-group { margin-bottom: 26px; }
+.docs-nav-group-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cr-faint); margin-bottom: 10px; }
+.docs-nav-item {
+  display: block; font-size: 13px; color: var(--cr-muted); text-decoration: none;
+  padding: 6px 12px; border-radius: 7px; cursor: pointer; border-left: 2px solid transparent;
+}
+.docs-nav-item:hover { color: var(--cr-text); background: var(--cr-surface); }
+.docs-nav-item.active { color: var(--cr-gold); border-left-color: var(--cr-gold); background: var(--cr-gold-dim); }
+.docs-content { min-width: 0; }
+.docs-content h1 { font-size: 34px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 12px; }
+.docs-content h2 { font-size: 22px; font-weight: 600; margin: 40px 0 12px; padding-top: 20px; border-top: 1px solid var(--cr-border); }
+.docs-content h2:first-of-type { border-top: none; padding-top: 0; }
+.docs-content p { font-size: 15px; color: var(--cr-muted); line-height: 1.75; margin-bottom: 16px; }
+.docs-content ul { margin: 0 0 18px 20px; color: var(--cr-muted); font-size: 15px; line-height: 1.8; }
+.docs-content code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; background: var(--cr-elevated); border: 1px solid var(--cr-border); border-radius: 5px; padding: 1px 6px; color: var(--cr-cream); }
+.docs-content pre { background: var(--cr-surface); border: 1px solid var(--cr-border); border-radius: 10px; padding: 16px 18px; overflow-x: auto; margin-bottom: 20px; }
+.docs-content pre code { background: none; border: none; padding: 0; color: var(--cr-cream); line-height: 1.6; display: block; }
+.docs-lead { font-size: 17px; color: var(--cr-muted); line-height: 1.7; margin-bottom: 28px; }
+.docs-section { display: none; }
+.docs-section.active { display: block; }
+.doc-todo {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--cr-gold-dim); border: 1px solid var(--cr-gold-border);
+  border-radius: 10px; padding: 16px 18px; margin: 22px 0;
+}
+.doc-todo svg { width: 18px; height: 18px; stroke: var(--cr-gold); fill: none; stroke-width: 1.5; flex-shrink: 0; margin-top: 1px; }
+.doc-todo-text { font-size: 13px; color: var(--cr-muted); line-height: 1.6; }
+.doc-todo-text strong { color: var(--cr-gold); font-weight: 600; }
+.docs-mobile-select { display: none; }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .docs-wrap { grid-template-columns: 1fr; gap: 24px; padding: 32px 24px; }
+  .docs-sidebar { display: none; }
+  .docs-mobile-select { display: block; width: 100%; margin-bottom: 24px; padding: 11px 14px; border-radius: 9px; background: var(--cr-surface); color: var(--cr-text); border: 1px solid var(--cr-border-hover); font-family: inherit; font-size: 14px; }
+}
+@media (max-width: 768px) {
+  .nav { padding: 0 18px; }
+  .nav-links { display: none; }
+  .hero { padding: 60px 22px 0; }
+  .hero h1 { font-size: 36px; }
+  .hero-sub { font-size: 16px; }
+  .hero-actions { flex-direction: column; margin-bottom: 44px; }
+  .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  .section { padding: 52px 22px; }
+  .section-heading { font-size: 26px; }
+  .shot-grid { grid-template-columns: 1fr; }
+  .shot-grid.admin { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .shot-ph.phone .shot-ph-icon { display: none; }
+  .shot-ph.phone .shot-ph-label { font-size: 9px; }
+  .feature-grid { grid-template-columns: 1fr; }
+  .ps-grid { grid-template-columns: 1fr; }
+  .ps-divider { display: none; }
+  .ps-side { padding: 0 0 30px; }
+  .ps-side:last-child { padding-top: 30px; padding-bottom: 0; border-top: 1px solid var(--cr-border); }
+  .wf-steps { grid-template-columns: 1fr 1fr; gap: 22px; }
+  .cta { padding: 60px 22px; }
+  .cta h2 { font-size: 28px; }
+  .footer { padding: 22px; flex-direction: column; text-align: center; }
+}
+</style>
+</head>
+<body>
+<div class="site">
+
+  <!-- NAV -->
+  <nav class="nav">
+    <a class="nav-logo" onclick="showPage('home')">
+      <span class="nav-logo-mark">
+        <svg viewBox="0 0 100 82" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="28" width="84" height="46" rx="3.5" fill="#5c4632"/>
+          <rect x="11.5" y="31.5" width="77" height="39" rx="2.6" fill="none" stroke="#7a5f45" stroke-width="1.6"/>
+          <rect x="14" y="34" width="72" height="34" rx="1.5" fill="#241c14"/>
+          <rect x="16" y="36.5" width="5" height="29" rx="1" fill="#5a6fb5"/>
+          <rect x="22.2" y="36.5" width="5" height="29" rx="1" fill="#b5543a"/>
+          <rect x="28.4" y="36.5" width="5" height="29" rx="1" fill="#2f4f6f"/>
+          <rect x="34.6" y="36.5" width="5" height="29" rx="1" fill="#caa03c"/>
+          <rect x="40.8" y="36.5" width="5" height="29" rx="1" fill="#6b8f5a"/>
+          <rect x="47" y="36.5" width="5" height="29" rx="1" fill="#7a6a8f"/>
+          <rect x="53.2" y="36.5" width="5" height="29" rx="1" fill="#4ea6a0"/>
+          <rect x="59.4" y="36.5" width="5" height="29" rx="1" fill="#8a3a2e"/>
+          <rect x="65.6" y="36.5" width="5" height="29" rx="1" fill="#9aa3ad"/>
+          <rect x="70.5" y="36.5" width="5" height="29" rx="1" fill="#ece7dd" transform="rotate(21.23 75.5 65.5)"/>
+        </svg>
+      </span>
+      <span class="nav-brand">crate</span>
+    </a>
+    <div class="nav-links">
+      <button class="nav-link nav-tab active" data-page="home" onclick="showPage('home')">Overview</button>
+      <button class="nav-link nav-tab" data-page="docs" onclick="showPage('docs')">Docs</button>
+    </div>
+    <div class="nav-right">
+      <a class="nav-github" href="https://github.com/nerdspar/crate" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <!-- ============ HOME PAGE ============ -->
+  <div class="page active" id="page-home">
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-badge">
+        <div class="hero-badge-dot"></div>
+        Open-source · commodity hardware
+      </div>
+      <h1>Your streaming library,<br><span>rendered as a wall of albums.</span></h1>
+      <p class="hero-sub">Crate turns your streaming collection into physical CD-jewel-cases on a wall-mounted touchscreen. Tap a case, the album flips open, hit play &mdash; and it starts playing on your speakers.</p>
+      <div class="hero-actions">
+        <a class="btn-primary" href="https://github.com/nerdspar/crate" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+          View on GitHub
+        </a>
+        <a class="btn-secondary" onclick="showPage('docs')" style="cursor:pointer">Read the docs</a>
+      </div>
+
+      <!-- HERO: the real wall shelf -->
+      <div class="hero-shelf-wrap">
+        <img class="hero-shelf-img" src="screenshots/wall.jpg" alt="The Crate wall — an ultrawide shelf of album cases">
+      </div>
+    </section>
+
+    <!-- SCREENSHOTS -->
+    <section class="section" id="screens">
+      <div class="section-inner">
+        <div class="shots-lead">
+          <div class="section-label" style="text-align:center">See it</div>
+          <h2 class="section-heading">The wall &mdash; and the app that curates it</h2>
+          <p class="section-body" style="max-width:560px;margin:6px auto 0">Two screens: the always-on kiosk on the wall, and a phone/desktop admin app for importing, curating and configuring everything behind it.</p>
+        </div>
+
+        <!-- WALL SCREENSHOTS — 2×2 grid -->
+        <div class="shot-grid">
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/flip-play.gif" alt="Tapping a case flips the album open, then Play starts it" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Flip open &amp; play</div>
+              <div class="shot-cap-desc">Tap a case and the album opens to the cover and track list. Pick the room, hit play; a spinner holds until the room actually reports playing.</div>
+            </div>
+          </div>
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/album-player.png" alt="The expanded album player — cover, track list, room chips, and Play" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Album player</div>
+              <div class="shot-cap-desc">Swipe up on an open case (or tap the ⋯) to expand the full player &mdash; cover, track list, transport, and per-room controls.</div>
+            </div>
+          </div>
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/search.gif" alt="Tiered search across your shelf, library, and sources" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Search everything</div>
+              <div class="shot-cap-desc">One box, tiered <em>On your shelf → In your library → From your sources</em>, plus artists and songs. Recent searches and explicit tags.</div>
+            </div>
+          </div>
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/control-center.gif" alt="The control center: now playing, transport, and per-room volume" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Control center</div>
+              <div class="shot-cap-desc">Play target, per-room and group volume, brightness, sleep schedule, and live system status &mdash; all from a swipe on the wall.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN APP -->
+    <section class="section">
+      <div class="section-inner">
+        <div style="text-align:center;margin-bottom:22px">
+          <div class="section-label" style="text-align:center">The admin app</div>
+          <h2 class="section-heading" style="font-size:26px">Behind the wall: the admin app</h2>
+          <p class="section-body" style="max-width:460px;margin:6px auto 0">A responsive web app you run from your phone &mdash; import, curate, and configure from the couch.</p>
+        </div>
+        <div class="shot-grid admin">
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/admin-add.png" alt="Admin: search your library and Apple Music, add albums to shelves" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Import &amp; curate</div>
+              <div class="shot-cap-desc">Search your sources and add albums or playlists to the wall from your phone.</div>
+            </div>
+          </div>
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/admin-shelves.png" alt="Admin: an All albums shelf in list view with drag-to-reorder and sort" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Build shelves</div>
+              <div class="shot-cap-desc">Assemble curated, reorderable collections, each with its own sort. Edit case art and typography.</div>
+            </div>
+          </div>
+          <div class="shot-card">
+            <img class="shot-img" src="screenshots/admin-players.png" alt="Admin: Players settings — default speaker, speakers shown on the wall, group presets" loading="lazy">
+            <div class="shot-cap">
+              <div class="shot-cap-title">Configure &amp; monitor</div>
+              <div class="shot-cap-desc">Manage speakers, group presets, brightness, sleep schedule, and live service status.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROBLEM / SOLUTION -->
+    <section class="section">
+      <div class="section-inner">
+        <div class="ps-grid">
+          <div class="ps-side">
+            <div class="section-label label-problem">Streaming lost something</div>
+            <p class="ps-statement problem">&ldquo;A grid of tiny cover thumbnails you scroll past and forget. No shelf, no albums, nothing to browse.&rdquo;</p>
+            <p class="ps-sub problem">The physical joy of flipping through a collection disappeared when the music went digital.</p>
+          </div>
+          <div class="ps-divider"></div>
+          <div class="ps-side">
+            <div class="section-label">Crate gives it back</div>
+            <p class="ps-statement solution">A wall you actually walk up to &mdash; albums you browse, tap, and play.</p>
+            <p class="ps-sub solution">Your streaming library becomes a tactile, always-on object in the room. All the catalog of streaming, all the browse-ability of a record crate &mdash; on commodity hardware you can build yourself.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="section" id="features">
+      <div class="section-inner">
+        <div class="section-center" style="margin-bottom:44px">
+          <div class="section-label">Features</div>
+          <h2 class="section-heading">Everything on the wall</h2>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M4 4v16M8 4v16M12 4v16M16 4v16M20 4v16"/></svg></div>
+            <div class="feature-title">The Shelf</div>
+            <div class="feature-desc">Your whole library as CD jewel-cases across an ultrawide display. Real or generated cover art, duration-scaled widths, per-album typography.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4"/></svg></div>
+            <div class="feature-title">Flip open &amp; play</div>
+            <div class="feature-desc">Tap a case and the album flips open to the cover and track list. Pick a song, hit play, and it streams to your chosen player.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></div>
+            <div class="feature-title">Shelves &amp; playlists</div>
+            <div class="feature-desc">Curated, reorderable collections, each with its own sort. Playlists render as song shelves you can view, reorder, and hide tracks in.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
+            <div class="feature-title">Tiered search</div>
+            <div class="feature-desc">One box across your sources: <em>On your shelf → In your library → From your sources</em>, plus artists and songs. Explicit tags, recent searches.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M3 10v4M7 6v12M11 3v18M15 6v12M19 10v4"/></svg></div>
+            <div class="feature-title">Multi-room audio</div>
+            <div class="feature-desc">Send playback to any player Music Assistant knows &mdash; Sonos, AirPlay, and more. Pick a speaker or group, save one-tap presets, per-room and proportional volume.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg></div>
+            <div class="feature-title">Honest playback feedback</div>
+            <div class="feature-desc">A &ldquo;connecting&rdquo; spinner and frozen seek until the room actually reports playing &mdash; nothing animates before the audio starts.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M20 20l-3.5-3.5"/></svg></div>
+            <div class="feature-title">Pinch to zoom</div>
+            <div class="feature-desc">Pinch the shelf to change density or bring up a magnifier loupe. Browse a dense wall or lean into a single case.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6c0 4-2 5-2 5h16s-2-1-2-5a6 6 0 0 0-6-6z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></div>
+            <div class="feature-title">Idle, attract &amp; sleep</div>
+            <div class="feature-desc">Idle and attract modes, a sleep schedule, and brightness/display control keep the wall looking right around the clock.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></div>
+            <div class="feature-title">Companion admin app</div>
+            <div class="feature-desc">A phone/desktop app to import &amp; curate the library, build shelves, edit case art, manage speakers/presets, and configure everything.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+            <div class="feature-title">Your streaming services</div>
+            <div class="feature-desc">Plays whatever Music Assistant supports &mdash; Apple Music, Spotify, and more. Your existing library and subscriptions, on the wall.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="feature-title">Live system status</div>
+            <div class="feature-desc">A health panel for the shelf, admin, server, and Music Assistant &mdash; uptime, connection counts, and a per-service restart.</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6-6.3 4.6L8 13.8 2 9.4h7.6z"/></svg></div>
+            <div class="feature-title">Open &amp; self-hosted</div>
+            <div class="feature-desc">Open-source, commodity hardware, and your own Music Assistant instance. No cloud lock-in &mdash; it runs on your wall, on your network.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section" id="how">
+      <div class="section-inner">
+        <div class="section-center">
+          <div class="section-label">How it works</div>
+          <h2 class="section-heading">Streaming in, any player out</h2>
+          <p class="section-body" style="max-width:560px;margin:6px auto 0">One backend process serves both front-ends and holds a single authenticated connection to Music Assistant, which drives whatever speakers you've connected.</p>
+        </div>
+        <div class="wf-steps">
+          <div class="wf-step">
+            <div class="wf-num">1</div>
+            <div class="wf-title">Import from the admin or the wall</div>
+            <div class="wf-desc">Search your sources from the admin app or right on the wall, and add albums and playlists.</div>
+          </div>
+          <div class="wf-step">
+            <div class="wf-num">2</div>
+            <div class="wf-title">Browse the shelf</div>
+            <div class="wf-desc">Cases render on the wall. Pinch to zoom, walk up, and flip an album open.</div>
+          </div>
+          <div class="wf-step">
+            <div class="wf-num">3</div>
+            <div class="wf-title">Pick a room</div>
+            <div class="wf-desc">Choose a speaker or group as the play target, fire a saved group preset, or just use the default.</div>
+          </div>
+          <div class="wf-step">
+            <div class="wf-num">4</div>
+            <div class="wf-title">Hit play</div>
+            <div class="wf-desc">Music Assistant streams to your chosen player &mdash; Sonos, AirPlay, or anything it supports. Audio starts, the shelf shows it live.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STACK -->
+    <section class="section section-center">
+      <div class="section-inner">
+        <div class="section-label">Built on</div>
+        <h2 class="section-heading" style="font-size:26px">Any source, any player &mdash; through Music Assistant</h2>
+        <p class="section-body" style="max-width:580px;margin:10px auto 0">A stretched-bar touchscreen, a small host, and a Music Assistant instance. Crate plays whatever your MA supports &mdash; Apple Music, Spotify, and more &mdash; out to Sonos, AirPlay, and any other player you connect.</p>
+        <div class="chips">
+          <div class="chip"><div class="chip-dot"></div>Music Assistant</div>
+          <div class="chip"><div class="chip-dot"></div>Sonos</div>
+          <div class="chip"><div class="chip-dot"></div>AirPlay</div>
+          <div class="chip"><div class="chip-dot"></div>Apple Music</div>
+          <div class="chip"><div class="chip-dot"></div>Spotify</div>
+          <div class="chip"><div class="chip-dot"></div>+ any MA source or player</div>
+          <div class="chip"><div class="chip-dot"></div>Fastify + SQLite</div>
+          <div class="chip"><div class="chip-dot"></div>Vite + TypeScript</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <h2>Build your own wall.</h2>
+      <p>Crate is open-source. Clone it, point it at your Music Assistant, and hang it up.</p>
+      <a class="btn-primary" href="https://github.com/nerdspar/crate" target="_blank" rel="noopener" style="font-size:15px;padding:14px 28px">
+        <svg viewBox="0 0 24 24"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+        Get it on GitHub
+      </a>
+    </section>
+  </div>
+
+  <!-- ============ DOCS PAGE ============ -->
+  <div class="page" id="page-docs">
+    <div class="docs-wrap">
+      <!-- SIDEBAR -->
+      <aside class="docs-sidebar">
+        <div class="docs-nav-group">
+          <div class="docs-nav-group-title">Getting started</div>
+          <a class="docs-nav-item active" data-doc="intro" onclick="showDoc('intro')">Introduction</a>
+          <a class="docs-nav-item" data-doc="install" onclick="showDoc('install')">Installation</a>
+          <a class="docs-nav-item" data-doc="hardware" onclick="showDoc('hardware')">Hardware &amp; the wall</a>
+        </div>
+        <div class="docs-nav-group">
+          <div class="docs-nav-group-title">Using Crate</div>
+          <a class="docs-nav-item" data-doc="shelf" onclick="showDoc('shelf')">The shelf</a>
+          <a class="docs-nav-item" data-doc="admin" onclick="showDoc('admin')">The admin app</a>
+          <a class="docs-nav-item" data-doc="rooms" onclick="showDoc('rooms')">Rooms &amp; playback</a>
+        </div>
+        <div class="docs-nav-group">
+          <div class="docs-nav-group-title">Reference</div>
+          <a class="docs-nav-item" data-doc="config" onclick="showDoc('config')">Configuration</a>
+          <a class="docs-nav-item" data-doc="architecture" onclick="showDoc('architecture')">Architecture</a>
+        </div>
+      </aside>
+
+      <!-- MOBILE SELECT -->
+      <select class="docs-mobile-select" onchange="showDoc(this.value)">
+        <option value="intro">Introduction</option>
+        <option value="install">Installation</option>
+        <option value="hardware">Hardware &amp; the wall</option>
+        <option value="shelf">The shelf</option>
+        <option value="admin">The admin app</option>
+        <option value="rooms">Rooms &amp; playback</option>
+        <option value="config">Configuration</option>
+        <option value="architecture">Architecture</option>
+      </select>
+
+      <!-- CONTENT -->
+      <div class="docs-content">
+        <!-- INTRO -->
+        <section class="docs-section active" id="doc-intro">
+          <h1>Documentation</h1>
+          <p class="docs-lead">Crate is a wall-mounted touchscreen music shelf. This is where the usage guide will live &mdash; setup, curation, and day-to-day use.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Full usage documentation is coming. The structure and navigation are in place &mdash; drop real content into each section as it's written.</div>
+          </div>
+          <h2>What is Crate?</h2>
+          <p>Crate renders your streaming collection as physical CD jewel-cases on an ultrawide, wall-mounted touchscreen. Tap a case, the album flips open, hit play, and it streams to your speakers through Music Assistant. It's open-source and runs on commodity hardware.</p>
+          <h2>The two apps</h2>
+          <ul>
+            <li><strong>The shelf</strong> &mdash; the always-on kiosk on the wall. Touch and gesture driven, sized for an ultrawide display.</li>
+            <li><strong>The admin</strong> &mdash; a phone/desktop companion for importing, curating, and configuring everything behind the wall.</li>
+          </ul>
+          <p>Both are served by a single backend process that holds the connection to Music Assistant. See <a onclick="showDoc('architecture')" style="color:var(--cr-gold);cursor:pointer">Architecture</a> for the full picture.</p>
+        </section>
+
+        <!-- INSTALL -->
+        <section class="docs-section" id="doc-install">
+          <h1>Installation</h1>
+          <p class="docs-lead">Get the backend and both front-ends running against your Music Assistant instance.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Expand with a full walkthrough. The commands below mirror the repo README.</div>
+          </div>
+          <h2>Prerequisites</h2>
+          <ul>
+            <li>Node 20+</li>
+            <li>A running Music Assistant instance with your streaming provider and Sonos players connected</li>
+            <li>A Music Assistant long-lived token</li>
+          </ul>
+          <h2>Develop</h2>
+          <pre><code>npm install
+
+# 1. Device service (REST + WS + SQLite + artwork) on :8080
+MA_URL=http://&lt;ma-host&gt;:8095 MA_TOKEN=&lt;token&gt; npm run dev:server
+
+# 2. Shelf (kiosk UI) on :5173
+npm run dev:shelf
+
+# 3. Admin (search + curate) on :5174
+npm run dev:admin</code></pre>
+          <p>Open the admin at <code>http://localhost:5174</code>, search for an album, and add it. It appears on the shelf at <code>http://localhost:5173</code> &mdash; tap it and press play.</p>
+        </section>
+
+        <!-- HARDWARE -->
+        <section class="docs-section" id="doc-hardware">
+          <h1>Hardware &amp; the wall</h1>
+          <p class="docs-lead">What to buy and how to mount it. Crate targets a stretched-bar ultrawide touchscreen.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Bill of materials, wiring, mounting, and enclosure/STL files to follow. See the <code>hardware/</code> folder in the repo.</div>
+          </div>
+          <h2>Display</h2>
+          <p>An ultrawide, stretched-bar touchscreen (roughly 2608&times;720) is the target form factor for the wall.</p>
+          <h2>Host</h2>
+          <p>A small always-on host runs the backend and serves the built front-ends. It talks to Music Assistant over your local network.</p>
+        </section>
+
+        <!-- SHELF -->
+        <section class="docs-section" id="doc-shelf">
+          <h1>The shelf</h1>
+          <p class="docs-lead">The wall UI: browsing, flipping cases open, and playing.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Add gesture reference, zoom modes, idle/attract behaviour, and screenshots.</div>
+          </div>
+          <h2>Browsing</h2>
+          <p>Cases render duration-scaled across the wall. Pinch to change density or bring up a magnifier loupe.</p>
+          <h2>Playing an album</h2>
+          <p>Tap a case to flip the album open. Tapping a song highlights it; a separate Play button starts playback &mdash; nothing auto-plays on tap.</p>
+        </section>
+
+        <!-- ADMIN -->
+        <section class="docs-section" id="doc-admin">
+          <h1>The admin app</h1>
+          <p class="docs-lead">Import, curate, and configure from your phone or desktop.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Document import, shelf building, case-art editing, presets, and system settings with screenshots.</div>
+          </div>
+          <h2>Importing &amp; curating</h2>
+          <p>Search your sources and add albums or playlists to the wall. Build curated, reorderable shelves, each with its own sort.</p>
+          <h2>System settings</h2>
+          <p>Manage speakers and group presets, set brightness and the sleep schedule, and watch live service status for the three apps plus Music Assistant.</p>
+        </section>
+
+        <!-- ROOMS -->
+        <section class="docs-section" id="doc-rooms">
+          <h1>Rooms &amp; playback</h1>
+          <p class="docs-lead">Choosing where the music plays and how groups work.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Cover the play target model, grouping, presets, and volume behaviour in detail.</div>
+          </div>
+          <h2>The play target</h2>
+          <p>Pick any speaker or group as the play target. It's sticky per session and resets to the admin default when the wall goes idle.</p>
+          <h2>Groups &amp; presets</h2>
+          <p>Form groups from the album picker (multi-select or long-press) and save one-tap group presets. Per-room and proportional group volume track external Sonos-app changes live.</p>
+        </section>
+
+        <!-- CONFIG -->
+        <section class="docs-section" id="doc-config">
+          <h1>Configuration</h1>
+          <p class="docs-lead">Environment variables and settings for the device service.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> Full configuration reference to follow. Core environment variables are listed below.</div>
+          </div>
+          <h2>Environment</h2>
+          <pre><code>MA_URL            http://homeassistant.local:8095   # Music Assistant base URL
+MA_TOKEN          —                                 # MA long-lived token (required)
+CRATE_DATA_DIR    ./data                            # SQLite + cached artwork
+CRATE_PORT        8080                              # Device service port
+CRATE_COVER_HEIGHT 1440                             # Cover rendition height (px)</code></pre>
+        </section>
+
+        <!-- ARCHITECTURE -->
+        <section class="docs-section" id="doc-architecture">
+          <h1>Architecture</h1>
+          <p class="docs-lead">One backend process, two browser front-ends it serves, and a single connection to Music Assistant.</p>
+          <div class="doc-todo">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div class="doc-todo-text"><strong>Placeholder.</strong> See <code>ARCHITECTURE.md</code> in the repo for the current, authoritative version.</div>
+          </div>
+          <h2>The pieces</h2>
+          <ul>
+            <li><strong>server</strong> &mdash; the single Node process. HTTP API + <code>/ws</code> fan-out hub, SQLite, and one persistent WebSocket to Music Assistant.</li>
+            <li><strong>shelf</strong> &mdash; the wall/kiosk Vite SPA, served at <code>/</code>.</li>
+            <li><strong>admin</strong> &mdash; the phone/desktop Vite SPA, served at <code>/admin/</code>.</li>
+          </ul>
+          <p>The front-ends are static bundles with no runtime of their own; the server mounts each <code>dist/</code> at its route. Both share types and the API client via <code>@crate/shared</code>.</p>
+          <h2>Why Music Assistant?</h2>
+          <p>Phase 0 proved node-sonos-http-api can't reliably start arbitrary albums on a real Sonos household. Music Assistant streams to Sonos with the operator's real credentials and exposes search, metadata, artwork, playback, and live state over one authenticated WebSocket.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-weight:600;color:var(--cr-muted);font-family:'Space Grotesk',sans-serif">crate</span>
+      <span>— a wall-mounted music shelf</span>
+    </div>
+    <div style="display:flex;gap:20px;align-items:center">
+      <a href="https://github.com/nerdspar/crate" target="_blank" rel="noopener">GitHub</a>
+      <a onclick="showPage('docs')" style="cursor:pointer">Documentation</a>
+      <span>&copy; 2026 Crate. Open source.</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+function showPage(page, anchor) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
+  if (anchor) {
+    const el = document.getElementById(anchor);
+    if (el) { el.scrollIntoView({ behavior: 'smooth' }); return; }
+  }
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function showDoc(id) {
+  document.querySelectorAll('.docs-section').forEach(s => s.classList.remove('active'));
+  const sec = document.getElementById('doc-' + id);
+  if (sec) sec.classList.add('active');
+  document.querySelectorAll('.docs-nav-item').forEach(i => i.classList.toggle('active', i.dataset.doc === id));
+  const sel = document.querySelector('.docs-mobile-select');
+  if (sel) sel.value = id;
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+// Build the decorative hero shelf out of colored spines.
+(function () {
+  const rail = document.getElementById('shelfRail');
+  if (!rail) return;
+  const colors = ['--sp1','--sp2','--sp3','--sp4','--sp5','--sp6','--sp7','--sp8','--sp9'];
+  const titles = ['','','','','','','','','','','','','',''];
+  // deterministic pseudo-random so layout is stable across loads
+  let seed = 7;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  const N = 46;
+  let html = '';
+  for (let i = 0; i < N; i++) {
+    const c = colors[i % colors.length];
+    const w = 8 + Math.round(rnd() * 26);          // duration-scaled widths
+    const h = 55 + Math.round(rnd() * 45);          // vary height a touch
+    html += '<div class="spine" style="width:' + w + 'px;height:' + h + '%;background:var(' + c + ')"></div>';
+  }
+  rail.innerHTML = html;
+})();
+</script>
+</body>
+</html>
