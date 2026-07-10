@@ -12,6 +12,7 @@
  *   - events: { event, object_id, data } pushed on the same socket
  */
 
+import { fetchWithTimeout } from '@crate/shared';
 import { WebSocket } from 'ws';
 
 export interface MaServerInfo {
@@ -209,11 +210,22 @@ export class MaClient {
     }
     const message_id = String(this.nextId++);
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(message_id, { resolve: resolve as (v: unknown) => void, reject });
-      ws.send(JSON.stringify({ message_id, command, args }));
-      setTimeout(() => {
+      // Clear the timeout when the command settles (via a response or rejectAllPending) so a
+      // burst of commands (e.g. a library import) doesn't hold hundreds of live timers for 20s.
+      const timer = setTimeout(() => {
         if (this.pending.delete(message_id)) reject(new Error(`MA command ${command} timed out`));
       }, timeoutMs);
+      this.pending.set(message_id, {
+        resolve: (v: unknown) => {
+          clearTimeout(timer);
+          (resolve as (v: unknown) => void)(v);
+        },
+        reject: (e: Error) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+      ws.send(JSON.stringify({ message_id, command, args }));
     });
   }
 
@@ -322,11 +334,11 @@ export async function mintMaToken(url: string, username: string, password: strin
  */
 export async function maSetupState(url: string): Promise<{ reachable: boolean; needsSetup: boolean }> {
   try {
-    const res = await fetch(`${url.replace(/\/+$/, '')}/setup`, {
+    const res = await fetchWithTimeout(`${url.replace(/\/+$/, '')}/setup`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
-    });
+    }, 10_000);
     const j = (await res.json().catch(() => null)) as { error?: string } | null;
     if (!j || typeof j.error !== 'string') return { reachable: true, needsSetup: false };
     return { reachable: true, needsSetup: j.error !== 'Setup already completed' };
@@ -337,11 +349,11 @@ export async function maSetupState(url: string): Promise<{ reachable: boolean; n
 
 /** Create the first admin account on a fresh MA via the unauthenticated `POST /setup` route. */
 export async function setupMaAccount(url: string, username: string, password: string): Promise<void> {
-  const res = await fetch(`${url.replace(/\/+$/, '')}/setup`, {
+  const res = await fetchWithTimeout(`${url.replace(/\/+$/, '')}/setup`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username, password, device_name: 'Crate' }),
-  });
+  }, 15_000);
   const j = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
   if (!j.success) throw new Error(j.error || `Music Assistant setup failed (HTTP ${res.status}).`);
 }

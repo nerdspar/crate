@@ -5,6 +5,8 @@
  * token. Only what Crate needs: create-or-update one path, and fetch its content.
  */
 
+import { fetchWithTimeout } from '@crate/shared';
+
 export interface GithubTarget {
   /** "owner/repo". */
   repo: string;
@@ -30,7 +32,7 @@ function encPath(path: string): string {
 }
 
 async function gh(t: GithubTarget, method: string, url: string, body?: unknown): Promise<Response> {
-  return fetch(`https://api.github.com${url}`, {
+  return fetchWithTimeout(`https://api.github.com${url}`, {
     method,
     headers: {
       authorization: `Bearer ${t.token}`,
@@ -81,7 +83,7 @@ export async function githubPush(t: GithubTarget, content: string, message: stri
 
 /** List the repos the token can reach (for the admin repo picker). Newest-updated first. */
 export async function githubListRepos(token: string): Promise<Array<{ fullName: string; private: boolean }>> {
-  const res = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member', {
+  const res = await fetchWithTimeout('https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member', {
     headers: {
       authorization: `Bearer ${token}`,
       accept: 'application/vnd.github+json',

@@ -5,8 +5,10 @@
 
 import { join } from 'node:path';
 import sharp from 'sharp';
-import type { Palette } from '@crate/shared';
+import { fetchWithTimeout, type Palette } from '@crate/shared';
 import { darken, lighten, mix, pickInk, rgbToHex } from './color.js';
+
+const MAX_ART_BYTES = 25 * 1024 * 1024; // 25 MB — real cover art is far smaller; reject junk/streams
 
 export interface ArtworkResult {
   artworkPath: string; // basename under artDir
@@ -15,9 +17,12 @@ export interface ArtworkResult {
 }
 
 async function fetchBuffer(url: string, ua?: string): Promise<Buffer> {
-  const res = await fetch(url, ua ? { headers: { 'User-Agent': ua } } : undefined);
+  const res = await fetchWithTimeout(url, ua ? { headers: { 'User-Agent': ua } } : {}, 15_000);
   if (!res.ok) throw new Error(`artwork fetch ${url} → HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  if (Number(res.headers.get('content-length') ?? 0) > MAX_ART_BYTES) throw new Error(`artwork too large from ${url}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.byteLength > MAX_ART_BYTES) throw new Error(`artwork too large from ${url}`);
+  return buf;
 }
 
 /**

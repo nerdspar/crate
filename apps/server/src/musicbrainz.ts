@@ -10,6 +10,8 @@
  * calls are serialized through a throttle.
  */
 
+import { fetchWithTimeout } from '@crate/shared';
+
 const MB = 'https://musicbrainz.org/ws/2';
 const CAA = 'https://coverartarchive.org';
 
@@ -44,7 +46,7 @@ interface MbRelease {
 async function searchReleases(artist: string, title: string, ua: string): Promise<MbRelease[]> {
   const q = `artist:"${artist}" AND release:"${title}"`;
   const url = `${MB}/release/?query=${encodeURIComponent(q)}&fmt=json&limit=10`;
-  const res = await fetch(url, { headers: { 'User-Agent': ua, accept: 'application/json' } });
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': ua, accept: 'application/json' } }, 15_000);
   if (!res.ok) return [];
   const body = (await res.json()) as { releases?: Array<Record<string, unknown>> };
   return (body.releases ?? []).map((r) => {
@@ -75,9 +77,9 @@ function rankReleases(releases: MbRelease[], title: string, year: number | null)
 }
 
 async function caaSpineUrl(releaseId: string, ua: string): Promise<string | null> {
-  const res = await fetch(`${CAA}/release/${releaseId}`, {
+  const res = await fetchWithTimeout(`${CAA}/release/${releaseId}`, {
     headers: { 'User-Agent': ua, accept: 'application/json' },
-  });
+  }, 15_000);
   if (!res.ok) return null;
   const body = (await res.json()) as { images?: Array<Record<string, unknown>> };
   const spine = (body.images ?? []).find((im) => Array.isArray(im['types']) && (im['types'] as string[]).includes('Spine'));

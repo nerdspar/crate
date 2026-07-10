@@ -270,6 +270,9 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   // Per-album overrides: upload custom spine/cover, or set label font/color/spacing.
   app.post('/api/albums/:id/art/:kind', async (req, reply) => {
     const { id, kind } = req.params as { id: string; kind: string };
+    // `id` becomes a filename under artDir — constrain it to the album-id charset so a
+    // crafted value (e.g. "../foo") can't traverse out and overwrite arbitrary files.
+    if (!/^[a-z0-9-]+$/.test(id)) return reply.code(400).send({ error: 'bad id' });
     if (kind !== 'spine' && kind !== 'cover') return reply.code(400).send({ error: 'kind must be spine|cover' });
     const part = await (req as unknown as MultipartRequest).file();
     if (!part) return reply.code(400).send({ error: 'no file' });
