@@ -43,6 +43,9 @@ body {
 
 .spine {
   position: relative;
+  z-index: 1; /* above the glow (0); the open spine goes to 3. Keeps the glow reliably BEHIND
+                 without a negative z-index, which can mis-composite in front of these 3D
+                 (perspective/preserve-3d) layers on some GPUs. */
   height: 93%;
   flex: 0 0 auto;
   cursor: pointer;
@@ -182,7 +185,7 @@ body {
    up — so it bleeds into the surrounding space but never over neighbor art. */
 .shelf-glow {
   position: absolute;
-  z-index: -1; pointer-events: none;
+  z-index: 0; pointer-events: none; /* behind the spines (z-index 1); never a negative layer */
   background-size: cover; background-position: center;
   filter: blur(4vh) saturate(1.5); /* fallback; JS sets blur/saturate from the Glow settings */
   opacity: 0; transition: opacity 0.5s ease;
