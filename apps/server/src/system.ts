@@ -92,7 +92,7 @@ export async function rebootSystem(): Promise<void> {
   await pexec('systemctl', ['reboot']);
 }
 
-export interface GitUpdateInfo {
+interface GitUpdateInfo {
   /** Short SHA of the running checkout, or null if git is unavailable. */
   current: string | null;
   /** Short SHA of the upstream tip after a fetch, or null if none tracked. */

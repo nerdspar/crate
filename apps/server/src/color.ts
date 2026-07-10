@@ -1,12 +1,12 @@
 import type { InkColor } from '@crate/shared';
 
-export interface Rgb {
+interface Rgb {
   r: number;
   g: number;
   b: number;
 }
 
-export function clamp8(n: number): number {
+function clamp8(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
@@ -14,13 +14,13 @@ export function rgbToHex({ r, g, b }: Rgb): string {
   return `#${[r, g, b].map((n) => clamp8(n).toString(16).padStart(2, '0')).join('')}`;
 }
 
-export function hexToRgb(hex: string): Rgb {
+function hexToRgb(hex: string): Rgb {
   const n = Number.parseInt(hex.replace('#', ''), 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
 /** Rec.601 luminance, matching the prototype's pickInk math. */
-export function luminance(hex: string): number {
+function luminance(hex: string): number {
   const { r, g, b } = hexToRgb(hex);
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }

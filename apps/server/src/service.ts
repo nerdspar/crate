@@ -393,9 +393,6 @@ export class Service {
     this.db.removeAlbumFromShelf(shelfId, albumId);
     this.hub.broadcast({ type: 'shelves' });
   }
-  albumShelfIds(albumId: string): string[] {
-    return this.db.shelvesForAlbum(albumId);
-  }
 
   async search(query: string, source?: string): Promise<SearchAlbum[]> {
     const all = await this.ma.listMusicProviders().catch(() => []);

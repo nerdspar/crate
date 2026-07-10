@@ -96,7 +96,6 @@ const shelf = document.getElementById('shelf') as HTMLDivElement;
 const toast = document.getElementById('toast') as HTMLDivElement;
 let openIdx: number | null = null;
 let playingIdx: number | null = null;
-let playingTrack = 0;
 let activePlayerId: string | null = null;
 let activeSolo = false; // the target was picked as an individual speaker (vs a group)
 let userPickedPlayer = false; // true once the user taps a room this session; until then the wall follows the admin default speaker
@@ -2903,7 +2902,6 @@ function prefetchArtistSongs(artists: SearchArtist[]): void {
     void client.getArtistTopSongs(a.providerUri, a.name).catch(() => prefetchedArtists.delete(a.providerUri));
   }
 }
-let libPlaylistsCache: LibraryPlaylist[] | null = null;
 
 /* Recent searches: the last handful of queries, shown as tappable chips when the
    search box is focused and empty so you can re-run one without retyping. */
@@ -3805,7 +3803,6 @@ function playlistAddControl(pl: LibraryPlaylist): HTMLElement {
     try {
       await client.addPlaylist(pl.providerUri);
       added = true;
-      libPlaylistsCache = null;
       return true;
     } catch {
       showToast('Add failed');
@@ -3854,7 +3851,6 @@ async function makeSongShelfFromPlaylist(pl: LibraryPlaylist): Promise<void> {
   void client.prewarmPlaylist(pl.providerUri); // head start on album art
   try {
     await client.addPlaylist(pl.providerUri); // ensure it exists as media (idempotent)
-    libPlaylistsCache = null;
   } catch {
     showToast('Add failed');
     return;
@@ -3880,11 +3876,6 @@ function albumIdFromUri(uri: string): string {
 
 /** After adding an album to a named shelf, switch the wall to it and scroll to the
     album — leaving the Find bar open so you can keep adding (#7). */
-async function revealAddedAlbum(shelfId: string, providerUri: string): Promise<void> {
-  closeAlbumModal();
-  await revealAddedAlbumById(shelfId, albumIdFromUri(providerUri));
-}
-
 /** Switch the wall to a shelf, scroll to an album by id, and flip it open behind the
     still-open Find bar so it's ready when you dismiss the search. */
 async function revealAddedAlbumById(shelfId: string, albumId: string): Promise<void> {
@@ -5064,7 +5055,6 @@ function applyNow(): void {
   const idx = now.albumId ? items.findIndex((it) => it.albumId === now.albumId) : -1;
   const loaded = idx >= 0 && now.state !== 'idle';
   playingIdx = loaded ? idx : null;
-  playingTrack = now.trackIndex;
   document.body.classList.toggle('nowpaused', now.state === 'paused'); // freeze EQ bars
   markPlayingSpines();
   if (openIdx !== null) {
