@@ -130,6 +130,13 @@ export function rowToAlbum(r: AlbumRow): Album {
   };
 }
 
+/** Normalized "title␀artist" key for title/artist dedupe. The NUL separator (written as the
+    \x00 escape) means a title/artist boundary can't be forged by spacing, matching the dedupe
+    in findLibraryAlbumByTitleArtist. */
+export function titleArtistKey(title: string, artist: string): string {
+  return `${title}\x00${artist}`.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 export class Db {
   private readonly db: Database.Database;
 
@@ -241,6 +248,14 @@ export class Db {
       .prepare('SELECT a.provider_uri AS uri FROM shelf_items s JOIN albums a ON a.id = s.album_id')
       .all() as Array<{ uri: string }>;
     return new Set(rows.map((r) => r.uri));
+  }
+
+  /** Normalized title␀artist keys of every shelved album, for O(1) library-import dedupe. */
+  shelfedTitleArtistKeys(): Set<string> {
+    const rows = this.db
+      .prepare("SELECT a.title AS t, a.artist AS ar FROM shelf_items s JOIN albums a ON a.id = s.album_id")
+      .all() as Array<{ t: string; ar: string }>;
+    return new Set(rows.map((r) => titleArtistKey(r.t, r.ar)));
   }
 
   /** A library album with the same title + artist (any release), for dedupe. */

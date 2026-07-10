@@ -47,9 +47,9 @@ import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
 import type { Config } from './config.js';
 import type { AlbumRow, Db } from './db.js';
-import { rowToAlbum } from './db.js';
+import { rowToAlbum, titleArtistKey } from './db.js';
 import type { Hub } from './hub.js';
-import { albumIdFromUri, artUrl, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
+import { albumIdFromUri, artUrl, buildShelfItem, invalidateArtCache, songShelfItem, spineWidthFor } from './shelf.js';
 import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, rebootSystem, setDisplayPower, spawnUpdate } from './system.js';
 import { githubCheck, githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
@@ -623,12 +623,6 @@ export class Service {
     return this.ma.listMusicProviders().catch(() => []);
   }
 
-  /** True if this provider album is already represented on a shelf — either by its own
-      uri, or (across Apple's library-vs-catalog ids) by a same title+artist release. */
-  private albumOnShelf(providerUri: string, title: string, artist: string, shelved: Set<string>): boolean {
-    return shelved.has(providerUri) || !!this.db.findLibraryAlbumByTitleArtist(title, artist);
-  }
-
   /** The album Crate holds *on a shelf* for this provider album — matched by its own uri, or
       (across Apple's library-vs-catalog ids) by a same title+artist release. Returns null when
       nothing is actually shelved, so a removed album's leftover row doesn't read as on-shelf. */
@@ -697,18 +691,25 @@ export class Service {
     let added = 0;
     let skipped = 0;
     let total = 0;
+    // Build the dedupe indexes ONCE (was O(n²): shelfedUris + a title/artist JOIN-scan ran per
+    // album). Grow them as we add so duplicates within the import are also caught.
+    const shelvedUris = this.db.shelfedUris();
+    const shelvedKeys = this.db.shelfedTitleArtistKeys();
     for (;;) {
       const page = await this.ma.listLibraryAlbums({ source, limit: PAGE, offset });
       if (!page.length) break;
       for (const a of page) {
         total++;
-        if (this.albumOnShelf(a.providerUri, a.title, a.artist, this.db.shelfedUris())) {
+        const key = titleArtistKey(a.title, a.artist);
+        if (shelvedUris.has(a.providerUri) || shelvedKeys.has(key)) {
           skipped++;
           continue;
         }
         try {
           await this.addToShelf(a.providerUri, undefined, { quiet: true });
           added++;
+          shelvedUris.add(a.providerUri);
+          shelvedKeys.add(key);
         } catch {
           skipped++;
         }
@@ -767,6 +768,7 @@ export class Service {
     try {
       const art = await buildArtwork(id, url, { artDir: this.cfg.artDir, coverHeightPx: this.cfg.coverHeightPx });
       this.db.updateArtwork(id, art.artworkPath, art.spineStripPath, art.palette);
+      invalidateArtCache(id);
       this.hub.broadcast({ type: 'shelf' });
     } catch (err) {
       process.stderr.write(`[crate] artwork failed for ${id}: ${(err as Error).message}\n`);
@@ -785,6 +787,7 @@ export class Service {
       const name = await buildSpineScan(id, urls, { artDir: this.cfg.artDir, userAgent: this.cfg.mbUserAgent });
       if (name) {
         this.db.setSpineScan(id, name);
+        invalidateArtCache(id);
         this.hub.broadcast({ type: 'shelf' });
       }
     } catch (err) {
@@ -836,6 +839,7 @@ export class Service {
       coverHeightPx: this.cfg.coverHeightPx,
     });
     this.db.setOverride(id, kind === 'spine' ? { spinePath: name } : { coverPath: name });
+    invalidateArtCache(id);
     this.hub.broadcast({ type: 'shelf' });
   }
 

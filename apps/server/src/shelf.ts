@@ -75,13 +75,31 @@ export function songShelfItem(
   };
 }
 
+// mtime cache so a shelf load doesn't statSync every art file on every request (a 500-album
+// shelf is ~1500 stats). Invalidated per album on any art (re)write via invalidateArtCache(id).
+const artMtime = new Map<string, number>();
+
 /** Cache-bust cached art with its mtime so a regenerated strip gets a fresh URL. */
 export function artUrl(artBase: string, artDir: string, file: string): string {
-  try {
-    return `${artBase}/${file}?v=${Math.round(statSync(join(artDir, file)).mtimeMs)}`;
-  } catch {
-    return `${artBase}/${file}`;
+  let v = artMtime.get(file);
+  if (v === undefined) {
+    try {
+      v = Math.round(statSync(join(artDir, file)).mtimeMs);
+    } catch {
+      v = 0; // not present yet — cache the miss until a write invalidates it
+    }
+    artMtime.set(file, v);
   }
+  return v ? `${artBase}/${file}?v=${v}` : `${artBase}/${file}`;
+}
+
+/** Drop cached mtimes for an album's art files — call after (re)writing any of them so the next
+    shelf load re-stats and emits a fresh cache-busting URL. Art basenames are all `${id}-…`, so
+    a prefix match covers cover/strip/scan/overrides; an id that prefixes another only costs a
+    harmless re-stat. */
+export function invalidateArtCache(albumId: string): void {
+  const prefix = `${albumId}-`;
+  for (const key of artMtime.keys()) if (key.startsWith(prefix)) artMtime.delete(key);
 }
 
 /** Stable Crate album id derived from the provider uri (e.g. apple-music-album-594061854). */
