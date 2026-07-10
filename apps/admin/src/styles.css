@@ -242,6 +242,10 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .set-subhead:first-child { margin-top: 0.4rem; }
 .sys-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 0.6rem; }
 .sys-actions .ghost.danger { border-color: color-mix(in srgb, var(--accent, #c83a3a) 55%, var(--line)); color: var(--accent, #c83a3a); }
+/* Software update block: status line + action row + optional SSH note. */
+.sw-update { display: flex; flex-direction: column; gap: 0.55rem; margin-top: 0.3rem; }
+.sw-update code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; opacity: 0.92; }
+.sw-update .sw-note { margin: 0.1rem 0 0; }
 /* Device status: LAN IP + version, one label/value row each. */
 .sys-status { margin-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; max-width: 460px; }
 .sys-line { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; border-bottom: 1px solid var(--line); padding-bottom: 0.45rem; }

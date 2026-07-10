@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateStatus, type UpdateTarget } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1724,6 +1724,86 @@ function renderSystemCat(body: HTMLElement): void {
       (status.querySelector('#sys-ip') as HTMLElement).textContent = 'Unavailable';
       (status.querySelector('#sys-ver') as HTMLElement).textContent = '—';
     });
+
+  // Software update — check git for a newer Crate; update Crate and/or the co-hosted
+  // Music Assistant. The updater runs on the appliance and never touches MA's data.
+  const upHead = document.createElement('div');
+  upHead.className = 'set-subhead';
+  upHead.textContent = 'Software update';
+  body.appendChild(upHead);
+  const up = document.createElement('div');
+  up.className = 'sw-update';
+  const swStatus = document.createElement('div');
+  swStatus.className = 'hint';
+  swStatus.textContent = 'Check for a newer version of Crate.';
+  const swActions = document.createElement('div');
+  swActions.className = 'sys-actions';
+  up.append(swStatus, swActions);
+  body.appendChild(up);
+
+  const startUpdate = (target: UpdateTarget, label: string, note: string): void => {
+    if (!confirm(`${label}?`)) return;
+    void client
+      .runUpdate(target)
+      .then((r) => showToast(r.started ? note : 'Updates run on the appliance'))
+      .catch(() => showToast('Failed'));
+  };
+
+  const doCheck = (): void => {
+    swStatus.textContent = 'Checking…';
+    swActions.innerHTML = '';
+    up.querySelector('.sw-note')?.remove();
+    void client
+      .checkUpdate()
+      .then((u: UpdateStatus) => {
+        if (u.error) {
+          swStatus.textContent = 'Couldn’t check for updates — offline, or git is unavailable here.';
+        } else if (u.updateAvailable) {
+          swStatus.innerHTML = `Update available — <code>${esc(u.current)}</code> → <code>${esc(u.latest ?? '?')}</code> · ${u.behind} commit${u.behind === 1 ? '' : 's'} behind.`;
+        } else {
+          swStatus.innerHTML = `Crate is up to date (<code>${esc(u.current)}</code>).`;
+        }
+        swActions.innerHTML = '';
+        const crateBtn = document.createElement('button');
+        crateBtn.className = 'ghost';
+        crateBtn.textContent = 'Update Crate';
+        crateBtn.disabled = !u.appliance || !u.updateAvailable;
+        crateBtn.addEventListener('click', () =>
+          startUpdate('crate', 'Update Crate now', 'Updating Crate — the wall restarts when it finishes (a few minutes).'),
+        );
+        swActions.appendChild(crateBtn);
+        if (u.managesMa) {
+          const maBtn = document.createElement('button');
+          maBtn.className = 'ghost';
+          maBtn.textContent = 'Update Music Assistant';
+          maBtn.disabled = !u.appliance;
+          maBtn.title = 'Pulls the latest Music Assistant image and restarts it — your library is preserved.';
+          maBtn.addEventListener('click', () =>
+            startUpdate('ma', 'Update Music Assistant now', 'Updating Music Assistant — your library is preserved.'),
+          );
+          swActions.appendChild(maBtn);
+        }
+        const again = document.createElement('button');
+        again.className = 'ghost';
+        again.textContent = 'Check again';
+        again.addEventListener('click', doCheck);
+        swActions.appendChild(again);
+        if (!u.appliance) {
+          const n = document.createElement('p');
+          n.className = 'hint sw-note';
+          n.textContent = 'Updates run on the wall appliance — or run deploy/pi/update.sh over SSH.';
+          up.appendChild(n);
+        }
+      })
+      .catch(() => {
+        swStatus.textContent = 'Check failed.';
+      });
+  };
+  const checkBtn = document.createElement('button');
+  checkBtn.className = 'ghost';
+  checkBtn.textContent = 'Check for updates';
+  checkBtn.addEventListener('click', doCheck);
+  swActions.appendChild(checkBtn);
 }
 
 /* ---- Backup: config export / restore (Phase 5) ---- */

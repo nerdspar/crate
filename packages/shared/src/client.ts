@@ -23,6 +23,8 @@ import type {
   ShuffleRequest,
   SystemStatus,
   TransportRequest,
+  UpdateStatus,
+  UpdateTarget,
   VolumeRequest,
 } from './api.js';
 import type { Settings, Shelf, Track } from './domain.js';
@@ -256,6 +258,17 @@ export class CrateClient {
       Music Assistant (reconnects its websocket). */
   restartService(id: ServiceHealth['id']): Promise<{ ok: boolean }> {
     return this.post('/api/system/services/restart', { id });
+  }
+
+  /** Whether a newer Crate is available (git), plus MA-update topology. Read-only. */
+  checkUpdate(): Promise<UpdateStatus> {
+    return this.req('/api/system/update');
+  }
+
+  /** Start an in-place update (appliance only). Rebuilds + restarts Crate and/or
+      updates the co-hosted Music Assistant image, preserving MA's data. */
+  runUpdate(target: UpdateTarget = 'both'): Promise<{ ok: boolean; started: boolean }> {
+    return this.post('/api/system/update', { target });
   }
 
   // --- Music Assistant management (Phase 5) ---

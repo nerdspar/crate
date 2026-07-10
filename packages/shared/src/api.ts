@@ -87,6 +87,26 @@ export interface ServicesStatus {
   services: ServiceHealth[];
 }
 
+/** Software-update status for Settings → System. `current`/`latest` are short git
+    SHAs of the checkout and its upstream tip; `updateAvailable` means it's behind.
+    Updates only actually run on the appliance. */
+export interface UpdateStatus {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  behind: number;
+  /** True when Crate co-hosts Music Assistant, so it can update that container too. */
+  managesMa: boolean;
+  /** Running MA server version, if connected. */
+  maVersion: string | null;
+  appliance: boolean;
+  /** Set when the git check itself failed (offline, no git, etc.). */
+  error: string | null;
+}
+
+/** What to update: Crate, the co-hosted Music Assistant, or both. */
+export type UpdateTarget = 'crate' | 'ma' | 'both';
+
 export interface BrightnessRequest {
   /** 0–100. */
   level: number;

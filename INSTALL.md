@@ -49,8 +49,11 @@ All Crate state (shelves, settings, curation, cached art) lives in the `crate-da
 ### Updating
 ```sh
 git pull
-docker compose up -d --build     # add --profile cohosted if you use it
+docker compose up -d --build             # rebuild Crate; keeps the crate-data + ma-data volumes
+docker compose pull music-assistant && \
+  docker compose up -d music-assistant   # co-hosted only: pull a newer MA image (data preserved)
 ```
+Your data is in named volumes (`crate-data`, `ma-data`), so rebuilding/recreating containers never loses it.
 
 ### Logs / stop
 ```sh
@@ -82,10 +85,16 @@ journalctl -u crate -f            # server logs
 systemctl restart crate           # after a `git pull` + `npm run build`
 ```
 
-Updating:
+### Updating
+Use the in-place updater. It pulls the latest Crate, rebuilds, and restarts the service; for a co-hosted Music Assistant it also pulls a newer MA image **only if one exists** and recreates the container on its existing data volume. **MA's library/config are never touched** — a failed build leaves the running version serving, so you can't get stuck half-updated.
+
 ```sh
-cd crate && git pull && npm ci && npm run build && sudo systemctl restart crate
+sudo bash deploy/pi/update.sh            # update Crate (+ co-hosted MA if newer)
+sudo bash deploy/pi/update.sh --no-ma    # Crate only
+sudo bash deploy/pi/update.sh --ma-only  # Music Assistant only
 ```
+
+Or from the wall itself: **Settings → System → Software update → Check for updates**, then **Update Crate** / **Update Music Assistant**. The button launches the same script outside the service (via `systemd-run`) so Crate can restart itself cleanly; follow it with `journalctl -u crate-update -f`.
 
 ---
 

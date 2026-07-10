@@ -14,6 +14,7 @@ import type {
   RepeatRequest,
   ShuffleRequest,
   TransportRequest,
+  UpdateTarget,
   VolumeRequest,
 } from '@crate/shared';
 import type { Service } from './service.js';
@@ -312,6 +313,15 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
 
   app.post('/api/system/restart', () => service.restart());
   app.post('/api/system/reboot', () => service.reboot());
+
+  // Software update (admin-only, so kept out of the wall's OPEN allowlist). The check is a
+  // read-only git fetch; the POST launches deploy/pi/update.sh and only runs on the appliance.
+  app.get('/api/system/update', () => service.checkUpdate());
+  app.post('/api/system/update', (req) => {
+    const t = (req.body as { target?: string } | undefined)?.target;
+    const target: UpdateTarget = t === 'crate' || t === 'ma' ? t : 'both';
+    return service.runUpdate(target);
+  });
 
   // --- Music Assistant management (Phase 5) ---
   // Status reads cached connection info (safe even when MA is down). The others talk to MA,
