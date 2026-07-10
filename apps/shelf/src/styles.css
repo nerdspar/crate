@@ -716,6 +716,10 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
    fires markActive) brings them back. */
 body.idle #cc-grip::after,
 body.idle #find-grip::after { opacity: 0; }
+/* Find sheet up → hide the control-center pull tab (and disable its swipe zone) so it doesn't
+   sit over the search overlay. */
+body.find-open #cc-grip::after { opacity: 0; }
+body.find-open #cc-grip { pointer-events: none; }
 
 #cc {
   position: absolute; inset: 0;
@@ -1049,6 +1053,12 @@ body.idle #find-grip::after { opacity: 0; }
   text-transform: uppercase; padding: 0 0 0.6vh; border-bottom: 1px solid rgba(236,231,221,0.14); margin-bottom: 0.8vh;
 }
 .find-cat-list { display: flex; flex-direction: column; gap: 0.8vh; overflow-y: auto; max-height: 40vh; padding-right: 0.4vw; }
+/* Search mode: the sheet fills the screen and the result columns grow to fill it (≈5 album cards
+   visible), each scrolling within its own column instead of capping at 40vh. */
+#find.searching #find-bar { height: 100vh; }
+#find.searching #find-results { flex: 1 1 auto; min-height: 0; }
+#find.searching .find-cats { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+#find.searching .find-cat-list { max-height: none; flex: 1 1 auto; }
 /* "Filter shelf" action in the On-your-shelf results header. */
 .find-subhead-row { display: flex; align-items: center; justify-content: space-between; }
 .find-filter-shelf {

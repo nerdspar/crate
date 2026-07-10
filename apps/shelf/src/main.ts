@@ -2789,6 +2789,7 @@ const findSearch = document.getElementById('find-search') as HTMLInputElement;
 
 function openFind(): void {
   find.classList.add('open');
+  document.body.classList.add('find-open'); // hide the control-center pull tab while the sheet is up
   renderCCSort();
   renderShelfList();
   // No auto-focus: the shelf list is the primary content; tapping the search
@@ -2796,6 +2797,7 @@ function openFind(): void {
 }
 function closeFind(): void {
   find.classList.remove('open');
+  document.body.classList.remove('find-open');
   // Clear the search box + results on close (recent searches bring a query back fast).
   // The committed shelf filter, if any, persists independently until you clear its chip.
   findSearch.value = '';
@@ -3033,6 +3035,7 @@ function clearFindResults(): void {
   artistView = null;
   globalResults = null;
   findResults.hidden = true;
+  find.classList.remove('searching'); // back to the short browse-mode sheet
   findResults.innerHTML = '';
 }
 
@@ -3067,6 +3070,7 @@ function renderGlobal(loading: boolean): void {
     return;
   }
   findResults.hidden = false;
+  find.classList.add('searching'); // grow the sheet to full height for the results
   findResults.innerHTML = '';
   const g = globalResults;
 
@@ -3214,6 +3218,7 @@ async function openArtist(a: SearchArtist): Promise<void> {
   artistView = a;
   const seq = ++artistSeq;
   findResults.hidden = false;
+  find.classList.add('searching'); // artist detail also fills the sheet
   findResults.innerHTML = '';
   const head = document.createElement('div');
   head.className = 'artist-head';
