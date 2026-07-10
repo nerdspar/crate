@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type CrateBackup, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1797,6 +1797,89 @@ function renderBackupCat(body: HTMLElement): void {
 
   actions.append(exportBtn, restoreBtn);
   body.append(actions, fileInput);
+
+  // --- GitHub auto-backup ---
+  const ghHead = document.createElement('div');
+  ghHead.className = 'set-subhead';
+  ghHead.textContent = 'GitHub';
+  body.appendChild(ghHead);
+  const ghHint = document.createElement('p');
+  ghHint.className = 'hint';
+  ghHint.textContent = 'Commit backups to a private GitHub repo. Needs a token with contents write access (a classic “repo” token, or a fine-grained one with Contents: read & write).';
+  body.appendChild(ghHint);
+
+  const mkField = (label: string, placeholder: string, type = 'text'): { field: HTMLElement; input: HTMLInputElement } => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const l = document.createElement('label');
+    l.textContent = label;
+    const input = document.createElement('input');
+    input.type = type;
+    input.placeholder = placeholder;
+    field.append(l, input);
+    return { field, input };
+  };
+  const repo = mkField('Repository', 'owner/repo');
+  const branch = mkField('Branch', 'main');
+  const path = mkField('File path', 'crate-backup.json');
+  const token = mkField('Access token', 'ghp_… (write-only)', 'password');
+  const ghForm = document.createElement('div');
+  ghForm.className = 'ma-form';
+  ghForm.append(repo.field, branch.field, path.field, token.field);
+  body.appendChild(ghForm);
+
+  const lastLine = document.createElement('p');
+  lastLine.className = 'hint';
+  body.appendChild(lastLine);
+
+  const ghActions = document.createElement('div');
+  ghActions.className = 'sys-actions';
+  const saveCfg = document.createElement('button');
+  saveCfg.className = 'ghost';
+  saveCfg.textContent = 'Save GitHub settings';
+  const pushBtn = document.createElement('button');
+  pushBtn.className = 'ghost';
+  pushBtn.textContent = 'Back up now';
+  const ghRestore = document.createElement('button');
+  ghRestore.className = 'ghost danger';
+  ghRestore.textContent = 'Restore from GitHub';
+  ghActions.append(saveCfg, pushBtn, ghRestore);
+  body.appendChild(ghActions);
+
+  const applyCfg = (c: GithubBackupConfig): void => {
+    repo.input.value = c.repo;
+    branch.input.value = c.branch;
+    path.input.value = c.path;
+    token.input.placeholder = c.hasToken ? '•••••••• saved — leave blank to keep' : 'ghp_… (write-only)';
+    lastLine.textContent = c.lastBackupAt ? `Last GitHub backup: ${new Date(c.lastBackupAt).toLocaleString()}` : 'No GitHub backup yet.';
+  };
+  void client.getGithubBackup().then(applyCfg).catch(() => {});
+
+  saveCfg.addEventListener('click', () => {
+    saveCfg.disabled = true;
+    void client
+      .setGithubBackup({ repo: repo.input.value, branch: branch.input.value, path: path.input.value, ...(token.input.value ? { token: token.input.value } : {}) })
+      .then((c) => { token.input.value = ''; applyCfg(c); showToast('Saved'); })
+      .catch(maErr)
+      .finally(() => (saveCfg.disabled = false));
+  });
+  pushBtn.addEventListener('click', () => {
+    pushBtn.disabled = true;
+    void client
+      .pushGithubBackup()
+      .then((r) => { showToast('Backed up to GitHub'); lastLine.textContent = `Last GitHub backup: ${new Date(r.at).toLocaleString()}`; })
+      .catch(maErr)
+      .finally(() => (pushBtn.disabled = false));
+  });
+  ghRestore.addEventListener('click', () => {
+    if (!confirm('Restore from the backup in GitHub?\n\nThis replaces your current library, shelves, and settings.')) return;
+    ghRestore.disabled = true;
+    void client
+      .restoreGithubBackup()
+      .then((res) => showToast(`Restored ${res.counts.albums} albums · ${res.counts.shelves} shelves`))
+      .catch(maErr)
+      .finally(() => (ghRestore.disabled = false));
+  });
 }
 
 /* ---- Music Assistant: status + source management (Phase 5) ---- */

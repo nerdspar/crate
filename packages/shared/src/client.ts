@@ -27,7 +27,7 @@ import type {
 } from './api.js';
 import type { Settings, Shelf, Track } from './domain.js';
 import type { MaConfigEntry, MaConfigValue, MaProviderManifest, MaSource, MaStatus } from './ma.js';
-import type { BackupImportResult, CrateBackup } from './backup.js';
+import type { BackupImportResult, CrateBackup, GithubBackupConfig } from './backup.js';
 
 export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -300,5 +300,21 @@ export class CrateClient {
   /** Restore from a backup (destructive replace of the user-authored config). */
   importBackup(data: CrateBackup): Promise<BackupImportResult> {
     return this.post('/api/admin/backup/import', data);
+  }
+
+  /** GitHub auto-backup config (token is never returned — only `hasToken`). */
+  getGithubBackup(): Promise<GithubBackupConfig> {
+    return this.req('/api/admin/backup/github');
+  }
+  setGithubBackup(cfg: { repo?: string; branch?: string; path?: string; token?: string }): Promise<GithubBackupConfig> {
+    return this.req('/api/admin/backup/github', { method: 'PUT', body: JSON.stringify(cfg) });
+  }
+  /** Commit the current config to the configured GitHub repo. */
+  pushGithubBackup(): Promise<{ ok: true; url: string; at: string }> {
+    return this.post('/api/admin/backup/github/push', {});
+  }
+  /** Restore from the backup file in the configured GitHub repo (destructive). */
+  restoreGithubBackup(): Promise<BackupImportResult> {
+    return this.post('/api/admin/backup/github/restore', {});
   }
 }

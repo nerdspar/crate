@@ -303,4 +303,24 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
       return reply.code(400).send({ error: e instanceof Error ? e.message : 'Import failed' });
     }
   });
+
+  // --- GitHub auto-backup ---
+  app.get('/api/admin/backup/github', () => service.getGithubConfig());
+  app.put('/api/admin/backup/github', (req) =>
+    service.setGithubConfig(req.body as { repo?: string; branch?: string; path?: string; token?: string }),
+  );
+  app.post('/api/admin/backup/github/push', async (_req, reply) => {
+    try {
+      return await service.pushGithubBackup();
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'Push failed' });
+    }
+  });
+  app.post('/api/admin/backup/github/restore', async (_req, reply) => {
+    try {
+      return await service.restoreGithubBackup();
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'Restore failed' });
+    }
+  });
 }

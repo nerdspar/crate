@@ -3,6 +3,7 @@ import type {
   AlbumDetail,
   BackupImportResult,
   CrateBackup,
+  GithubBackupConfig,
   GlobalSearchResponse,
   LibraryAlbum,
   LibraryAlbumsResponse,
@@ -41,6 +42,7 @@ import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
 import { applyBrightness, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower } from './system.js';
+import { githubGet, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
 const ART_BASE = '/art';
@@ -961,6 +963,70 @@ export class Service {
         shelfItems: data.tables.shelfItems?.length ?? 0,
       },
     };
+  }
+
+  // --- GitHub auto-backup (Phase 5) ---------------------------------------
+  // Config lives under dotted settings keys (kept out of the typed Settings object and
+  // never returned to the client — only whether a token is present).
+
+  private githubTarget(): GithubTarget | null {
+    const cfg = this.db.getRaw<{ repo?: string; branch?: string; path?: string }>('backup.github', {});
+    if (!cfg.repo) return null;
+    return {
+      repo: cfg.repo,
+      branch: cfg.branch || 'main',
+      path: cfg.path || 'crate-backup.json',
+      token: this.db.getRaw<string>('backup.github.token', ''),
+    };
+  }
+
+  getGithubConfig(): GithubBackupConfig {
+    const cfg = this.db.getRaw<{ repo?: string; branch?: string; path?: string }>('backup.github', {});
+    return {
+      repo: cfg.repo ?? '',
+      branch: cfg.branch ?? 'main',
+      path: cfg.path ?? 'crate-backup.json',
+      hasToken: !!this.db.getRaw<string>('backup.github.token', ''),
+      lastBackupAt: this.db.getRaw<string | null>('backup.github.lastAt', null),
+    };
+  }
+
+  setGithubConfig(input: { repo?: string; branch?: string; path?: string; token?: string }): GithubBackupConfig {
+    const prev = this.db.getRaw<{ repo?: string; branch?: string; path?: string }>('backup.github', {});
+    this.db.setRaw('backup.github', {
+      repo: (input.repo ?? prev.repo ?? '').trim(),
+      branch: (input.branch ?? prev.branch ?? 'main').trim() || 'main',
+      path: (input.path ?? prev.path ?? 'crate-backup.json').trim() || 'crate-backup.json',
+    });
+    // The token is write-only: replace it only when a non-empty value is supplied.
+    if (typeof input.token === 'string' && input.token.trim()) {
+      this.db.setRaw('backup.github.token', input.token.trim());
+    }
+    return this.getGithubConfig();
+  }
+
+  async pushGithubBackup(): Promise<{ ok: true; url: string; at: string }> {
+    const t = this.githubTarget();
+    if (!t) throw new Error('Set a GitHub repository first.');
+    if (!t.token) throw new Error('Add a GitHub token first.');
+    const at = new Date().toISOString();
+    const { url } = await githubPush(t, JSON.stringify(this.exportBackup(), null, 2), `Crate backup ${at}`);
+    this.db.setRaw('backup.github.lastAt', at);
+    return { ok: true, url, at };
+  }
+
+  async restoreGithubBackup(): Promise<BackupImportResult> {
+    const t = this.githubTarget();
+    if (!t) throw new Error('Set a GitHub repository first.');
+    if (!t.token) throw new Error('Add a GitHub token first.');
+    let data: CrateBackup;
+    try {
+      data = JSON.parse(await githubGet(t)) as CrateBackup;
+    } catch (e) {
+      if (e instanceof SyntaxError) throw new Error('The backup file in GitHub isn’t valid JSON.');
+      throw e;
+    }
+    return this.importBackup(data);
   }
 
   async setBrightness(level: number): Promise<SystemStatus> {

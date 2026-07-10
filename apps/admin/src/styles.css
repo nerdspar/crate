@@ -390,6 +390,10 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .ma-doclink { color: var(--brass); font-size: 0.85rem; display: inline-block; margin-bottom: 0.6rem; }
 .ma-form { display: flex; flex-direction: column; gap: 0.7rem; max-width: 460px; }
 .ma-form .field { margin: 0; }
+.ma-form .field input[type='text'], .ma-form .field input[type='password'], .ma-form .field input[type='number'], .ma-form .field select {
+  background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.6rem; font: inherit;
+}
+.ma-form .field input:focus, .ma-form .field select:focus { border-color: var(--brass); outline: none; }
 .ma-advanced { border-top: 1px solid var(--line); padding-top: 0.5rem; margin-top: 0.2rem; }
 .ma-advanced summary { color: var(--ink-dim); cursor: pointer; font-size: 0.9rem; }
 .ma-advanced .field { margin-top: 0.6rem; }
