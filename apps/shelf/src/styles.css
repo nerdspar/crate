@@ -37,7 +37,7 @@ body {
   display: flex;
   align-items: flex-end;
   height: 100%;
-  padding: 2vh 6vw 7vh 6vw;
+  padding: 3.5vh 6vw; /* symmetric top/bottom; halved from the old 7vh bottom so albums grow */
   gap: 3px;
 }
 
@@ -46,7 +46,7 @@ body {
   z-index: 1; /* above the glow (0); the open spine goes to 3. Keeps the glow reliably BEHIND
                  without a negative z-index, which can mis-composite in front of these 3D
                  (perspective/preserve-3d) layers on some GPUs. */
-  height: 93%;
+  height: 100%; /* fill the shelf's content box — no hidden gap above, so top/bottom read even */
   flex: 0 0 auto;
   cursor: pointer;
   perspective: 1400px;

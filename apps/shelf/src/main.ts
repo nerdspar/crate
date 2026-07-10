@@ -193,7 +193,7 @@ function coverW(): number {
   if (shelf.clientHeight !== coverWCache.h) {
     const cs = getComputedStyle(shelf);
     const contentH = shelf.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    coverWCache = { h: shelf.clientHeight, v: contentH * 0.93 }; // 0.93 = `.spine { height: 93% }`
+    coverWCache = { h: shelf.clientHeight, v: contentH }; // = `.spine { height: 100% }` of the content box → square cover
   }
   return coverWCache.v;
 }
