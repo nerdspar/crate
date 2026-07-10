@@ -1891,7 +1891,6 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   branch.placeholder = 'main';
   branch.value = cfg.branch;
   branchField.appendChild(branch);
-  form.appendChild(branchField);
 
   const pathField = field('File path');
   const path = document.createElement('input');
@@ -1899,7 +1898,11 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   path.placeholder = 'crate-backup.json';
   path.value = cfg.path;
   pathField.appendChild(path);
-  form.appendChild(pathField);
+  const pathNote = document.createElement('p');
+  pathNote.className = 'field-desc';
+  pathNote.textContent = 'Where the backup file lives in the repo. The default is fine — change it only to keep several Crate installs in one repo, or to use a subfolder.';
+  pathField.appendChild(pathNote);
+  // Branch + file path are rarely changed; they're tucked into an Advanced disclosure below.
 
   const tokenField = field('Access token');
   const token = document.createElement('input');
@@ -1928,6 +1931,14 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   });
   autoField.appendChild(autoSel);
   form.appendChild(autoField);
+
+  // Advanced: branch + file path — sensible defaults; only matters for shared repos / subfolders.
+  const advanced = document.createElement('details');
+  advanced.className = 'ma-advanced';
+  const advSummary = document.createElement('summary');
+  advSummary.textContent = 'Advanced';
+  advanced.append(advSummary, branchField, pathField);
+  form.appendChild(advanced);
 
   // Status line: last attempt (+ status) and next scheduled run.
   const status = document.createElement('p');
