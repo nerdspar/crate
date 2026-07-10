@@ -578,7 +578,8 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 
 #ledge {
   position: absolute; left: 0; right: 0; bottom: 0;
-  height: 7vh;
+  height: 3.5vh; /* MUST equal #shelf's padding-bottom so the spines rest on the ledge's top
+                    edge instead of sliding behind it. Matches the top margin for symmetry. */
   background: linear-gradient(180deg, var(--shelf), #0d0b0e);
   border-top: 1px solid rgba(255,255,255,0.06);
   pointer-events: none;
@@ -587,7 +588,7 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 /* ---------- Settings ---------- */
 #gear {
   position: absolute; right: 1.6vw; bottom: 0;
-  height: 7vh; display: flex; align-items: center;
+  height: 3.5vh; display: flex; align-items: center; /* sit within the (now shorter) ledge */
   background: transparent; color: rgba(236,231,221,0.28);
   font-size: 2.6vh; padding: 0 1.2vw;
   z-index: 5;
