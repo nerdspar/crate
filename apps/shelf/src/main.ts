@@ -538,6 +538,7 @@ function sizeFaces(): void {
     el.style.setProperty('--spine-w', sw + 'px');
     el.style.width = el.classList.contains('open') ? openWidth(el) + 'px' : sw + 'px';
   });
+  cumLeft = null; // spine widths just changed — settledLeft's cache is stale
 }
 window.addEventListener('resize', sizeFaces);
 
@@ -602,14 +603,27 @@ function closeAlbum(): void {
   groupSelect = null; // leaving the card exits any in-progress grouping
 }
 
-function settledLeft(i: number): number {
+// Cumulative left offset of every spine (paddingLeft + Σ spine-w + gap). Caching it makes each
+// drag-step lookup O(1) instead of a getComputedStyle (style recalc) + per-child parse every call.
+// Rebuilt lazily; invalidated by sizeFaces (widths change) and by a spine-count mismatch.
+let cumLeft: number[] | null = null;
+function rebuildCumLeft(): void {
   const cs = getComputedStyle(shelf);
   const gap = parseFloat(cs.columnGap) || 3;
-  let x = parseFloat(cs.paddingLeft);
-  for (let j = 0; j < i; j++) {
-    x += parseFloat((shelf.children[j] as HTMLElement).style.getPropertyValue('--spine-w')) + gap;
+  const n = shelf.children.length;
+  const arr = new Array<number>(n + 1);
+  let x = parseFloat(cs.paddingLeft) || 0;
+  for (let j = 0; j < n; j++) {
+    arr[j] = x;
+    x += (parseFloat((shelf.children[j] as HTMLElement).style.getPropertyValue('--spine-w')) || 0) + gap;
   }
-  return x;
+  arr[n] = x;
+  cumLeft = arr;
+}
+function settledLeft(i: number): number {
+  if (!cumLeft || cumLeft.length !== shelf.children.length + 1) rebuildCumLeft();
+  const c = cumLeft as number[];
+  return c[Math.max(0, Math.min(i, c.length - 1))] as number;
 }
 
 /** Minimal scroll for an opened album: keep it exactly in place unless the flipped-open
