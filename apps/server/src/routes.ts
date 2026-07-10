@@ -63,10 +63,24 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     enabled: auth.enabled(),
     authed: auth.enabled() ? auth.authed(req.headers.cookie) : true,
   }));
+  // Brute-force + scrypt-CPU-DoS guard: exponential backoff per client IP after failed logins.
+  // During a backoff we 429 BEFORE running the (deliberately slow) scrypt verify.
+  const loginFails = new Map<string, { count: number; until: number }>();
   app.post('/api/auth/login', (req, reply) => {
     const { passphrase } = (req.body ?? {}) as { passphrase?: string };
     if (!auth.enabled()) return { ok: true };
-    if (!auth.verifyPassphrase(passphrase ?? '')) return reply.code(401).send({ error: 'Wrong passphrase' });
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const rec = loginFails.get(key);
+    if (rec && now < rec.until) return reply.code(429).send({ error: 'Too many attempts — try again shortly' });
+    if (!auth.verifyPassphrase(passphrase ?? '')) {
+      // Keep escalating unless the last backoff aged out (>10 min), then reset the streak.
+      const count = (rec && now - rec.until < 10 * 60_000 ? rec.count : 0) + 1;
+      const wait = count <= 2 ? 0 : Math.min(30_000, 2 ** (count - 3) * 1000); // 0,0,1s,2s,4s,…,30s
+      loginFails.set(key, { count, until: now + wait });
+      return reply.code(401).send({ error: 'Wrong passphrase' });
+    }
+    loginFails.delete(key);
     void reply.header('set-cookie', auth.setCookieHeader(auth.issueToken()));
     return { ok: true };
   });
