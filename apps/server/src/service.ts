@@ -164,6 +164,15 @@ export class Service {
     return this.getMaConnection();
   }
 
+  /** First-run onboarding flag. */
+  getOnboarding(): { done: boolean } {
+    return { done: this.db.getRaw<boolean>('onboarding.done', false) };
+  }
+  completeOnboarding(): { done: boolean } {
+    this.db.setRaw('onboarding.done', true);
+    return { done: true };
+  }
+
   /** Verify a URL+token (falling back to the stored ones) without touching the live connection. */
   async testMaConnection(input: { url?: string; token?: string }): Promise<{ ok: boolean; serverVersion: string | null }> {
     const url = (input.url?.trim() || this.db.getRaw<string>('ma.url', this.cfg.maUrl)).replace(/\/+$/, '');

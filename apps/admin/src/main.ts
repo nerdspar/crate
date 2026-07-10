@@ -2479,6 +2479,176 @@ function connectWs(): void {
 }
 connectWs();
 
+/* ================= Onboarding wizard (first run) ================= */
+type ObNext = (() => Promise<boolean>) | void;
+interface ObCtx {
+  setNext: (label: string, enabled?: boolean) => void;
+}
+function obErr(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  const m = /\{"error":"(.*?)"\}/.exec(raw);
+  return (m ? m[1]! : 'Failed').replace(/^\d+:\s*/, '');
+}
+
+async function maybeOnboard(): Promise<void> {
+  const force = location.search.includes('onboarding');
+  let done = true;
+  try {
+    done = (await client.getOnboarding()).done;
+  } catch {
+    done = true; // if we can't tell, don't nag
+  }
+  if (done && !force) return;
+  if (!force) {
+    // An existing install already talking to MA doesn't need the wizard — mark it done quietly.
+    const conn = await client.getMaConnection().catch(() => null);
+    if (conn?.connected && conn.hasToken) {
+      void client.completeOnboarding();
+      return;
+    }
+  }
+  buildOnboarding();
+}
+
+function buildOnboarding(): void {
+  const ov = document.createElement('div');
+  ov.id = 'onboarding';
+  ov.innerHTML =
+    '<div class="ob-card">' +
+    '<button class="ob-skip">Skip setup</button>' +
+    '<img class="ob-logo" alt="Crate">' +
+    '<div class="ob-body"></div>' +
+    '<div class="ob-nav"><button class="ob-back ghost" hidden>Back</button><div class="ob-dots"></div><button class="ob-next">Continue</button></div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  (ov.querySelector('.ob-logo') as HTMLImageElement).src = crateMarkMono;
+  const body = ov.querySelector('.ob-body') as HTMLElement;
+  const backBtn = ov.querySelector('.ob-back') as HTMLButtonElement;
+  const nextBtn = ov.querySelector('.ob-next') as HTMLButtonElement;
+  const dots = ov.querySelector('.ob-dots') as HTMLElement;
+  (ov.querySelector('.ob-skip') as HTMLButtonElement).addEventListener('click', () => {
+    void client.completeOnboarding().catch(() => {});
+    ov.remove();
+  });
+
+  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obPlaylists, obSpeakers, obDone];
+  let i = 0;
+  let onNext: ObNext;
+
+  const render = async (): Promise<void> => {
+    body.innerHTML = '';
+    backBtn.hidden = i === 0;
+    nextBtn.textContent = 'Continue';
+    nextBtn.disabled = false;
+    dots.innerHTML = steps.map((_, k) => `<span class="ob-dot${k === i ? ' on' : ''}"></span>`).join('');
+    onNext = await steps[i]!(body, { setNext: (label, enabled = true) => { nextBtn.textContent = label; nextBtn.disabled = !enabled; } });
+  };
+  backBtn.addEventListener('click', () => { if (i > 0) { i--; void render(); } });
+  nextBtn.addEventListener('click', async () => {
+    nextBtn.disabled = true;
+    let ok = true;
+    if (onNext) { try { ok = await onNext(); } catch { ok = false; } }
+    nextBtn.disabled = false;
+    if (!ok) return;
+    if (i < steps.length - 1) { i++; void render(); } else ov.remove();
+  });
+  void render();
+}
+
+async function obWelcome(body: HTMLElement): Promise<ObNext> {
+  body.innerHTML =
+    '<h2 class="ob-title">Welcome to Crate</h2>' +
+    '<p class="ob-lead">Let’s connect your music and set up your wall. It only takes a minute.</p>';
+  return undefined;
+}
+
+async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
+  const conn = await client.getMaConnection().catch(() => ({ url: '', hasToken: false, connected: false, serverVersion: null }));
+  body.innerHTML =
+    '<h2 class="ob-title">Connect to Music Assistant</h2>' +
+    '<p class="ob-lead">Crate plays through Music Assistant. Point it at your MA server and paste a long-lived token (create one in MA → your profile).</p>';
+  const field = (label: string, el: HTMLElement): HTMLElement => {
+    const d = document.createElement('div');
+    d.className = 'field';
+    const l = document.createElement('label');
+    l.textContent = label;
+    d.append(l, el);
+    return d;
+  };
+  const url = document.createElement('input');
+  url.type = 'text';
+  url.placeholder = 'http://homeassistant.local:8095';
+  url.value = conn.url;
+  const token = document.createElement('input');
+  token.type = 'password';
+  token.placeholder = conn.hasToken ? 'saved — leave blank to keep it' : 'long-lived token';
+  const form = document.createElement('div');
+  form.className = 'ob-form';
+  form.append(field('Server URL', url), field('Access token', token));
+  const status = document.createElement('p');
+  status.className = 'ob-status';
+  status.textContent = conn.connected ? `Connected · MA ${conn.serverVersion ?? ''}` : 'Not connected yet.';
+  const testBtn = document.createElement('button');
+  testBtn.className = 'ghost';
+  testBtn.textContent = 'Test connection';
+  testBtn.addEventListener('click', () => {
+    testBtn.disabled = true;
+    status.textContent = 'Testing…';
+    void client
+      .testMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) })
+      .then((r) => (status.textContent = `✓ Reached Music Assistant ${r.serverVersion ?? ''}`))
+      .catch((e) => (status.textContent = '✕ ' + obErr(e)))
+      .finally(() => (testBtn.disabled = false));
+  });
+  body.append(form, testBtn, status);
+  ctx.setNext('Connect');
+  return async () => {
+    status.textContent = 'Connecting…';
+    const r = await client.setMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) }).catch(() => null);
+    if (r?.connected) return true;
+    status.textContent = '✕ Couldn’t connect — check the URL and token.';
+    return false;
+  };
+}
+
+async function obPlaylists(body: HTMLElement): Promise<ObNext> {
+  body.innerHTML =
+    '<h2 class="ob-title">Tidy up search</h2>' +
+    '<p class="ob-lead">Music Assistant auto-generates playlists (Random Album, Infinite Mix, Recently played…). Most people hide these so they don’t clutter Crate search.</p>';
+  const wrap = document.createElement('label');
+  wrap.className = 'ob-check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = true;
+  wrap.append(cb, document.createTextNode(' Hide the built-in smart playlists (recommended)'));
+  body.append(wrap);
+  return async () => {
+    await client.setMaBuiltinPlaylists(!cb.checked).catch(() => {}); // checked = hide = disable
+    return true;
+  };
+}
+
+async function obSpeakers(body: HTMLElement): Promise<ObNext> {
+  body.innerHTML = '<h2 class="ob-title">Speakers</h2><p class="ob-lead">Pick which speakers show on the wall — you can change this any time in Settings.</p>';
+  await loadSettingsPanel(); // populates the `settings` + `settingsPlayers` globals
+  const host = document.createElement('div');
+  renderExposureSection(host);
+  host.querySelector('.set-subhead')?.remove(); // we have our own title
+  body.append(host);
+  return undefined;
+}
+
+async function obDone(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
+  body.innerHTML =
+    '<h2 class="ob-title">You’re all set</h2>' +
+    '<p class="ob-lead">Add albums from the <b>Add</b> tab, arrange them under <b>Shelves</b>, and fine-tune the rest in <b>Settings</b> — including streaming sources and GitHub backups.</p>';
+  ctx.setNext('Finish');
+  return async () => {
+    await client.completeOnboarding().catch(() => {});
+    return true;
+  };
+}
+
 /* ================= Init ================= */
 // Crate mark, top-right of each main tab header.
 document.querySelectorAll<HTMLImageElement>('img[data-logo]').forEach((img) => (img.src = crateMarkMono));
@@ -2487,3 +2657,4 @@ updateAddToolbar();
 setContentType('album'); // seeds Add + Shelves for the shared Albums/Playlists choice
 void loadShelvesIndex();
 void loadSettingsPanel();
+void maybeOnboard();

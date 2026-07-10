@@ -275,6 +275,14 @@ export class CrateClient {
   testMaConnection(cfg: { url?: string; token?: string }): Promise<{ ok: boolean; serverVersion: string | null }> {
     return this.post('/api/admin/ma/connection/test', cfg);
   }
+
+  /** First-run onboarding state. */
+  getOnboarding(): Promise<{ done: boolean }> {
+    return this.req('/api/admin/onboarding');
+  }
+  completeOnboarding(): Promise<{ done: boolean }> {
+    return this.post('/api/admin/onboarding/done', {});
+  }
   /** All configured MA providers (filter to type 'music' for manageable sources). */
   getMaSources(): Promise<MaSource[]> {
     return this.req('/api/admin/ma/sources');

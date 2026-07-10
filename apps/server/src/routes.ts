@@ -274,6 +274,10 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
     const b = req.body as { url?: string; token?: string };
     return maCall(reply, () => service.testMaConnection(b));
   });
+
+  // First-run onboarding flag.
+  app.get('/api/admin/onboarding', () => service.getOnboarding());
+  app.post('/api/admin/onboarding/done', () => service.completeOnboarding());
   app.get('/api/admin/ma/sources', (_req, reply) => maCall(reply, () => service.maSources()));
   app.get('/api/admin/ma/providers', (_req, reply) => maCall(reply, () => service.maAvailableProviders()));
   app.post('/api/admin/ma/sources/entries', (req, reply) => {
