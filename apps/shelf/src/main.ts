@@ -3075,9 +3075,6 @@ function renderGlobal(loading: boolean): void {
   bar.appendChild(sourceDropdown(g?.sources ?? []));
   findResults.appendChild(bar);
 
-  // Artists lead the results (tap → their albums + top songs).
-  const artistsRow = artistsRowEl(g?.artists ?? []);
-  if (artistsRow) findResults.appendChild(artistsRow);
   if (!loading) prefetchArtistSongs(g?.artists ?? []); // warm the slow song lists in the background
 
   const cats = document.createElement('div');
@@ -3100,6 +3097,7 @@ function renderGlobal(loading: boolean): void {
   // our own raw growth check only when the server didn't send hasMore (older build). Both are
   // computed from the RAW result count, so they aren't fooled by on-shelf dedup shrinking the list.
   const more = g?.hasMore ?? searchGrew;
+  cats.appendChild(artistsColumn(g?.artists ?? [], loading)); // narrow leading column
   cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, more.albums));
   cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', more.playlists));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', more.songs));
@@ -3180,20 +3178,26 @@ function albumsColumn(
   return col;
 }
 
-/** The leading "Artists" row in search results — a horizontal strip of avatars. */
-function artistsRowEl(artists: SearchArtist[]): HTMLElement | null {
-  if (!artists.length) return null;
-  const wrap = document.createElement('div');
-  wrap.className = 'find-artists';
+/** The leading "Artists" column in search results — a narrow vertical list of avatar chips that
+    scrolls like the Albums/Playlists/Songs columns beside it (tap → their albums + top songs). */
+function artistsColumn(artists: SearchArtist[], loading: boolean): HTMLElement {
+  const col = document.createElement('div');
+  col.className = 'find-cat find-cat-artists';
   const h = document.createElement('div');
   h.className = 'find-cat-h';
   h.textContent = 'Artists';
-  wrap.appendChild(h);
-  const strip = document.createElement('div');
-  strip.className = 'find-artist-strip';
-  artists.slice(0, 12).forEach((a) => strip.appendChild(artistChip(a)));
-  wrap.appendChild(strip);
-  return wrap;
+  col.appendChild(h);
+  const list = document.createElement('div');
+  list.className = 'find-cat-list';
+  if (artists.length) artists.forEach((a) => list.appendChild(artistChip(a)));
+  else {
+    const e = document.createElement('div');
+    e.className = 'find-empty';
+    e.textContent = loading ? 'Searching…' : 'None';
+    list.appendChild(e);
+  }
+  col.appendChild(list);
+  return col;
 }
 function artistChip(a: SearchArtist): HTMLElement {
   const b = document.createElement('button');

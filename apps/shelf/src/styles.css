@@ -1045,8 +1045,11 @@ body.idle #find-grip::after { opacity: 0; }
 }
 /* minmax(0,1fr) (not 1fr) pins each column to a hard third — otherwise a long album title
    forces its column wider than a third. min-width:0 lets the cards truncate inside it. */
-.find-cats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.4vw; min-height: 0; }
+/* Narrow leading Artists column + three equal Albums/Playlists/Songs columns. */
+.find-cats { display: grid; grid-template-columns: 13vh repeat(3, minmax(0, 1fr)); gap: 1.4vw; min-height: 0; }
 .find-cat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.find-cat-artists .find-cat-list { gap: 1.6vh; align-items: center; }
+.find-cat-artists .find-artist { width: 100%; }
 .find-cat-h {
   color: var(--brass); font-size: 1.5vh; font-weight: 700; letter-spacing: 0.14em;
   text-transform: uppercase; padding: 0 0 0.6vh; border-bottom: 1px solid rgba(236,231,221,0.14); margin-bottom: 0.8vh;
