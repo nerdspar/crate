@@ -3,6 +3,7 @@ import type {
   AddPlaylistRequest,
   AddToShelfRequest,
   BrightnessRequest,
+  CrateBackup,
   CreateShelfRequest,
   GroupRequest,
   MaConfigValue,
@@ -287,5 +288,19 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
       await service.maReloadSource(instanceId);
       return { ok: true };
     });
+  });
+
+  // --- Config backup / restore (Phase 5) ---
+  app.get('/api/admin/backup/export', (_req, reply) => {
+    void reply.header('content-disposition', 'attachment; filename="crate-backup.json"');
+    return service.exportBackup();
+  });
+  // A large library can exceed Fastify's 1 MB default body limit — allow a generous ceiling.
+  app.post('/api/admin/backup/import', { bodyLimit: 32 * 1024 * 1024 }, (req, reply) => {
+    try {
+      return service.importBackup(req.body as CrateBackup);
+    } catch (e) {
+      return reply.code(400).send({ error: e instanceof Error ? e.message : 'Import failed' });
+    }
   });
 }

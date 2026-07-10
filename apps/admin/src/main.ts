@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, isSpeaker, type CrateBackup, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1367,6 +1367,7 @@ const CAT_ICON: Record<string, string> = {
   sleep: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
   system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
   ma: '<svg viewBox="0 0 24 24"><path d="M9 17V5l11-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="17" cy="15" r="3"/></svg>',
+  backup: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
 };
 interface SettingsCat {
   id: string;
@@ -1394,6 +1395,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   { id: 'idle', name: 'Idle', render: renderIdleCat },
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
   { id: 'ma', name: 'Music Assistant', render: renderMaCat },
+  { id: 'backup', name: 'Backup', render: renderBackupCat },
   { id: 'system', name: 'System', render: renderSystemCat },
 ];
 
@@ -1720,6 +1722,81 @@ function renderSystemCat(body: HTMLElement): void {
       (status.querySelector('#sys-ip') as HTMLElement).textContent = 'Unavailable';
       (status.querySelector('#sys-ver') as HTMLElement).textContent = '—';
     });
+}
+
+/* ---- Backup: config export / restore (Phase 5) ---- */
+function renderBackupCat(body: HTMLElement): void {
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent = 'Save or restore your Crate configuration — settings, your library and its order, shelves, stacks, and playlist curation. Album artwork re-downloads after a restore.';
+  body.appendChild(intro);
+
+  const head = document.createElement('div');
+  head.className = 'set-subhead';
+  head.textContent = 'Backup file';
+  body.appendChild(head);
+
+  const actions = document.createElement('div');
+  actions.className = 'sys-actions';
+
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'ghost';
+  exportBtn.textContent = 'Export backup';
+  exportBtn.addEventListener('click', () => {
+    exportBtn.disabled = true;
+    void client
+      .exportBackup()
+      .then((data) => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `crate-backup-${(data.exportedAt || '').slice(0, 10) || 'export'}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Backup downloaded');
+      })
+      .catch(maErr)
+      .finally(() => (exportBtn.disabled = false));
+  });
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'application/json,.json';
+  fileInput.style.display = 'none';
+  const restoreBtn = document.createElement('button');
+  restoreBtn.className = 'ghost danger';
+  restoreBtn.textContent = 'Restore from file';
+  restoreBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    void file.text().then((text) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        showToast('That file isn’t valid JSON');
+        return;
+      }
+      if (!parsed || (parsed as { crate?: string }).crate !== 'crate-backup') {
+        showToast('Not a Crate backup file');
+        return;
+      }
+      const when = ((parsed as CrateBackup).exportedAt || '').slice(0, 10);
+      if (!confirm(`Restore this backup${when ? ` from ${when}` : ''}?\n\nThis replaces your current library, shelves, and settings.`)) return;
+      void client
+        .importBackup(parsed as CrateBackup)
+        .then((res) => showToast(`Restored ${res.counts.albums} albums · ${res.counts.shelves} shelves`))
+        .catch(maErr);
+    });
+  });
+
+  actions.append(exportBtn, restoreBtn);
+  body.append(actions, fileInput);
 }
 
 /* ---- Music Assistant: status + source management (Phase 5) ---- */

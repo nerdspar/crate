@@ -1,5 +1,8 @@
+import { BACKUP_VERSION } from '@crate/shared';
 import type {
   AlbumDetail,
+  BackupImportResult,
+  CrateBackup,
   GlobalSearchResponse,
   LibraryAlbum,
   LibraryAlbumsResponse,
@@ -923,6 +926,41 @@ export class Service {
   /** Reload a source. */
   maReloadSource(instanceId: string): Promise<void> {
     return this.ma.reloadSource(instanceId);
+  }
+
+  // --- Backup / restore (Phase 5) -----------------------------------------
+
+  /** A portable snapshot of the user-authored config, for download or GitHub push. */
+  exportBackup(): CrateBackup {
+    return {
+      crate: 'crate-backup',
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      crateVersion: this.cfg.version,
+      tables: this.db.exportConfig(),
+    };
+  }
+
+  /** Restore from a backup (destructive replace). Rejects a non-Crate or newer-format file. */
+  importBackup(data: CrateBackup): BackupImportResult {
+    if (!data || (data as { crate?: string }).crate !== 'crate-backup' || !data.tables) {
+      throw new Error('That doesn’t look like a Crate backup file.');
+    }
+    if (typeof data.version === 'number' && data.version > BACKUP_VERSION) {
+      throw new Error(`This backup is from a newer version of Crate (format v${data.version}).`);
+    }
+    this.db.importConfig(data.tables);
+    // The restored library/settings only take effect once the front-ends reload.
+    this.hub.broadcast({ type: 'reload', app: 'shelf' });
+    this.hub.broadcast({ type: 'reload', app: 'admin' });
+    return {
+      ok: true,
+      counts: {
+        albums: data.tables.albums?.length ?? 0,
+        shelves: data.tables.shelves?.length ?? 0,
+        shelfItems: data.tables.shelfItems?.length ?? 0,
+      },
+    };
   }
 
   async setBrightness(level: number): Promise<SystemStatus> {

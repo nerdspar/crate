@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DEFAULT_SETTINGS, type Album, type AlbumOverride, type Palette, type Player, type Settings, type Shelf, type ShelfKind, type Stack } from '@crate/shared';
+import { DEFAULT_SETTINGS, type Album, type AlbumOverride, type CrateBackupTables, type Palette, type Player, type Settings, type Shelf, type ShelfKind, type Stack } from '@crate/shared';
 
 export interface AlbumRow {
   id: string;
@@ -492,6 +492,57 @@ export class Db {
     this.db
       .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .run(key, JSON.stringify(value));
+  }
+
+  // --- Backup / restore ---------------------------------------------------
+
+  /** Snapshot the user-authored config (no art cache, song cache, players, or dotted
+      device/secret settings) for export. */
+  exportConfig(): CrateBackupTables {
+    const all = <T>(sql: string): T[] => this.db.prepare(sql).all() as T[];
+    return {
+      settings: all("SELECT key, value FROM settings WHERE key NOT LIKE '%.%'"),
+      albums: all(
+        `SELECT id, provider_uri, provider, title, artist, year, artwork_url,
+                spine_width, total_duration, added_at, play_count, overrides
+         FROM albums`,
+      ),
+      shelfItems: all('SELECT album_id, kind, sort_order, stack_id FROM shelf_items'),
+      stacks: all('SELECT id, name, sort_order FROM stacks'),
+      shelves: all('SELECT id, name, kind, sort_order FROM shelves'),
+      shelfMembers: all('SELECT shelf_id, album_id, sort_order FROM shelf_members'),
+      playlistSongState: all('SELECT shelf_id, track_uri, sort_order, hidden FROM playlist_song_state'),
+    };
+  }
+
+  /** Replace all user-authored config with a backup snapshot, in one transaction.
+      Device/secret settings (dotted keys) and regenerable caches are left untouched. */
+  importConfig(t: CrateBackupTables): void {
+    const ins = <T>(sql: string, rows: T[] | undefined): void => {
+      const stmt = this.db.prepare(sql);
+      for (const r of rows ?? []) stmt.run(r as Record<string, unknown>);
+    };
+    const run = this.db.transaction(() => {
+      this.db.exec(
+        'DELETE FROM playlist_song_state; DELETE FROM shelf_members; DELETE FROM shelf_items;' +
+          ' DELETE FROM shelves; DELETE FROM stacks; DELETE FROM albums;',
+      );
+      this.db.prepare("DELETE FROM settings WHERE key NOT LIKE '%.%'").run();
+      ins(
+        `INSERT INTO albums (id, provider_uri, provider, title, artist, year, artwork_url,
+           spine_width, total_duration, added_at, play_count, overrides)
+         VALUES (@id, @provider_uri, @provider, @title, @artist, @year, @artwork_url,
+           @spine_width, @total_duration, @added_at, @play_count, @overrides)`,
+        t.albums,
+      );
+      ins('INSERT INTO stacks (id, name, sort_order) VALUES (@id, @name, @sort_order)', t.stacks);
+      ins('INSERT INTO shelf_items (album_id, kind, sort_order, stack_id) VALUES (@album_id, @kind, @sort_order, @stack_id)', t.shelfItems);
+      ins('INSERT INTO shelves (id, name, kind, sort_order) VALUES (@id, @name, @kind, @sort_order)', t.shelves);
+      ins('INSERT INTO shelf_members (shelf_id, album_id, sort_order) VALUES (@shelf_id, @album_id, @sort_order)', t.shelfMembers);
+      ins('INSERT INTO playlist_song_state (shelf_id, track_uri, sort_order, hidden) VALUES (@shelf_id, @track_uri, @sort_order, @hidden)', t.playlistSongState);
+      ins('INSERT INTO settings (key, value) VALUES (@key, @value)', t.settings);
+    });
+    run();
   }
 }
 

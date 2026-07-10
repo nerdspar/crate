@@ -27,6 +27,7 @@ import type {
 } from './api.js';
 import type { Settings, Shelf, Track } from './domain.js';
 import type { MaConfigEntry, MaConfigValue, MaProviderManifest, MaSource, MaStatus } from './ma.js';
+import type { BackupImportResult, CrateBackup } from './backup.js';
 
 export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -289,5 +290,15 @@ export class CrateClient {
   /** Reload a source. */
   reloadMaSource(instanceId: string): Promise<{ ok: true }> {
     return this.post(`/api/admin/ma/sources/${encodeURIComponent(instanceId)}/reload`, {});
+  }
+
+  // --- Config backup / restore (Phase 5) ---
+  /** Download the full config snapshot (settings, library, shelves, curation). */
+  exportBackup(): Promise<CrateBackup> {
+    return this.req('/api/admin/backup/export');
+  }
+  /** Restore from a backup (destructive replace of the user-authored config). */
+  importBackup(data: CrateBackup): Promise<BackupImportResult> {
+    return this.post('/api/admin/backup/import', data);
   }
 }
