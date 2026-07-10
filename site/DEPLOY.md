@@ -72,10 +72,12 @@ SITE_DIR=/mnt/tank/apps/crate-site
 
 ### 3B. Launch it
 
-**Option 1 — TrueNAS UI (Custom App):** Apps → **Discover Apps** → **Custom App**
-→ **"Install via YAML"**. Paste the contents of `docker-compose.yml`. In the
-same screen there's an environment section — add `TUNNEL_TOKEN` and `SITE_DIR`
-there (the UI has no `.env` file). Save & deploy.
+**Option 1 — TrueNAS UI (Custom App), so it shows in the Apps list:** the UI's
+YAML installer does **not** read a `.env` file, so use `truenas-custom-app.yaml`
+(no `${VAR}` substitution) instead of `docker-compose.yml`. Find-and-replace its
+two placeholders — `POOL` (your pool name) and `PASTE_TUNNEL_TOKEN` — then:
+Apps → **Discover Apps** → **Custom App** → **"Install via YAML"**, name it
+`crate-site`, paste the edited YAML, and **Save**.
 
 **Option 2 — Shell (simplest, and what I'd use):** SSH into TrueNAS and run:
 

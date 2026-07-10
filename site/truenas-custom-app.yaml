@@ -1,0 +1,38 @@
+# Crate landing page — ready to paste into TrueNAS SCALE:
+#   Apps -> Discover Apps -> Custom App -> "Install via YAML"
+#
+# Unlike docker-compose.yml, this file has NO ${VARIABLE} substitution, because
+# the TrueNAS Custom App installer does not read a .env file. Before pasting,
+# do a find-and-replace on the two placeholders:
+#
+#   POOL                -> your storage pool name (the site lives in the
+#                          `crate-website` dataset -> /mnt/<pool>/crate-website)
+#   PASTE_TUNNEL_TOKEN  -> the eyJ... connector token from Cloudflare Zero Trust
+#
+# The static files must already be in the dataset (rsync step in DEPLOY.md).
+
+services:
+  site:
+    image: nginx:1.27-alpine
+    container_name: crate-site
+    restart: unless-stopped
+    volumes:
+      - /mnt/POOL/crate-website/index.html:/usr/share/nginx/html/index.html:ro
+      - /mnt/POOL/crate-website/screenshots:/usr/share/nginx/html/screenshots:ro
+      - /mnt/POOL/crate-website/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [edge]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: crate-site-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: "PASTE_TUNNEL_TOKEN"
+    depends_on:
+      - site
+    networks: [edge]
+
+networks:
+  edge:
+    driver: bridge
