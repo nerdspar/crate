@@ -763,7 +763,9 @@ body.find-open #cc-grip { pointer-events: none; }
   width: 18vh; height: 18vh; flex-shrink: 0; border-radius: 1vh;
   background: #26232a center/cover no-repeat;
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; /* centre the placeholder glyph */
 }
+.cc-art-glyph { width: 44%; height: 44%; color: var(--ink-dim); opacity: 0.7; }
 .cc-np-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.8vh; }
 .cc-title {
   font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 600;

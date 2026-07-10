@@ -82,6 +82,8 @@ const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" ari
 const ICON_SHUFFLE = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>';
 const ICON_REPEAT = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
 const ICON_ARROW = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15"/><path d="M13 6l6 6-6 6"/></svg>';
+// Cover-art placeholder for external sources (TV audio, line-in, AirPlay…) that carry no artwork.
+const ICON_SOURCE = '<svg class="cc-art-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M8.8 8.8a4.5 4.5 0 0 0 0 6.4"/><path d="M15.2 8.8a4.5 4.5 0 0 1 0 6.4"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4"/><path d="M17.7 6.3a8 8 0 0 1 0 11.4"/></svg>';
 /** How long to hold a spine before its long-press (group-select) fires. Fixed — a quarter second. */
 const LONG_PRESS_MS = 250;
 const TRACK_EQ = '<span class="track-eq"><i></i><i></i><i></i></span>';
@@ -2171,6 +2173,7 @@ function renderCCNow(): void {
   const title = song ?? albumName ?? '';
   if (now.state === 'idle' || !title) {
     ccArt.style.backgroundImage = '';
+    ccArt.innerHTML = '';
     ccTitle.textContent = 'Nothing playing';
     ccArtistEl.textContent = '';
     ccPlayPauseBtn.innerHTML = ICON_PLAY;
@@ -2179,6 +2182,7 @@ function renderCCNow(): void {
   }
   const art = it?.artworkUrl ?? np?.artworkUrl ?? null;
   ccArt.style.backgroundImage = art ? `url('${art}')` : '';
+  ccArt.innerHTML = art ? '' : ICON_SOURCE; // external source with no cover → placeholder glyph
   // SONG as the headline, artist + album beneath. External single-line sources (TV Audio, line-in)
   // have no artist/album, so the subtitle is empty — .cc-sub:empty collapses and the headline drops
   // right down onto the seek (same big header text as a song, just closer to the line).
