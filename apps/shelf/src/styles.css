@@ -753,7 +753,11 @@ body.find-open #cc-grip { pointer-events: none; }
 #cc-sheet .cc-handle { order: 2; margin: 0.4vh 0 0; }
 
 /* Now playing — a full-width hero: art · title/seek · transport. */
-.cc-np { display: flex; gap: 4vw; align-items: center; }
+/* The meta stretches to the artwork's height; margin-top:auto on the seek pins title+artist to the
+   art's top edge and pushes seek+times to its foot — so the seek sits low, close to the transport
+   row below. A title that wraps grows downward from the top, shrinking the auto gap; once the meta
+   is taller than the art the whole block grows and pushes the transport + rooms down — never clips. */
+.cc-np { display: flex; gap: 4vw; align-items: stretch; }
 .cc-art {
   width: 16vh; height: 16vh; flex-shrink: 0; border-radius: 1vh;
   background: #26232a center/cover no-repeat;
@@ -762,10 +766,10 @@ body.find-open #cc-grip { pointer-events: none; }
 .cc-np-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.8vh; }
 .cc-title {
   font-family: 'Newsreader Variable', serif; font-size: 4vh; font-weight: 600;
-  color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ink); line-height: 1.12; /* wrap long titles (they grow the sheet, not clip) */
 }
 .cc-sub { font-size: 2.4vh; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cc-seek { height: 0.7vh; border-radius: 999px; background: rgba(236,231,221,0.15); margin-top: 0.6vh; }
+.cc-seek { height: 0.7vh; border-radius: 999px; background: rgba(236,231,221,0.15); margin-top: auto; }
 .cc-seek-fill { height: 100%; width: 0; border-radius: 999px; background: var(--ink); }
 .cc-times { display: flex; justify-content: space-between; font-size: 1.9vh; color: var(--ink); opacity: 0.72; font-variant-numeric: tabular-nums; }
 
@@ -968,7 +972,7 @@ body.find-open #cc-grip { pointer-events: none; }
 
 /* Shelf switcher (top of the Find bar): horizontal Albums/Playlists tabs + a list of shelves. */
 #find-shelves { display: flex; flex-direction: column; gap: 1.2vh; }
-.find-shelf-tabs { display: flex; gap: 4vw; border-bottom: 1px solid rgba(236,231,221,0.12); }
+.find-shelf-tabs { display: flex; gap: 2vw; border-bottom: 1px solid rgba(236,231,221,0.12); }
 .find-shelf-tab {
   background: transparent; border: none; border-bottom: 3px solid transparent; border-radius: 0;
   margin-bottom: -1px; color: var(--ink-dim);
