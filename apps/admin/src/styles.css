@@ -364,3 +364,34 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
   h1 { font-size: 2.6rem; }
   .pane-head h1 { font-size: 2.6rem; }
 }
+
+/* ---------- Music Assistant settings (Phase 5) ---------- */
+.ma-status { border: 1px solid var(--line); border-radius: 10px; padding: 0.7rem 0.8rem; margin-bottom: 0.5rem; background: var(--panel-2); }
+.ma-status .svc-row { margin-bottom: 0.5rem; }
+.ma-status-actions { margin-top: 0.2rem; }
+.ma-sources .svc-row { padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+.ma-src-row { gap: 0.7rem; }
+.ma-src-row .svc-name { flex: 1; display: flex; align-items: center; gap: 0.45rem; }
+.ma-tag { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim); border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.4rem; }
+.ma-row-actions { display: flex; gap: 0.3rem; flex: none; }
+.ma-iconbtn { width: 2rem; height: 2rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-dim); font-size: 1rem; cursor: pointer; }
+.ma-iconbtn:active { transform: scale(0.95); }
+.ma-iconbtn.danger { color: var(--accent, #c83a3a); border-color: color-mix(in srgb, var(--accent, #c83a3a) 45%, var(--line)); }
+.ma-add { margin-top: 0.9rem; }
+.ma-back { background: none; border: none; color: var(--brass); font-size: 1rem; padding: 0.2rem 0; cursor: pointer; margin-bottom: 0.4rem; }
+.ma-prov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.6rem; margin-top: 0.5rem; }
+.ma-prov { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.9rem 0.5rem; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); color: var(--ink); cursor: pointer; text-align: center; }
+.ma-prov:active { transform: scale(0.98); }
+.ma-prov-ico { width: 2.6rem; height: 2.6rem; display: grid; place-items: center; }
+.ma-prov-ico svg { width: 100%; height: 100%; }
+.ma-prov-name { font-size: 0.85rem; line-height: 1.2; }
+.ma-form-title { display: flex; align-items: center; gap: 0.6rem; font-size: 1.2rem; font-weight: 700; margin: 0.2rem 0 0.3rem; }
+.ma-form-title .ma-prov-ico { width: 2rem; height: 2rem; }
+.ma-doclink { color: var(--brass); font-size: 0.85rem; display: inline-block; margin-bottom: 0.6rem; }
+.ma-form { display: flex; flex-direction: column; gap: 0.7rem; max-width: 460px; }
+.ma-form .field { margin: 0; }
+.ma-advanced { border-top: 1px solid var(--line); padding-top: 0.5rem; margin-top: 0.2rem; }
+.ma-advanced summary { color: var(--ink-dim); cursor: pointer; font-size: 0.9rem; }
+.ma-advanced .field { margin-top: 0.6rem; }
+.ma-alert { font-size: 0.82rem; color: var(--ink); background: color-mix(in srgb, var(--brass) 10%, transparent); border: 1px solid color-mix(in srgb, var(--brass) 30%, var(--line)); border-radius: 8px; padding: 0.5rem 0.6rem; margin: 0; }
+.ma-save { margin-top: 0.4rem; align-self: flex-start; border-color: var(--brass); color: var(--ink); }

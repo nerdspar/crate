@@ -26,6 +26,7 @@ import type {
   VolumeRequest,
 } from './api.js';
 import type { Settings, Shelf, Track } from './domain.js';
+import type { MaConfigEntry, MaConfigValue, MaProviderManifest, MaSource, MaStatus } from './ma.js';
 
 export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -254,5 +255,39 @@ export class CrateClient {
       Music Assistant (reconnects its websocket). */
   restartService(id: ServiceHealth['id']): Promise<{ ok: boolean }> {
     return this.post('/api/system/services/restart', { id });
+  }
+
+  // --- Music Assistant management (Phase 5) ---
+  /** MA connection + topology status for the Settings card. */
+  getMaStatus(): Promise<MaStatus> {
+    return this.req('/api/admin/ma/status');
+  }
+  /** All configured MA providers (filter to type 'music' for manageable sources). */
+  getMaSources(): Promise<MaSource[]> {
+    return this.req('/api/admin/ma/sources');
+  }
+  /** Music-provider types available to add. */
+  getMaProviders(): Promise<MaProviderManifest[]> {
+    return this.req('/api/admin/ma/providers');
+  }
+  /** Config-flow fields for adding/configuring a source. Re-call with `action` to advance
+      an interactive step (e.g. an OAuth "Authenticate" button). */
+  getMaSourceEntries(
+    domain: string,
+    opts: { instanceId?: string; action?: string; values?: Record<string, MaConfigValue> } = {},
+  ): Promise<MaConfigEntry[]> {
+    return this.post('/api/admin/ma/sources/entries', { domain, ...opts });
+  }
+  /** Add (no instanceId) or update a source. */
+  saveMaSource(domain: string, values: Record<string, MaConfigValue>, instanceId?: string): Promise<MaSource> {
+    return this.post('/api/admin/ma/sources', { domain, values, ...(instanceId ? { instanceId } : {}) });
+  }
+  /** Remove a source, incl. MA's default `builtin` source. */
+  removeMaSource(instanceId: string): Promise<{ ok: true }> {
+    return this.req(`/api/admin/ma/sources/${encodeURIComponent(instanceId)}`, { method: 'DELETE' });
+  }
+  /** Reload a source. */
+  reloadMaSource(instanceId: string): Promise<{ ok: true }> {
+    return this.post(`/api/admin/ma/sources/${encodeURIComponent(instanceId)}/reload`, {});
   }
 }

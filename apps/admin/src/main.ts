@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
+import { CrateClient, isSpeaker, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateMarkMono from './crate-mark-mono.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1366,6 +1366,7 @@ const CAT_ICON: Record<string, string> = {
   idle: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   sleep: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg>',
   system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
+  ma: '<svg viewBox="0 0 24 24"><path d="M9 17V5l11-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="17" cy="15" r="3"/></svg>',
 };
 interface SettingsCat {
   id: string;
@@ -1392,6 +1393,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
+  { id: 'ma', name: 'Music Assistant', render: renderMaCat },
   { id: 'system', name: 'System', render: renderSystemCat },
 ];
 
@@ -1718,6 +1720,305 @@ function renderSystemCat(body: HTMLElement): void {
       (status.querySelector('#sys-ip') as HTMLElement).textContent = 'Unavailable';
       (status.querySelector('#sys-ver') as HTMLElement).textContent = '—';
     });
+}
+
+/* ---- Music Assistant: status + source management (Phase 5) ---- */
+let maProvidersCache: MaProviderManifest[] | null = null;
+
+function maBackLink(label: string, onClick: () => void): HTMLElement {
+  const b = document.createElement('button');
+  b.className = 'ma-back';
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+function maErr(e: unknown): void {
+  // MA failures come back as "… → 502 … {"error":"<message>"}" — surface just the message.
+  const raw = e instanceof Error ? e.message : String(e);
+  const m = /\{"error":"(.*?)"\}/.exec(raw);
+  showToast(m ? m[1]! : 'Failed');
+}
+function maDesc(field: HTMLElement, text: string): void {
+  const d = document.createElement('p');
+  d.className = 'field-desc';
+  d.textContent = text;
+  field.appendChild(d);
+}
+
+function drawMaStatus(el: HTMLElement, st: MaStatus): void {
+  el.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'svc-row';
+  const detail = st.connected
+    ? `${st.host}${st.serverVersion ? ` · v${st.serverVersion}` : ''}${st.schemaVersion ? ` · schema ${st.schemaVersion}` : ''}`
+    : st.host;
+  row.innerHTML =
+    `<span class="svc-dot ${st.connected ? 'up' : 'down'}"></span>` +
+    `<span class="svc-name">${st.connected ? 'Connected' : 'Disconnected'}</span>` +
+    `<span class="svc-detail">${esc(detail)}</span>`;
+  el.appendChild(row);
+  const actions = document.createElement('div');
+  actions.className = 'sys-actions ma-status-actions';
+  const reconnect = document.createElement('button');
+  reconnect.className = 'ghost';
+  reconnect.textContent = 'Reconnect';
+  reconnect.addEventListener('click', () =>
+    void client.restartService('musicAssistant').then(() => showToast('Reconnecting…')).catch(maErr),
+  );
+  actions.appendChild(reconnect);
+  el.appendChild(actions);
+  if (!st.managesMa) {
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Music Assistant runs on another host, so Crate configures it over the network but can’t restart it — restart it where it’s hosted if needed.';
+    el.appendChild(note);
+  }
+}
+
+function drawMaSources(list: HTMLElement, sources: MaSource[], reload: () => void): void {
+  list.innerHTML = '';
+  if (!sources.length) {
+    list.innerHTML = '<p class="hint">No music sources configured.</p>';
+    return;
+  }
+  for (const s of sources) {
+    const row = document.createElement('div');
+    row.className = 'svc-row ma-src-row';
+    const ok = s.enabled && !s.lastError;
+    row.innerHTML =
+      `<span class="svc-dot ${ok ? 'up' : 'down'}"></span>` +
+      `<span class="svc-name">${esc(s.name)}${s.domain === 'builtin' ? '<span class="ma-tag">default</span>' : ''}</span>` +
+      `<span class="svc-detail">${esc(s.lastError ?? s.domain)}</span>`;
+    const acts = document.createElement('span');
+    acts.className = 'ma-row-actions';
+    const reloadBtn = document.createElement('button');
+    reloadBtn.className = 'ma-iconbtn';
+    reloadBtn.title = 'Reload';
+    reloadBtn.textContent = '⟳';
+    reloadBtn.addEventListener('click', () =>
+      void client.reloadMaSource(s.instanceId).then(() => showToast('Reloaded')).catch(maErr),
+    );
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'ma-iconbtn danger';
+    removeBtn.title = 'Remove';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => {
+      if (!confirm(`Remove “${s.name}” from Music Assistant?`)) return;
+      void client.removeMaSource(s.instanceId).then(() => { showToast('Removed'); reload(); }).catch(maErr);
+    });
+    acts.append(reloadBtn, removeBtn);
+    row.appendChild(acts);
+    list.appendChild(row);
+  }
+}
+
+/** One config-flow entry → a field. Static (label/alert) types return a note; an entry with
+    an `action` (e.g. OAuth) returns a button that advances the flow. Inputs write into `values`. */
+function maField(en: MaConfigEntry, values: Record<string, MaConfigValue>, onChange: () => void, onAction: () => void): HTMLElement | null {
+  if (en.type === 'label' || en.type === 'alert') {
+    const p = document.createElement('p');
+    p.className = en.type === 'alert' ? 'ma-alert' : 'hint';
+    p.textContent = en.label;
+    return p;
+  }
+  if (en.action) {
+    const field = document.createElement('div');
+    field.className = 'field';
+    if (en.label) {
+      const lab = document.createElement('label');
+      lab.textContent = en.label;
+      field.appendChild(lab);
+    }
+    const btn = document.createElement('button');
+    btn.className = 'ghost';
+    btn.textContent = en.actionLabel ?? en.label ?? 'Continue';
+    btn.addEventListener('click', onAction);
+    field.appendChild(btn);
+    if (en.description) maDesc(field, en.description);
+    return field;
+  }
+  if (en.type === 'boolean') {
+    const tf = document.createElement('div');
+    tf.className = 'field field-toggle';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = values[en.key] === true;
+    cb.addEventListener('change', () => { values[en.key] = cb.checked; onChange(); });
+    const lab = document.createElement('label');
+    lab.appendChild(cb);
+    lab.append(' ' + en.label);
+    tf.appendChild(lab);
+    if (en.description) maDesc(tf, en.description);
+    return tf;
+  }
+  const field = document.createElement('div');
+  field.className = 'field';
+  const lab = document.createElement('label');
+  lab.textContent = en.label;
+  field.appendChild(lab);
+  if (en.options.length) {
+    const sel = document.createElement('select');
+    for (const o of en.options) {
+      const opt = new Option(o.title, String(o.value));
+      if (String(values[en.key]) === String(o.value)) opt.selected = true;
+      sel.add(opt);
+    }
+    sel.addEventListener('change', () => {
+      const chosen = en.options.find((o) => String(o.value) === sel.value);
+      values[en.key] = chosen ? chosen.value : sel.value;
+      onChange();
+    });
+    field.appendChild(sel);
+  } else if (en.type === 'integer') {
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    if (en.range) { inp.min = String(en.range[0]); inp.max = String(en.range[1]); }
+    inp.value = values[en.key] != null ? String(values[en.key]) : '';
+    inp.addEventListener('change', () => { values[en.key] = inp.value === '' ? null : Number(inp.value); });
+    field.appendChild(inp);
+  } else {
+    const inp = document.createElement('input');
+    inp.type = en.type.includes('password') || en.type.includes('secure') ? 'password' : 'text';
+    inp.value = values[en.key] != null ? String(values[en.key]) : '';
+    inp.addEventListener('input', () => { values[en.key] = inp.value; });
+    field.appendChild(inp);
+  }
+  if (en.description) maDesc(field, en.description);
+  return field;
+}
+
+function renderMaCat(body: HTMLElement): void {
+  const showList = (): void => {
+    body.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'ma-status';
+    card.innerHTML = '<p class="hint">Checking Music Assistant…</p>';
+    body.appendChild(card);
+    void client.getMaStatus().then((st) => drawMaStatus(card, st)).catch(() => (card.innerHTML = '<p class="hint">Status unavailable.</p>'));
+
+    const head = document.createElement('div');
+    head.className = 'set-subhead';
+    head.textContent = 'Sources';
+    body.appendChild(head);
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'The streaming services and libraries Music Assistant plays from. Removing one (including the built-in default) takes effect immediately.';
+    body.appendChild(hint);
+    const list = document.createElement('div');
+    list.className = 'svc-list ma-sources';
+    list.innerHTML = '<p class="hint">Loading…</p>';
+    body.appendChild(list);
+    void client.getMaSources().then((all) => drawMaSources(list, all.filter((s) => s.type === 'music'), showList)).catch(() => (list.innerHTML = '<p class="hint">Couldn’t reach Music Assistant.</p>'));
+
+    const add = document.createElement('button');
+    add.className = 'ghost ma-add';
+    add.textContent = '+ Add source';
+    add.addEventListener('click', () => void showPicker());
+    body.appendChild(add);
+  };
+
+  const showPicker = async (): Promise<void> => {
+    body.innerHTML = '';
+    body.appendChild(maBackLink('‹ Sources', showList));
+    const head = document.createElement('div');
+    head.className = 'set-subhead';
+    head.textContent = 'Add a source';
+    body.appendChild(head);
+    const grid = document.createElement('div');
+    grid.className = 'ma-prov-grid';
+    grid.innerHTML = '<p class="hint">Loading providers…</p>';
+    body.appendChild(grid);
+    try {
+      const provs = maProvidersCache ?? (maProvidersCache = await client.getMaProviders());
+      grid.innerHTML = '';
+      for (const p of [...provs].sort((a, b) => a.name.localeCompare(b.name))) {
+        const card = document.createElement('button');
+        card.className = 'ma-prov';
+        card.innerHTML = `<span class="ma-prov-ico">${p.iconSvg ?? ''}</span><span class="ma-prov-name">${esc(p.name)}</span>`;
+        card.addEventListener('click', () => void showForm(p));
+        grid.appendChild(card);
+      }
+    } catch {
+      grid.innerHTML = '<p class="hint">Couldn’t load the provider list.</p>';
+    }
+  };
+
+  const showForm = async (manifest: MaProviderManifest, state: { action?: string; values?: Record<string, MaConfigValue> } = {}): Promise<void> => {
+    body.innerHTML = '';
+    body.appendChild(maBackLink('‹ Add source', () => void showPicker()));
+    const title = document.createElement('div');
+    title.className = 'ma-form-title';
+    title.innerHTML = `<span class="ma-prov-ico">${manifest.iconSvg ?? ''}</span><span>${esc(manifest.name)}</span>`;
+    body.appendChild(title);
+    if (manifest.documentation) {
+      const doc = document.createElement('a');
+      doc.className = 'ma-doclink';
+      doc.href = manifest.documentation;
+      doc.target = '_blank';
+      doc.rel = 'noreferrer';
+      doc.textContent = 'Setup guide ↗';
+      body.appendChild(doc);
+    }
+    const formEl = document.createElement('div');
+    formEl.className = 'ma-form';
+    formEl.innerHTML = '<p class="hint">Loading…</p>';
+    body.appendChild(formEl);
+
+    let entries: MaConfigEntry[];
+    try {
+      entries = await client.getMaSourceEntries(manifest.domain, { action: state.action, values: state.values });
+    } catch (e) {
+      formEl.innerHTML = `<p class="hint">${esc(e instanceof Error ? e.message : 'Failed to load the form.')}</p>`;
+      return;
+    }
+
+    const values: Record<string, MaConfigValue> = {};
+    for (const en of entries) values[en.key] = en.value ?? en.default;
+    Object.assign(values, state.values ?? {});
+
+    const visible = (en: MaConfigEntry): boolean => {
+      if (en.dependsOn == null) return true;
+      const dv = values[en.dependsOn];
+      if (en.dependsOnValue != null) return dv === en.dependsOnValue;
+      if (en.dependsOnValueNot != null) return dv !== en.dependsOnValueNot;
+      return dv != null && dv !== false && dv !== '';
+    };
+
+    const drawFields = (): void => {
+      formEl.innerHTML = '';
+      const advanced: HTMLElement[] = [];
+      for (const en of entries) {
+        if (en.hidden || !visible(en)) continue;
+        const field = maField(en, values, drawFields, () => void showForm(manifest, { action: en.action ?? undefined, values }));
+        if (!field) continue;
+        if (en.advanced) advanced.push(field);
+        else formEl.appendChild(field);
+      }
+      if (advanced.length) {
+        const det = document.createElement('details');
+        det.className = 'ma-advanced';
+        const sum = document.createElement('summary');
+        sum.textContent = 'Advanced';
+        det.appendChild(sum);
+        advanced.forEach((f) => det.appendChild(f));
+        formEl.appendChild(det);
+      }
+      const save = document.createElement('button');
+      save.className = 'ghost ma-save';
+      save.textContent = 'Add source';
+      save.addEventListener('click', () => {
+        save.disabled = true;
+        void client
+          .saveMaSource(manifest.domain, values)
+          .then(() => { showToast(`${manifest.name} added`); showList(); })
+          .catch((e) => { save.disabled = false; maErr(e); });
+      });
+      formEl.appendChild(save);
+    };
+    drawFields();
+  };
+
+  showList();
 }
 
 const settingsIndexEl = document.getElementById('settings-index') as HTMLElement;
