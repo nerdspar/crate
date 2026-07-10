@@ -182,8 +182,20 @@ function roomName(id: string | null): string {
   return players.find((p) => p.id === id)?.name ?? 'player';
 }
 
+let coverWCache = { h: -1, v: 0 };
 function coverW(): number {
-  return shelf.clientHeight * 0.89;
+  // The open cover fills the spine's rendered height (`.spine { height: 93% }` of #shelf's
+  // CONTENT box, i.e. minus padding). Return exactly that so the cover comes out SQUARE — album
+  // art is square, so a non-square cover box (the old `clientHeight * 0.89` ignored the padding
+  // and came out wider than tall) crops the art, and that crop "pops" as the flip flattens.
+  // Cached on clientHeight (padding is vh-based, so it only changes when the height does) —
+  // coverW() is called per-spine during a build, and getComputedStyle every time thrashes reflow.
+  if (shelf.clientHeight !== coverWCache.h) {
+    const cs = getComputedStyle(shelf);
+    const contentH = shelf.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    coverWCache = { h: shelf.clientHeight, v: contentH * 0.93 }; // 0.93 = `.spine { height: 93% }`
+  }
+  return coverWCache.v;
 }
 function panelW(): number {
   return Math.round(coverW() * 0.66); // the extended card's text panel ≈ 2/3 the album cover's width
