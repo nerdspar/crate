@@ -5,6 +5,11 @@ import type {
   LibraryAlbumsResponse,
   LibraryImportResult,
   LibraryPlaylist,
+  MaConfigEntry,
+  MaConfigValue,
+  MaProviderManifest,
+  MaSource,
+  MaStatus,
   MusicSourceInfo,
   NowPlaying,
   SearchSong,
@@ -878,6 +883,46 @@ export class Service {
       default:
         return { ok: false };
     }
+  }
+
+  // --- MA management (Phase 5): sources + status ---------------------------
+
+  /** Connection/topology status for the Settings "Music Assistant" card. */
+  maStatus(): MaStatus {
+    return this.ma.maStatus(this.cfg.managesMa);
+  }
+
+  /** Configured MA providers. The UI shows the `music` ones as manageable sources. */
+  maSources(): Promise<MaSource[]> {
+    return this.ma.listSources();
+  }
+
+  /** Music-provider types available to add. */
+  maAvailableProviders(): Promise<MaProviderManifest[]> {
+    return this.ma.listAvailableProviders('music');
+  }
+
+  /** Config-flow fields for adding/configuring a source (drives the Add-source form + OAuth steps). */
+  maSourceEntries(
+    domain: string,
+    opts: { instanceId?: string; action?: string; values?: Record<string, MaConfigValue> } = {},
+  ): Promise<MaConfigEntry[]> {
+    return this.ma.getSourceConfigEntries(domain, opts);
+  }
+
+  /** Add (no instanceId) or update a source. */
+  maSaveSource(domain: string, values: Record<string, MaConfigValue>, instanceId?: string): Promise<MaSource> {
+    return this.ma.saveSource(domain, values, instanceId);
+  }
+
+  /** Remove a source, incl. MA's default source. */
+  maRemoveSource(instanceId: string): Promise<void> {
+    return this.ma.removeSource(instanceId);
+  }
+
+  /** Reload a source. */
+  maReloadSource(instanceId: string): Promise<void> {
+    return this.ma.reloadSource(instanceId);
   }
 
   async setBrightness(level: number): Promise<SystemStatus> {

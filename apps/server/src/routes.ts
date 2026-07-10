@@ -1,10 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
   AddPlaylistRequest,
   AddToShelfRequest,
   BrightnessRequest,
   CreateShelfRequest,
   GroupRequest,
+  MaConfigValue,
   OverrideRequest,
   PlayRequest,
   Settings,
@@ -248,4 +249,43 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
 
   app.post('/api/system/restart', () => service.restart());
   app.post('/api/system/reboot', () => service.reboot());
+
+  // --- Music Assistant management (Phase 5) ---
+  // Status reads cached connection info (safe even when MA is down). The others talk to MA,
+  // so wrap them: a disconnected MA or a token missing CONFIG_PROVIDERS_WRITE surfaces as a
+  // 502 with MA's message rather than an opaque 500.
+  const maCall = async <T>(reply: FastifyReply, fn: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await fn();
+    } catch (e) {
+      void reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
+      return undefined;
+    }
+  };
+
+  app.get('/api/admin/ma/status', () => service.maStatus());
+  app.get('/api/admin/ma/sources', (_req, reply) => maCall(reply, () => service.maSources()));
+  app.get('/api/admin/ma/providers', (_req, reply) => maCall(reply, () => service.maAvailableProviders()));
+  app.post('/api/admin/ma/sources/entries', (req, reply) => {
+    const b = req.body as { domain: string; instanceId?: string; action?: string; values?: Record<string, MaConfigValue> };
+    return maCall(reply, () => service.maSourceEntries(b.domain, { instanceId: b.instanceId, action: b.action, values: b.values }));
+  });
+  app.post('/api/admin/ma/sources', (req, reply) => {
+    const b = req.body as { domain: string; values?: Record<string, MaConfigValue>; instanceId?: string };
+    return maCall(reply, () => service.maSaveSource(b.domain, b.values ?? {}, b.instanceId));
+  });
+  app.delete('/api/admin/ma/sources/:instanceId', (req, reply) => {
+    const { instanceId } = req.params as { instanceId: string };
+    return maCall(reply, async () => {
+      await service.maRemoveSource(instanceId);
+      return { ok: true };
+    });
+  });
+  app.post('/api/admin/ma/sources/:instanceId/reload', (req, reply) => {
+    const { instanceId } = req.params as { instanceId: string };
+    return maCall(reply, async () => {
+      await service.maReloadSource(instanceId);
+      return { ok: true };
+    });
+  });
 }

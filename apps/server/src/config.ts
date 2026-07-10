@@ -18,6 +18,10 @@ export interface Config {
   adminDist: string;
   /** True on the kiosk appliance — enables restart/reboot and real display power. */
   appliance: boolean;
+  /** True when Crate co-hosts/manages this Music Assistant (e.g. installed on the same Pi),
+      so a host-level MA restart is meaningful. False for an external MA (e.g. a separate NAS),
+      where Crate can configure sources over the API but can't restart the process. */
+  managesMa: boolean;
   /** App version string, surfaced in the control-center system row. */
   version: string;
 }
@@ -48,6 +52,7 @@ export function loadConfig(): Config {
     shelfDist: resolve('../shelf/dist'),
     adminDist: resolve('../admin/dist'),
     appliance: process.env.CRATE_APPLIANCE === '1',
+    managesMa: process.env.CRATE_MANAGES_MA === '1',
     version: process.env.CRATE_VERSION ?? '0.1.0',
   };
 }

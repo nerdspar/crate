@@ -7,7 +7,19 @@
  * MA instead of node-sonos-http-api + iTunes.
  */
 
-import type { PlaybackState, PlayerState, PlayerType, RepeatMode, Track } from '@crate/shared';
+import type {
+  MaConfigEntry,
+  MaConfigValue,
+  MaProviderManifest,
+  MaProviderType,
+  MaSource,
+  MaStatus,
+  PlaybackState,
+  PlayerState,
+  PlayerType,
+  RepeatMode,
+  Track,
+} from '@crate/shared';
 import { MaClient, type MaClientOptions, type MaEvent, type MaServerInfo } from './ma-client.js';
 import type {
   MusicSource,
@@ -125,6 +137,125 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   /** Reconnect the MA websocket (the "reconnect Music Assistant" action). */
   reconnect(): void {
     this.client.reconnect();
+  }
+
+  // --- MA management (Phase 5): sources, provider manifests, status --------
+
+  /** Connection status for the Settings status card. `managesMa` is topology, not MA state. */
+  maStatus(managesMa: boolean): MaStatus {
+    const info = this.client.serverInfo;
+    return {
+      connected: this.connected,
+      host: this.maBaseUrl,
+      serverVersion: info?.server_version ?? null,
+      schemaVersion: info?.schema_version ?? null,
+      connectedSince: this.connectedSince ?? null,
+      managesMa,
+    };
+  }
+
+  /** All configured MA providers (`config/providers`). The `music` ones are Crate "sources". */
+  async listSources(): Promise<MaSource[]> {
+    const raw = await this.client.command<unknown[]>('config/providers', {});
+    return arr(raw).map((r) => this.toSource(rec(r)));
+  }
+
+  private toSource(p: Record<string, unknown>): MaSource {
+    return {
+      instanceId: str(p['instance_id']) ?? '',
+      domain: str(p['domain']) ?? '',
+      type: (str(p['type']) as MaProviderType) ?? 'other',
+      name: str(p['name']) ?? str(p['default_name']) ?? str(p['domain']) ?? '',
+      enabled: p['enabled'] !== false,
+      lastError: str(p['last_error']) ?? null,
+    };
+  }
+
+  /** Provider types available to add (`providers/manifests`), optionally filtered by type. */
+  async listAvailableProviders(type?: MaProviderType): Promise<MaProviderManifest[]> {
+    const raw = await this.client.command<unknown[]>('providers/manifests', {});
+    const all = arr(raw).map((r) => {
+      const m = rec(r);
+      return {
+        domain: str(m['domain']) ?? '',
+        name: str(m['name']) ?? '',
+        type: (str(m['type']) as MaProviderType) ?? 'other',
+        description: str(m['description']) ?? null,
+        documentation: str(m['documentation']) ?? null,
+        multiInstance: m['multi_instance'] === true,
+        builtin: m['builtin'] === true,
+        allowDisable: m['allow_disable'] !== false,
+        stage: str(m['stage']) ?? null,
+        iconSvg: str(m['icon_svg']) ?? null,
+      } satisfies MaProviderManifest;
+    });
+    return type ? all.filter((m) => m.type === type) : all;
+  }
+
+  /** Config-flow fields for adding/configuring a provider (`config/providers/get_entries`).
+      Re-call with `action` (from an entry's `action`) to advance an interactive flow (e.g. OAuth). */
+  async getSourceConfigEntries(
+    domain: string,
+    opts: { instanceId?: string; action?: string; values?: Record<string, MaConfigValue> } = {},
+  ): Promise<MaConfigEntry[]> {
+    const raw = await this.client.command<unknown[]>('config/providers/get_entries', {
+      provider_domain: domain,
+      instance_id: opts.instanceId ?? null,
+      action: opts.action ?? null,
+      values: opts.values ?? null,
+    });
+    return arr(raw).map((r) => this.toConfigEntry(rec(r)));
+  }
+
+  private toConfigEntry(e: Record<string, unknown>): MaConfigEntry {
+    const options = arr(e['options']).map((o) => {
+      const r = rec(o);
+      return { title: str(r['title']) ?? '', value: r['value'] as string | number | boolean };
+    });
+    const rng = arr(e['range']);
+    const range = rng.length === 2 ? ([Number(rng[0]), Number(rng[1])] as [number, number]) : null;
+    return {
+      key: str(e['key']) ?? '',
+      type: str(e['type']) ?? 'string',
+      label: str(e['label']) ?? str(e['key']) ?? '',
+      description: str(e['description']) ?? null,
+      required: e['required'] === true,
+      default: (e['default_value'] as MaConfigValue) ?? null,
+      value: (e['value'] as MaConfigValue) ?? null,
+      options,
+      range,
+      multiValue: e['multi_value'] === true,
+      hidden: e['hidden'] === true,
+      readOnly: e['read_only'] === true,
+      advanced: e['advanced'] === true,
+      category: str(e['category']) ?? 'generic',
+      dependsOn: str(e['depends_on']) ?? null,
+      dependsOnValue: (e['depends_on_value'] as MaConfigValue) ?? null,
+      dependsOnValueNot: (e['depends_on_value_not'] as MaConfigValue) ?? null,
+      action: str(e['action']) ?? null,
+      actionLabel: str(e['action_label']) ?? null,
+      helpLink: str(e['help_link']) ?? null,
+    };
+  }
+
+  /** Add (no instanceId) or update (with instanceId) a provider (`config/providers/save`). */
+  async saveSource(domain: string, values: Record<string, MaConfigValue>, instanceId?: string): Promise<MaSource> {
+    const raw = await this.client.command<Record<string, unknown>>('config/providers/save', {
+      provider_domain: domain,
+      values,
+      instance_id: instanceId ?? null,
+    });
+    return this.toSource(rec(raw));
+  }
+
+  /** Remove a provider instance, incl. MA's default source (`config/providers/remove`). */
+  async removeSource(instanceId: string): Promise<void> {
+    await this.client.command('config/providers/remove', { instance_id: instanceId });
+  }
+
+  /** Reload a provider instance (`config/providers/reload`). */
+  async reloadSource(instanceId: string): Promise<void> {
+    await this.client.command('config/providers/reload', { instance_id: instanceId });
   }
 
   // --- Artwork ------------------------------------------------------------
