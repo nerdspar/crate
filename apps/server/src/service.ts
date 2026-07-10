@@ -38,7 +38,7 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import { MusicAssistantProvider } from '@crate/providers';
+import { MusicAssistantProvider, mintMaToken } from '@crate/providers';
 import type { ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
@@ -171,6 +171,16 @@ export class Service {
   completeOnboarding(): { done: boolean } {
     this.db.setRaw('onboarding.done', true);
     return { done: true };
+  }
+
+  /** Co-hosted onboarding: mint a long-lived token from MA credentials, then connect with it. */
+  async mintMaConnection(input: { url?: string; username?: string; password?: string }): Promise<MaConnection> {
+    const url = (input.url?.trim() || this.db.getRaw<string>('ma.url', this.cfg.maUrl)).replace(/\/+$/, '');
+    if (!input.username?.trim() || !input.password) {
+      throw new Error('Enter your Music Assistant username and password.');
+    }
+    const token = await mintMaToken(url, input.username.trim(), input.password);
+    return this.setMaConnection({ url, token });
   }
 
   /** Verify a URL+token (falling back to the stored ones) without touching the live connection. */

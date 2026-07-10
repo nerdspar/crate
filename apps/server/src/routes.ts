@@ -336,6 +336,10 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     const b = req.body as { url?: string; token?: string };
     return maCall(reply, () => service.testMaConnection(b));
   });
+  app.post('/api/admin/ma/connection/mint', (req, reply) => {
+    const b = req.body as { url?: string; username?: string; password?: string };
+    return maCall(reply, () => service.mintMaConnection(b));
+  });
 
   // First-run onboarding flag.
   app.get('/api/admin/onboarding', () => service.getOnboarding());

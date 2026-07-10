@@ -28,7 +28,7 @@ export interface MaEvent {
 }
 
 export interface MaClientOptions {
-  /** MA base URL, e.g. http://10.0.1.96:8095 */
+  /** MA base URL, e.g. http://192.168.1.50:8095 */
   url: string;
   /** MA long-lived token (schema >= 28). */
   token: string;
@@ -233,4 +233,82 @@ export class MaClient {
     this.closed = true;
     this.ws?.close();
   }
+}
+
+/**
+ * Mint a long-lived MA token from a username + password (for the co-hosted onboarding flow, so the
+ * user never has to create one by hand). A one-shot raw connection: wait for ServerInfo → `auth/login`
+ * (authenticates the session) → `auth/token/create` (the long-lived token). Not part of MaClient,
+ * which auto-authenticates with a token instead.
+ */
+export async function mintMaToken(url: string, username: string, password: string, deviceName = 'Crate'): Promise<string> {
+  const wsUrl = `${url.replace(/\/+$/, '').replace(/^http/, 'ws')}/ws`;
+  return new Promise<string>((resolve, reject) => {
+    const ws = new WebSocket(wsUrl);
+    let nextId = 1;
+    const pending = new Map<string, { res: (v: unknown) => void; rej: (e: Error) => void }>();
+    let settled = false;
+    const finish = (err?: Error, token?: string): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      if (err) reject(err);
+      else resolve(token!);
+    };
+    const call = (command: string, args: Record<string, unknown>): Promise<unknown> =>
+      new Promise((res, rej) => {
+        const message_id = String(nextId++);
+        pending.set(message_id, { res, rej });
+        ws.send(JSON.stringify({ message_id, command, args }));
+      });
+
+    ws.on('message', (raw: Buffer) => {
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(raw.toString('utf8')) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      // Command result / error.
+      if (typeof msg['message_id'] === 'string') {
+        const entry = pending.get(msg['message_id']);
+        if (!entry) return;
+        pending.delete(msg['message_id']);
+        if ('error_code' in msg) entry.rej(new Error(`${String(msg['error_code'])}: ${String(msg['details'] ?? '')}`));
+        else entry.res(msg['result']);
+        return;
+      }
+      // ServerInfo (once) → login → authenticate the session with the returned access token →
+      // create a long-lived token. `auth/login` returns {success, access_token} but does NOT itself
+      // authenticate the WS session, so the `auth` step is required before token/create.
+      if (typeof msg['server_version'] === 'string') {
+        void (async () => {
+          try {
+            const login = (await call('auth/login', { username, password, device_name: deviceName })) as {
+              success?: boolean;
+              error?: string;
+              access_token?: string;
+            };
+            if (!login?.success || !login.access_token) {
+              throw new Error(login?.error || 'Invalid Music Assistant username or password.');
+            }
+            await call('auth', { token: login.access_token });
+            const created = await call('auth/token/create', { name: `Crate (${deviceName})` });
+            const token = typeof created === 'string' ? created : ((created as { token?: string } | null)?.token ?? '');
+            if (!token) throw new Error('Music Assistant did not return a token.');
+            finish(undefined, token);
+          } catch (e) {
+            finish(e instanceof Error ? e : new Error(String(e)));
+          }
+        })();
+      }
+    });
+    ws.on('error', (e: Error) => finish(new Error(`Couldn’t reach Music Assistant: ${e.message}`)));
+    ws.on('close', () => finish(new Error('Music Assistant closed the connection before login completed.')));
+    setTimeout(() => finish(new Error('Music Assistant login timed out.')), 15_000);
+  });
 }

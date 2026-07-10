@@ -2689,10 +2689,14 @@ async function obWelcome(body: HTMLElement): Promise<ObNext> {
 }
 
 async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
-  const conn = await client.getMaConnection().catch(() => ({ url: '', hasToken: false, connected: false, serverVersion: null }));
+  const [conn, status] = await Promise.all([
+    client.getMaConnection().catch(() => ({ url: '', hasToken: false, connected: false, serverVersion: null })),
+    client.getMaStatus().catch(() => null),
+  ]);
+  const coHosted = !!status?.managesMa;
   body.innerHTML =
     '<h2 class="ob-title">Connect to Music Assistant</h2>' +
-    '<p class="ob-lead">Crate plays through Music Assistant. Point it at your MA server and paste a long-lived token (create one in MA → your profile).</p>';
+    `<p class="ob-lead">Crate plays through Music Assistant. ${coHosted ? 'Sign in and Crate will create its own access token — nothing to copy.' : 'Point it at your Music Assistant server and paste a long-lived token.'}</p>`;
   const field = (label: string, el: HTMLElement): HTMLElement => {
     const d = document.createElement('div');
     d.className = 'field';
@@ -2701,38 +2705,73 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
     d.append(l, el);
     return d;
   };
-  const url = document.createElement('input');
-  url.type = 'text';
-  url.placeholder = 'http://homeassistant.local:8095';
-  url.value = conn.url;
-  const token = document.createElement('input');
-  token.type = 'password';
-  token.placeholder = conn.hasToken ? 'saved — leave blank to keep it' : 'long-lived token';
+  const input = (type: string, ph: string, val = ''): HTMLInputElement => {
+    const i = document.createElement('input');
+    i.type = type;
+    i.placeholder = ph;
+    i.value = val;
+    return i;
+  };
+  const url = input('text', 'http://homeassistant.local:8095', conn.url);
   const form = document.createElement('div');
   form.className = 'ob-form';
+  const statusEl = document.createElement('p');
+  statusEl.className = 'ob-status';
+  statusEl.textContent = conn.connected ? `Connected · MA ${conn.serverVersion ?? ''}` : '';
+
+  if (coHosted) {
+    // MA is co-hosted → mint a token from the user's MA credentials automatically.
+    const user = input('text', 'Music Assistant username');
+    user.autocomplete = 'username';
+    const pass = input('password', 'password');
+    pass.autocomplete = 'current-password';
+    form.append(field('Server URL', url), field('Username', user), field('Password', pass));
+    body.append(form, statusEl);
+    ctx.setNext('Connect');
+    return async () => {
+      statusEl.textContent = 'Signing in…';
+      const r = await client
+        .mintMaConnection({ url: url.value, username: user.value, password: pass.value })
+        .catch((e) => { statusEl.textContent = '✕ ' + obErr(e); return null; });
+      if (r?.connected) return true;
+      if (statusEl.textContent === 'Signing in…') statusEl.textContent = '✕ Couldn’t connect.';
+      return false;
+    };
+  }
+
+  // External MA → paste a long-lived token, with instructions + a link to open MA.
+  const token = input('password', conn.hasToken ? 'saved — leave blank to keep it' : 'long-lived token');
   form.append(field('Server URL', url), field('Access token', token));
-  const status = document.createElement('p');
-  status.className = 'ob-status';
-  status.textContent = conn.connected ? `Connected · MA ${conn.serverVersion ?? ''}` : 'Not connected yet.';
+  const help = document.createElement('p');
+  help.className = 'ob-lead ob-help';
+  help.innerHTML = 'In Music Assistant, open <b>your profile → Long-lived tokens</b>, create one, and paste it above.';
+  const link = document.createElement('a');
+  link.className = 'ob-link';
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  link.textContent = 'Open Music Assistant ↗';
+  const setLink = (): void => { link.href = (url.value || 'http://homeassistant.local:8095').replace(/\/+$/, ''); };
+  setLink();
+  url.addEventListener('input', setLink);
   const testBtn = document.createElement('button');
   testBtn.className = 'ghost';
   testBtn.textContent = 'Test connection';
   testBtn.addEventListener('click', () => {
     testBtn.disabled = true;
-    status.textContent = 'Testing…';
+    statusEl.textContent = 'Testing…';
     void client
       .testMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) })
-      .then((r) => (status.textContent = `✓ Reached Music Assistant ${r.serverVersion ?? ''}`))
-      .catch((e) => (status.textContent = '✕ ' + obErr(e)))
+      .then((r) => (statusEl.textContent = `✓ Reached Music Assistant ${r.serverVersion ?? ''}`))
+      .catch((e) => (statusEl.textContent = '✕ ' + obErr(e)))
       .finally(() => (testBtn.disabled = false));
   });
-  body.append(form, testBtn, status);
+  body.append(form, help, link, testBtn, statusEl);
   ctx.setNext('Connect');
   return async () => {
-    status.textContent = 'Connecting…';
+    statusEl.textContent = 'Connecting…';
     const r = await client.setMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) }).catch(() => null);
     if (r?.connected) return true;
-    status.textContent = '✕ Couldn’t connect — check the URL and token.';
+    statusEl.textContent = '✕ Couldn’t connect — check the URL and token.';
     return false;
   };
 }

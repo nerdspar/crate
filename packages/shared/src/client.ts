@@ -275,6 +275,10 @@ export class CrateClient {
   testMaConnection(cfg: { url?: string; token?: string }): Promise<{ ok: boolean; serverVersion: string | null }> {
     return this.post('/api/admin/ma/connection/test', cfg);
   }
+  /** Co-hosted: mint a long-lived token from MA credentials and connect with it. */
+  mintMaConnection(cfg: { url?: string; username?: string; password?: string }): Promise<MaConnection> {
+    return this.post('/api/admin/ma/connection/mint', cfg);
+  }
 
   /** First-run onboarding state. */
   getOnboarding(): Promise<{ done: boolean }> {
