@@ -314,12 +314,13 @@ export async function mintMaToken(url: string, username: string, password: strin
 }
 
 /**
- * Whether a (co-hosted) MA still needs its first admin account created. A fresh MA blocks the WS
- * API with "Setup required" and only accepts the owner via the unauthenticated `POST /setup` route;
- * probing it with an empty body distinguishes a fresh instance ("username required" style error)
- * from a configured one ("Setup already completed"). Ambiguous/unreachable → false (don't prompt).
+ * Reachability + first-run state of a (co-hosted) MA. A fresh MA blocks the WS API with
+ * "Setup required" and only accepts the owner via the unauthenticated `POST /setup` route; probing
+ * it with an empty body distinguishes a fresh instance ("username required" style error) from a
+ * configured one ("Setup already completed"). `reachable:false` means the HTTP server isn't up yet
+ * (e.g. the container is still starting) — the caller can keep polling until it comes up.
  */
-export async function maNeedsSetup(url: string): Promise<boolean> {
+export async function maSetupState(url: string): Promise<{ reachable: boolean; needsSetup: boolean }> {
   try {
     const res = await fetch(`${url.replace(/\/+$/, '')}/setup`, {
       method: 'POST',
@@ -327,10 +328,10 @@ export async function maNeedsSetup(url: string): Promise<boolean> {
       body: '{}',
     });
     const j = (await res.json().catch(() => null)) as { error?: string } | null;
-    if (!j || typeof j.error !== 'string') return false;
-    return j.error !== 'Setup already completed';
+    if (!j || typeof j.error !== 'string') return { reachable: true, needsSetup: false };
+    return { reachable: true, needsSetup: j.error !== 'Setup already completed' };
   } catch {
-    return false;
+    return { reachable: false, needsSetup: false };
   }
 }
 

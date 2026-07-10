@@ -38,7 +38,7 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import { MusicAssistantProvider, maNeedsSetup, mintMaToken, setupMaAccount } from '@crate/providers';
+import { MusicAssistantProvider, maSetupState, mintMaToken, setupMaAccount } from '@crate/providers';
 import type { ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
@@ -173,10 +173,10 @@ export class Service {
     return { done: true };
   }
 
-  /** Whether the (co-hosted) MA still needs its first admin account created. */
-  maNeedsSetup(url?: string): Promise<boolean> {
+  /** Reachability + first-run state of the (co-hosted) MA — the wizard polls this until it's up. */
+  maSetupState(url?: string): Promise<{ reachable: boolean; needsSetup: boolean }> {
     const u = (url?.trim() || this.db.getRaw<string>('ma.url', this.cfg.maUrl)).replace(/\/+$/, '');
-    return maNeedsSetup(u);
+    return maSetupState(u);
   }
 
   /** Co-hosted onboarding: create the first MA admin account if the instance is fresh, then mint a
@@ -187,7 +187,7 @@ export class Service {
     if (!username || !input.password) {
       throw new Error('Enter a Music Assistant username and password.');
     }
-    if (await maNeedsSetup(url)) {
+    if ((await maSetupState(url)).needsSetup) {
       await setupMaAccount(url, username, input.password);
     }
     const token = await mintMaToken(url, username, input.password);

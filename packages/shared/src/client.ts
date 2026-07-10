@@ -279,8 +279,8 @@ export class CrateClient {
   mintMaConnection(cfg: { url?: string; username?: string; password?: string }): Promise<MaConnection> {
     return this.post('/api/admin/ma/connection/mint', cfg);
   }
-  /** Whether the co-hosted MA still needs its first admin account created. */
-  maNeedsSetup(url?: string): Promise<{ needsSetup: boolean }> {
+  /** Reachability + whether the co-hosted MA still needs its first admin account. */
+  maSetupState(url?: string): Promise<{ reachable: boolean; needsSetup: boolean }> {
     return this.post('/api/admin/ma/connection/needs-setup', url ? { url } : {});
   }
 

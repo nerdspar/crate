@@ -2615,6 +2615,21 @@ function obErr(e: unknown): string {
   const m = /\{"error":"(.*?)"\}/.exec(raw);
   return (m ? m[1]! : 'Failed').replace(/^\d+:\s*/, '');
 }
+function obField(label: string, el: HTMLElement): HTMLElement {
+  const d = document.createElement('div');
+  d.className = 'field';
+  const l = document.createElement('label');
+  l.textContent = label;
+  d.append(l, el);
+  return d;
+}
+function obInput(type: string, ph: string, val = ''): HTMLInputElement {
+  const i = document.createElement('input');
+  i.type = type;
+  i.placeholder = ph;
+  i.value = val;
+  return i;
+}
 
 async function maybeOnboard(): Promise<void> {
   const force = location.search.includes('onboarding');
@@ -2657,7 +2672,7 @@ function buildOnboarding(): void {
     ov.remove();
   });
 
-  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obPlaylists, obSpeakers, obDone];
+  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obPlaylists, obSpeakers, obSecure, obDone];
   let i = 0;
   let onNext: ObNext;
 
@@ -2694,54 +2709,46 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
     client.getMaStatus().catch(() => null),
   ]);
   const coHosted = !!status?.managesMa;
-  body.innerHTML =
-    '<h2 class="ob-title">Connect to Music Assistant</h2>' +
-    `<p class="ob-lead">Crate plays through Music Assistant. ${coHosted ? 'Sign in and Crate will create its own access token — nothing to copy.' : 'Point it at your Music Assistant server and paste a long-lived token.'}</p>`;
-  const field = (label: string, el: HTMLElement): HTMLElement => {
-    const d = document.createElement('div');
-    d.className = 'field';
-    const l = document.createElement('label');
-    l.textContent = label;
-    d.append(l, el);
-    return d;
-  };
-  const input = (type: string, ph: string, val = ''): HTMLInputElement => {
-    const i = document.createElement('input');
-    i.type = type;
-    i.placeholder = ph;
-    i.value = val;
-    return i;
-  };
-  const url = input('text', 'http://homeassistant.local:8095', conn.url);
-  const form = document.createElement('div');
-  form.className = 'ob-form';
+  body.innerHTML = '<h2 class="ob-title">Connect to Music Assistant</h2><p class="ob-lead">Crate plays through Music Assistant.</p>';
+  const lead = body.querySelector('.ob-lead') as HTMLElement;
+  const url = obInput('text', 'http://homeassistant.local:8095', conn.url);
   const statusEl = document.createElement('p');
   statusEl.className = 'ob-status';
-  statusEl.textContent = conn.connected ? `Connected · MA ${conn.serverVersion ?? ''}` : '';
 
   if (coHosted) {
-    // MA is co-hosted → Crate creates the account (if the instance is fresh) and mints a token,
-    // all from these credentials. The user never opens Music Assistant.
-    const lead = body.querySelector('.ob-lead') as HTMLElement;
-    const user = input('text', 'username');
+    // Co-hosted → Crate creates the account (if fresh) + mints a token. Wait for the MA container
+    // to finish starting, then choose "Create account" vs "Sign in".
+    const form = document.createElement('div');
+    form.className = 'ob-form';
+    const user = obInput('text', 'username');
     user.autocomplete = 'username';
-    const pass = input('password', 'password');
+    const pass = obInput('password', 'password');
     pass.autocomplete = 'new-password';
-    form.append(field('Server URL', url), field('Username', user), field('Password', pass));
+    form.append(obField('Server URL', url), obField('Username', user), obField('Password', pass));
     body.append(form, statusEl);
-    ctx.setNext('Connect');
-    void client
-      .maNeedsSetup(url.value)
-      .then((r) => {
-        if (r.needsSetup) {
-          lead.textContent = 'This Music Assistant is brand new. Choose a username and password (8+ characters) — Crate creates the account and its own token. Nothing else to set up.';
-          pass.placeholder = 'password (8+ characters)';
-          ctx.setNext('Create account');
-        } else {
-          lead.textContent = 'Sign in to Music Assistant and Crate will create its own access token — nothing to copy.';
-        }
-      })
-      .catch(() => {});
+    user.disabled = pass.disabled = true;
+    ctx.setNext('Connect', false);
+    statusEl.textContent = 'Waiting for Music Assistant to start…';
+    const poll = async (): Promise<void> => {
+      if (!user.isConnected) return; // navigated away
+      const st = await client.maSetupState(url.value).catch(() => ({ reachable: false, needsSetup: false }));
+      if (!user.isConnected) return;
+      if (!st.reachable) {
+        setTimeout(() => void poll(), 2500); // keep refreshing until it comes up
+        return;
+      }
+      user.disabled = pass.disabled = false;
+      statusEl.textContent = '';
+      if (st.needsSetup) {
+        lead.textContent = 'This Music Assistant is brand new. Choose a username and password (8+ characters) — Crate creates the account and its own token.';
+        pass.placeholder = 'password (8+ characters)';
+        ctx.setNext('Create account', true);
+      } else {
+        lead.textContent = 'Sign in to Music Assistant and Crate creates its own access token — nothing to copy.';
+        ctx.setNext('Connect', true);
+      }
+    };
+    void poll();
     return async () => {
       statusEl.textContent = 'Setting up…';
       const r = await client
@@ -2753,12 +2760,33 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
     };
   }
 
-  // External MA → paste a long-lived token, with instructions + a link to open MA.
-  const token = input('password', conn.hasToken ? 'saved — leave blank to keep it' : 'long-lived token');
-  form.append(field('Server URL', url), field('Access token', token));
+  // External MA → sign in (Crate mints a token) OR paste a long-lived token.
+  lead.textContent = 'Crate plays through your Music Assistant server.';
+  let mode: 'signin' | 'token' = 'signin';
+  const seg = document.createElement('div');
+  seg.className = 'ob-seg';
+  const signinBtn = document.createElement('button');
+  signinBtn.type = 'button';
+  signinBtn.textContent = 'Sign in';
+  const tokenBtn = document.createElement('button');
+  tokenBtn.type = 'button';
+  tokenBtn.textContent = 'Access token';
+  seg.append(signinBtn, tokenBtn);
+
+  const form = document.createElement('div');
+  form.className = 'ob-form';
+  form.append(obField('Server URL', url));
+  const user = obInput('text', 'username');
+  user.autocomplete = 'username';
+  const pass = obInput('password', 'password');
+  pass.autocomplete = 'current-password';
+  const creds = document.createElement('div');
+  creds.className = 'ob-form';
+  creds.append(obField('Username', user), obField('Password', pass));
+  const token = obInput('password', conn.hasToken ? 'saved — leave blank to keep it' : 'long-lived token');
   const help = document.createElement('p');
-  help.className = 'ob-lead ob-help';
-  help.innerHTML = 'In Music Assistant, open <b>your profile → Long-lived tokens</b>, create one, and paste it above.';
+  help.className = 'ob-help';
+  help.innerHTML = 'Create one in Music Assistant → <b>your profile → Long-lived tokens</b>.';
   const link = document.createElement('a');
   link.className = 'ob-link';
   link.target = '_blank';
@@ -2767,25 +2795,29 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
   const setLink = (): void => { link.href = (url.value || 'http://homeassistant.local:8095').replace(/\/+$/, ''); };
   setLink();
   url.addEventListener('input', setLink);
-  const testBtn = document.createElement('button');
-  testBtn.className = 'ghost';
-  testBtn.textContent = 'Test connection';
-  testBtn.addEventListener('click', () => {
-    testBtn.disabled = true;
-    statusEl.textContent = 'Testing…';
-    void client
-      .testMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) })
-      .then((r) => (statusEl.textContent = `✓ Reached Music Assistant ${r.serverVersion ?? ''}`))
-      .catch((e) => (statusEl.textContent = '✕ ' + obErr(e)))
-      .finally(() => (testBtn.disabled = false));
-  });
-  body.append(form, help, link, testBtn, statusEl);
+  const tokenWrap = document.createElement('div');
+  tokenWrap.className = 'ob-form';
+  tokenWrap.append(obField('Access token', token), help, link);
+
+  body.append(seg, form, creds, tokenWrap, statusEl);
+  const applyMode = (): void => {
+    signinBtn.classList.toggle('on', mode === 'signin');
+    tokenBtn.classList.toggle('on', mode === 'token');
+    creds.hidden = mode !== 'signin';
+    tokenWrap.hidden = mode !== 'token';
+  };
+  signinBtn.addEventListener('click', () => { mode = 'signin'; applyMode(); });
+  tokenBtn.addEventListener('click', () => { mode = 'token'; applyMode(); });
+  applyMode();
   ctx.setNext('Connect');
   return async () => {
-    statusEl.textContent = 'Connecting…';
-    const r = await client.setMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) }).catch(() => null);
+    statusEl.textContent = mode === 'signin' ? 'Signing in…' : 'Connecting…';
+    const r =
+      mode === 'signin'
+        ? await client.mintMaConnection({ url: url.value, username: user.value, password: pass.value }).catch((e) => { statusEl.textContent = '✕ ' + obErr(e); return null; })
+        : await client.setMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) }).catch(() => null);
     if (r?.connected) return true;
-    statusEl.textContent = '✕ Couldn’t connect — check the URL and token.';
+    if (statusEl.textContent === 'Signing in…' || statusEl.textContent === 'Connecting…') statusEl.textContent = '✕ Couldn’t connect — check the details.';
     return false;
   };
 }
@@ -2817,6 +2849,37 @@ async function obSpeakers(body: HTMLElement): Promise<ObNext> {
   return undefined;
 }
 
+async function obSecure(body: HTMLElement): Promise<ObNext> {
+  const st = await client.getAuthStatus().catch(() => ({ enabled: false, authed: true }));
+  body.innerHTML =
+    '<h2 class="ob-title">Lock the admin</h2>' +
+    '<p class="ob-lead">Optionally require a passphrase to open this admin. The wall keeps playing without it. You can change this any time in Settings → Security.</p>';
+  if (st.enabled) {
+    const p = document.createElement('p');
+    p.className = 'ob-status';
+    p.textContent = 'A passphrase is already set.';
+    body.append(p);
+    return undefined;
+  }
+  const pass = obInput('password', 'choose a passphrase (optional)');
+  pass.autocomplete = 'new-password';
+  const form = document.createElement('div');
+  form.className = 'ob-form';
+  form.append(obField('Passphrase', pass));
+  const statusEl = document.createElement('p');
+  statusEl.className = 'ob-status';
+  body.append(form, statusEl);
+  return async () => {
+    const v = pass.value.trim();
+    if (v && v.length < 4) {
+      statusEl.textContent = 'Use at least 4 characters (or leave blank to skip).';
+      return false;
+    }
+    if (v) await client.setPassphrase(v).catch(() => {});
+    return true;
+  };
+}
+
 async function obDone(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
   body.innerHTML =
     '<h2 class="ob-title">You’re all set</h2>' +
@@ -2824,6 +2887,7 @@ async function obDone(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
   ctx.setNext('Finish');
   return async () => {
     await client.completeOnboarding().catch(() => {});
+    location.reload(); // fresh load so every tab picks up the now-connected MA
     return true;
   };
 }

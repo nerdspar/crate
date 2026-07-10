@@ -388,8 +388,11 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .ob-form .field input { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem 0.7rem; font: inherit; }
 .ob-form .field input:focus { border-color: var(--brass); outline: none; }
 .ob-status { color: var(--ink-dim); font-size: 0.9rem; margin-top: -0.2rem; }
-.ob-help { font-size: 0.9rem; margin-top: -0.3rem; }
+.ob-help { font-size: 0.9rem; margin-top: -0.3rem; color: var(--ink-dim); }
 .ob-link { color: var(--brass); font-size: 0.9rem; align-self: flex-start; }
+.ob-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; align-self: flex-start; }
+.ob-seg button { background: transparent; border: none; color: var(--ink-dim); padding: 0.4rem 1.1rem; font: inherit; cursor: pointer; }
+.ob-seg button.on { background: var(--brass); color: #131114; font-weight: 600; }
 .ob-check { display: flex; align-items: center; gap: 0.55rem; color: var(--ink); cursor: pointer; }
 .ob-check input { width: 1.15rem; height: 1.15rem; flex: none; }
 .ob-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }

@@ -342,7 +342,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   });
   app.post('/api/admin/ma/connection/needs-setup', (req, reply) => {
     const b = req.body as { url?: string };
-    return maCall(reply, async () => ({ needsSetup: await service.maNeedsSetup(b.url) }));
+    return maCall(reply, () => service.maSetupState(b.url));
   });
 
   // First-run onboarding flag.
