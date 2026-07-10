@@ -3,6 +3,7 @@ import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
+import { Auth } from './auth.js';
 import { loadConfig } from './config.js';
 import { Db } from './db.js';
 import { Hub } from './hub.js';
@@ -12,6 +13,7 @@ import { Service } from './service.js';
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
 const hub = new Hub();
+const auth = new Auth(db);
 // The service owns the MA provider (it can swap the connection at runtime via onboarding/settings).
 const service = new Service(cfg, db, hub);
 
@@ -39,7 +41,7 @@ app.get('/ws', { websocket: true }, (socket, req) => {
   hub.add(socket, app === 'shelf' || app === 'admin' ? app : 'other');
 });
 
-registerRoutes(app, service);
+registerRoutes(app, service, auth);
 
 await service.init();
 

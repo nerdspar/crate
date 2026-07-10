@@ -283,6 +283,22 @@ export class CrateClient {
   completeOnboarding(): Promise<{ done: boolean }> {
     return this.post('/api/admin/onboarding/done', {});
   }
+
+  // --- Admin auth (Phase 5) ---
+  /** Whether the admin lock is enabled, and whether this session is signed in. */
+  getAuthStatus(): Promise<{ enabled: boolean; authed: boolean }> {
+    return this.req('/api/auth/status');
+  }
+  login(passphrase: string): Promise<{ ok: true }> {
+    return this.post('/api/auth/login', { passphrase });
+  }
+  logout(): Promise<{ ok: true }> {
+    return this.post('/api/auth/logout', {});
+  }
+  /** Set / change / (empty `next`) clear the admin passphrase. */
+  setPassphrase(next: string, current?: string): Promise<{ ok: true; enabled: boolean }> {
+    return this.post('/api/auth/passphrase', { next, ...(current ? { current } : {}) });
+  }
   /** All configured MA providers (filter to type 'music' for manageable sources). */
   getMaSources(): Promise<MaSource[]> {
     return this.req('/api/admin/ma/sources');

@@ -365,6 +365,17 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
   .pane-head h1 { font-size: 2.6rem; }
 }
 
+/* ---------- Admin login gate (Phase 5) ---------- */
+#authgate { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+.ag-card { align-items: center; text-align: center; }
+.ag-card .ob-title, .ag-card .ob-lead { text-align: center; }
+.ag-lock { width: 2.6rem; height: 2.6rem; color: var(--brass); }
+.ag-card .ob-form { width: 100%; }
+.ag-card .field input { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 0.6rem 0.7rem; font: inherit; text-align: center; }
+.ag-card .field input:focus { border-color: var(--brass); outline: none; }
+.ag-err { color: var(--accent, #c83a3a); }
+.ag-unlock { width: 100%; }
+
 /* ---------- Onboarding wizard (Phase 5) ---------- */
 #onboarding { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
 .ob-card { position: relative; width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 1.1rem; }

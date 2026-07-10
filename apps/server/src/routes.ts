@@ -17,12 +17,74 @@ import type {
   VolumeRequest,
 } from '@crate/shared';
 import type { Service } from './service.js';
+import type { Auth } from './auth.js';
 
 interface MultipartRequest {
   file(): Promise<{ toBuffer(): Promise<Buffer> } | undefined>;
 }
 
-export function registerRoutes(app: FastifyInstance, service: Service): void {
+export function registerRoutes(app: FastifyInstance, service: Service, auth: Auth): void {
+  // --- Admin auth gate (Phase 5) ---
+  // Endpoints the wall + shared UIs use stay open even once a passphrase is set; everything else
+  // under /api/ (config, curation, /api/admin/*) needs a session. Safe-by-default — a new endpoint
+  // is protected unless it's added to this allowlist.
+  const OPEN: Array<[string, RegExp]> = [
+    ['GET', /^\/api\/shelf$/],
+    ['GET', /^\/api\/albums\/[^/]+$/],
+    ['GET', /^\/api\/provider-album$/],
+    ['GET', /^\/api\/players$/],
+    ['GET', /^\/api\/search(\/global)?$/],
+    ['GET', /^\/api\/artist\/(albums|songs)$/],
+    ['GET', /^\/api\/sources$/],
+    ['GET', /^\/api\/settings$/],
+    ['GET', /^\/api\/playlists\/tracks$/],
+    ['POST', /^\/api\/playlists\/prewarm$/],
+    ['POST', /^\/api\/(play|transport|volume|shuffle|repeat|group)$/],
+    // Control-center system controls live on the wall (an unauthenticated touchscreen).
+    ['GET', /^\/api\/system\/(status|services)$/],
+    ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
+    ['POST', /^\/api\/system\/display\/(sleep|wake)$/],
+    ['POST', /^\/api\/system\/services\/restart$/],
+  ];
+  const isOpen = (method: string, path: string): boolean => OPEN.some(([m, re]) => m === method && re.test(path));
+
+  app.addHook('onRequest', async (req, reply) => {
+    if (!auth.enabled()) return; // off until a passphrase is set
+    const path = req.url.split('?')[0] ?? '';
+    if (!path.startsWith('/api/') || path.startsWith('/api/auth/')) return; // app shells + auth are open
+    if (isOpen(req.method, path)) return;
+    if (!auth.authed(req.headers.cookie)) {
+      await reply.code(401).send({ error: 'Admin sign-in required' });
+    }
+  });
+
+  app.get('/api/auth/status', (req) => ({
+    enabled: auth.enabled(),
+    authed: auth.enabled() ? auth.authed(req.headers.cookie) : true,
+  }));
+  app.post('/api/auth/login', (req, reply) => {
+    const { passphrase } = (req.body ?? {}) as { passphrase?: string };
+    if (!auth.enabled()) return { ok: true };
+    if (!auth.verifyPassphrase(passphrase ?? '')) return reply.code(401).send({ error: 'Wrong passphrase' });
+    void reply.header('set-cookie', auth.setCookieHeader(auth.issueToken()));
+    return { ok: true };
+  });
+  app.post('/api/auth/logout', (_req, reply) => {
+    void reply.header('set-cookie', auth.clearCookieHeader());
+    return { ok: true };
+  });
+  // Set / change / clear (empty `next`) the passphrase. When already enabled, requires the current
+  // passphrase OR a live session; re-issues a session so the caller isn't locked out by the change.
+  app.post('/api/auth/passphrase', (req, reply) => {
+    const { current, next } = (req.body ?? {}) as { current?: string; next?: string };
+    if (auth.enabled() && !auth.authed(req.headers.cookie) && !auth.verifyPassphrase(current ?? '')) {
+      return reply.code(401).send({ error: 'Wrong current passphrase' });
+    }
+    auth.setPassphrase((next ?? '').trim());
+    void reply.header('set-cookie', auth.enabled() ? auth.setCookieHeader(auth.issueToken()) : auth.clearCookieHeader());
+    return { ok: true, enabled: auth.enabled() };
+  });
+
   app.get('/api/shelf', (req) => service.getShelf((req.query as { shelf?: string }).shelf));
 
   // Named shelves (curated collections; albums can belong to several).

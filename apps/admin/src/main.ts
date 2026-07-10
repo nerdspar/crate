@@ -1368,6 +1368,7 @@ const CAT_ICON: Record<string, string> = {
   system: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>',
   ma: '<svg viewBox="0 0 24 24"><path d="M9 17V5l11-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="17" cy="15" r="3"/></svg>',
   backup: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
+  security: '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
 };
 interface SettingsCat {
   id: string;
@@ -1396,6 +1397,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
   { id: 'ma', name: 'Music Assistant', render: renderMaCat },
   { id: 'backup', name: 'Backup', render: renderBackupCat },
+  { id: 'security', name: 'Security', render: renderSecurityCat },
   { id: 'system', name: 'System', render: renderSystemCat },
 ];
 
@@ -2479,6 +2481,130 @@ function connectWs(): void {
 }
 connectWs();
 
+/* ================= Admin auth (Phase 5) ================= */
+async function maybeAuthGate(): Promise<void> {
+  let st: { enabled: boolean; authed: boolean };
+  try {
+    st = await client.getAuthStatus();
+  } catch {
+    return; // if we can't tell, don't lock the UI out
+  }
+  if (st.enabled && !st.authed) buildLoginGate();
+}
+
+function buildLoginGate(): void {
+  const ov = document.createElement('div');
+  ov.id = 'authgate';
+  ov.innerHTML =
+    '<div class="ob-card ag-card">' +
+    '<div class="ag-lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>' +
+    '<h2 class="ob-title">Crate admin</h2>' +
+    '<p class="ob-lead">Enter your passphrase to manage this Crate.</p>' +
+    '<div class="ob-form"><div class="field"><input class="ag-pass" type="password" placeholder="Passphrase" autocomplete="current-password"></div></div>' +
+    '<p class="ob-status ag-err" hidden></p>' +
+    '<button class="ob-next ag-unlock">Unlock</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+  const pass = ov.querySelector('.ag-pass') as HTMLInputElement;
+  const err = ov.querySelector('.ag-err') as HTMLElement;
+  const unlock = ov.querySelector('.ag-unlock') as HTMLButtonElement;
+  const submit = (): void => {
+    unlock.disabled = true;
+    err.hidden = true;
+    void client
+      .login(pass.value)
+      .then(() => location.reload())
+      .catch(() => {
+        err.textContent = 'Wrong passphrase';
+        err.hidden = false;
+        unlock.disabled = false;
+        pass.select();
+      });
+  };
+  unlock.addEventListener('click', submit);
+  pass.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  setTimeout(() => pass.focus(), 50);
+}
+
+function renderSecurityCat(body: HTMLElement): void {
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent = 'Lock the admin app behind a passphrase. The wall keeps working without it — this only gates settings and configuration.';
+  body.appendChild(intro);
+
+  const c = document.createElement('div');
+  c.className = 'ma-form';
+  body.appendChild(c);
+
+  const field = (label: string, input: HTMLInputElement): HTMLElement => {
+    const f = document.createElement('div');
+    f.className = 'field';
+    const l = document.createElement('label');
+    l.textContent = label;
+    f.append(l, input);
+    return f;
+  };
+  const pw = (ph: string): HTMLInputElement => {
+    const i = document.createElement('input');
+    i.type = 'password';
+    i.placeholder = ph;
+    i.autocomplete = 'new-password';
+    return i;
+  };
+
+  const draw = (enabled: boolean): void => {
+    c.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'set-subhead';
+    head.textContent = enabled ? 'Admin lock is ON' : 'Admin lock is OFF';
+    c.appendChild(head);
+    const actions = document.createElement('div');
+    actions.className = 'sys-actions';
+
+    if (enabled) {
+      const cur = pw('current passphrase');
+      const next = pw('new passphrase');
+      c.append(field('Current passphrase', cur), field('New passphrase', next));
+      const change = document.createElement('button');
+      change.className = 'ghost';
+      change.textContent = 'Change passphrase';
+      change.addEventListener('click', () => {
+        if (!next.value.trim()) return showToast('Enter a new passphrase');
+        change.disabled = true;
+        void client.setPassphrase(next.value.trim(), cur.value).then(() => { showToast('Passphrase changed'); draw(true); }).catch(maErr).finally(() => (change.disabled = false));
+      });
+      const off = document.createElement('button');
+      off.className = 'ghost danger';
+      off.textContent = 'Turn off lock';
+      off.addEventListener('click', () => {
+        if (!confirm('Turn off the admin lock? Anyone on your network could then change settings.')) return;
+        off.disabled = true;
+        void client.setPassphrase('', cur.value).then(() => { showToast('Lock disabled'); draw(false); }).catch(maErr).finally(() => (off.disabled = false));
+      });
+      const out = document.createElement('button');
+      out.className = 'ghost';
+      out.textContent = 'Sign out';
+      out.addEventListener('click', () => void client.logout().then(() => location.reload()).catch(() => {}));
+      actions.append(change, off, out);
+    } else {
+      const next = pw('choose a passphrase');
+      c.appendChild(field('Passphrase', next));
+      const enable = document.createElement('button');
+      enable.className = 'ghost';
+      enable.textContent = 'Enable lock';
+      enable.addEventListener('click', () => {
+        if (next.value.trim().length < 4) return showToast('Use at least 4 characters');
+        enable.disabled = true;
+        void client.setPassphrase(next.value.trim()).then(() => { showToast('Admin lock enabled'); draw(true); }).catch(maErr).finally(() => (enable.disabled = false));
+      });
+      actions.append(enable);
+    }
+    c.appendChild(actions);
+  };
+
+  void client.getAuthStatus().then((s) => draw(s.enabled)).catch(() => draw(false));
+}
+
 /* ================= Onboarding wizard (first run) ================= */
 type ObNext = (() => Promise<boolean>) | void;
 interface ObCtx {
@@ -2657,4 +2783,5 @@ updateAddToolbar();
 setContentType('album'); // seeds Add + Shelves for the shared Albums/Playlists choice
 void loadShelvesIndex();
 void loadSettingsPanel();
+void maybeAuthGate();
 void maybeOnboard();
