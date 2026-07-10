@@ -10,6 +10,17 @@ import { Hub } from './hub.js';
 import { registerRoutes } from './routes.js';
 import { Service } from './service.js';
 
+// Keep the appliance alive. A stray background rejection (a failed art fetch, an MA blip)
+// must not take down the wall — log and carry on. A truly uncaught exception leaves us in
+// an unknown state, so log and exit; systemd (Restart=always) relaunches cleanly.
+process.on('unhandledRejection', (reason) => {
+  process.stderr.write(`[crate] unhandledRejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}\n`);
+});
+process.on('uncaughtException', (err) => {
+  process.stderr.write(`[crate] uncaughtException: ${err.stack ?? err.message}\n`);
+  process.exit(1);
+});
+
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
 const hub = new Hub();
@@ -46,7 +57,34 @@ registerRoutes(app, service, auth);
 await service.init();
 
 // Automatic GitHub backups: check each minute whether one is due (no-op unless enabled).
-setInterval(() => void service.maybeAutoBackup(), 60_000).unref();
+setInterval(() => void service.maybeAutoBackup().catch(() => {}), 60_000).unref();
 
-await app.listen({ host: cfg.host, port: cfg.port });
-process.stdout.write(`[crate] server listening on http://${cfg.host}:${cfg.port} (MA: ${cfg.maUrl})\n`);
+// Graceful shutdown: `systemctl stop/restart` and the in-app restart send SIGTERM. Close the
+// HTTP server + WebSocket hub, then the DB (checkpoints the WAL) before exiting.
+let shuttingDown = false;
+const shutdown = async (signal: string): Promise<void> => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  process.stdout.write(`[crate] ${signal} received — shutting down\n`);
+  try {
+    await app.close();
+  } catch {
+    /* already closing */
+  }
+  try {
+    db.close();
+  } catch {
+    /* already closed */
+  }
+  process.exit(0);
+};
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
+
+try {
+  await app.listen({ host: cfg.host, port: cfg.port });
+  process.stdout.write(`[crate] server listening on http://${cfg.host}:${cfg.port} (MA: ${cfg.maUrl})\n`);
+} catch (err) {
+  process.stderr.write(`[crate] failed to start: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.exit(1);
+}

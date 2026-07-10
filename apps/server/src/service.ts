@@ -1251,7 +1251,8 @@ export class Service {
       it (Restart=always); a no-op elsewhere so dev previews aren't killed. */
   restart(): { ok: boolean } {
     if (!this.cfg.appliance) return { ok: false };
-    setTimeout(() => process.exit(0), 150);
+    // Go through the graceful-shutdown path (close HTTP + DB, checkpoint WAL); systemd relaunches.
+    setTimeout(() => process.kill(process.pid, 'SIGTERM'), 150);
     return { ok: true };
   }
 
