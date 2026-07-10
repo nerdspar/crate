@@ -377,6 +377,7 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .ma-iconbtn { width: 2rem; height: 2rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-dim); font-size: 1rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .ma-iconbtn:active { transform: scale(0.95); }
 .ma-iconbtn.danger { color: var(--accent, #c83a3a); border-color: color-mix(in srgb, var(--accent, #c83a3a) 45%, var(--line)); }
+.ma-iconbtn.ma-lock { opacity: 0.4; cursor: default; }
 .ma-add { margin-top: 0.9rem; }
 .ma-back { background: none; border: none; color: var(--brass); font-size: 1rem; padding: 0.2rem 0; cursor: pointer; margin-bottom: 0.4rem; }
 .ma-prov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.6rem; margin-top: 0.5rem; }

@@ -154,19 +154,30 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     };
   }
 
-  /** All configured MA providers (`config/providers`). The `music` ones are Crate "sources". */
+  /** All configured MA providers (`config/providers`). The `music` ones are Crate "sources".
+      Cross-references the manifests so each source knows whether it's a non-removable builtin. */
   async listSources(): Promise<MaSource[]> {
-    const raw = await this.client.command<unknown[]>('config/providers', {});
-    return arr(raw).map((r) => this.toSource(rec(r)));
+    const [raw, manifests] = await Promise.all([
+      this.client.command<unknown[]>('config/providers', {}),
+      this.client.command<unknown[]>('providers/manifests', {}),
+    ]);
+    const builtinDomains = new Set<string>();
+    for (const m of arr(manifests).map(rec)) {
+      const domain = str(m['domain']);
+      if (domain && m['builtin'] === true) builtinDomains.add(domain);
+    }
+    return arr(raw).map((r) => this.toSource(rec(r), builtinDomains));
   }
 
-  private toSource(p: Record<string, unknown>): MaSource {
+  private toSource(p: Record<string, unknown>, builtinDomains?: Set<string>): MaSource {
+    const domain = str(p['domain']) ?? '';
     return {
       instanceId: str(p['instance_id']) ?? '',
-      domain: str(p['domain']) ?? '',
+      domain,
       type: (str(p['type']) as MaProviderType) ?? 'other',
-      name: str(p['name']) ?? str(p['default_name']) ?? str(p['domain']) ?? '',
+      name: str(p['name']) ?? str(p['default_name']) ?? domain,
       enabled: p['enabled'] !== false,
+      builtin: builtinDomains?.has(domain) ?? false,
       lastError: str(p['last_error']) ?? null,
     };
   }

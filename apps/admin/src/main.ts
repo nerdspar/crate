@@ -2053,10 +2053,11 @@ function maBackLink(label: string, onClick: () => void): HTMLElement {
   return b;
 }
 function maErr(e: unknown): void {
-  // MA failures come back as "… → 502 … {"error":"<message>"}" — surface just the message.
+  // MA failures come back as "… → 502 … {"error":"<message>"}" — surface just the message,
+  // dropping MA's leading numeric error code (e.g. "999: ").
   const raw = e instanceof Error ? e.message : String(e);
   const m = /\{"error":"(.*?)"\}/.exec(raw);
-  showToast(m ? m[1]! : 'Failed');
+  showToast((m ? m[1]! : 'Failed').replace(/^\d+:\s*/, ''));
 }
 function maDesc(field: HTMLElement, text: string): void {
   const d = document.createElement('p');
@@ -2118,15 +2119,26 @@ function drawMaSources(list: HTMLElement, sources: MaSource[], reload: () => voi
     reloadBtn.addEventListener('click', () =>
       void client.reloadMaSource(s.instanceId).then(() => showToast('Reloaded')).catch(maErr),
     );
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'ma-iconbtn danger';
-    removeBtn.title = 'Remove';
-    removeBtn.textContent = '✕';
-    removeBtn.addEventListener('click', () => {
-      if (!confirm(`Remove “${s.name}” from Music Assistant?`)) return;
-      void client.removeMaSource(s.instanceId).then(() => { showToast('Removed'); reload(); }).catch(maErr);
-    });
-    acts.append(reloadBtn, removeBtn);
+    acts.appendChild(reloadBtn);
+    if (s.builtin) {
+      // MA's built-in provider can't be removed — show a lock instead of a remove button.
+      const lock = document.createElement('span');
+      lock.className = 'ma-iconbtn ma-lock';
+      lock.title = 'Built-in Music Assistant provider — can’t be removed';
+      lock.innerHTML =
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+      acts.appendChild(lock);
+    } else {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'ma-iconbtn danger';
+      removeBtn.title = 'Remove';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => {
+        if (!confirm(`Remove “${s.name}” from Music Assistant?`)) return;
+        void client.removeMaSource(s.instanceId).then(() => { showToast('Removed'); reload(); }).catch(maErr);
+      });
+      acts.appendChild(removeBtn);
+    }
     row.appendChild(acts);
     list.appendChild(row);
   }
@@ -2222,7 +2234,7 @@ function renderMaCat(body: HTMLElement): void {
     body.appendChild(head);
     const hint = document.createElement('p');
     hint.className = 'hint';
-    hint.textContent = 'The streaming services and libraries Music Assistant plays from. Removing one (including the built-in default) takes effect immediately.';
+    hint.textContent = 'The streaming services and libraries Music Assistant plays from. Adding or removing one takes effect immediately. The built-in Music Assistant provider can’t be removed.';
     body.appendChild(hint);
     const list = document.createElement('div');
     list.className = 'svc-list ma-sources';

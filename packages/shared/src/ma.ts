@@ -19,6 +19,8 @@ export interface MaSource {
   /** Display name (falls back to the default name / domain). */
   name: string;
   enabled: boolean;
+  /** Built-in MA provider (its manifest is `builtin`) — can't be removed. */
+  builtin: boolean;
   /** MA-reported last error, if the provider failed to load. */
   lastError: string | null;
 }
