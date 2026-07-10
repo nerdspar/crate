@@ -105,6 +105,12 @@ export class Service {
   }
 
   /** (Re)wire the live MA event handlers to the hub. Call after (re)creating the provider. */
+  // MA state plumbing. resolveCache: now-playing→album-id lookup, rebuilt at most every 5s (the link
+  // is cosmetic — it highlights the playing album — so brief staleness after an add is fine).
+  // progressAt: last progress push per player, so we throttle the ~1/sec ticks the client interpolates.
+  private resolveCache: { at: number; byUri: Map<string, string>; byTitle: Map<string, string> } | null = null;
+  private readonly progressAt = new Map<string, number>();
+
   private wireMa(): void {
     this.ma.onConnect(() => {
       void this.refreshPlayers();
@@ -116,6 +122,11 @@ export class Service {
       this.hub.broadcast({ type: 'state', state: this.resolveStates(states) });
     });
     this.ma.onProgress((playerId, elapsed) => {
+      // The client interpolates elapsed locally between ticks, so a periodic correction is
+      // enough — throttle to one push per player every few seconds instead of ~1/sec.
+      const now = Date.now();
+      if (now - (this.progressAt.get(playerId) ?? 0) < 4000) return;
+      this.progressAt.set(playerId, now);
       this.hub.broadcast({ type: 'progress', playerId, elapsed });
     });
   }
@@ -235,9 +246,16 @@ export class Service {
   }
 
   private resolveStates(states: PlayerState[]): PlayerState[] {
-    const shelf = this.db.listShelf();
-    const byUri = new Map(shelf.map((r) => [r.provider_uri, r.id]));
-    const byTitle = new Map(shelf.map((r) => [r.title.toLowerCase(), r.id]));
+    const now = Date.now();
+    if (!this.resolveCache || now - this.resolveCache.at >= 5000) {
+      const shelf = this.db.listShelf();
+      this.resolveCache = {
+        at: now,
+        byUri: new Map(shelf.map((r) => [r.provider_uri, r.id])),
+        byTitle: new Map(shelf.map((r) => [r.title.toLowerCase(), r.id])),
+      };
+    }
+    const { byUri, byTitle } = this.resolveCache;
     return states.map((s) => {
       const np = s.nowPlaying;
       if (!np) return s;

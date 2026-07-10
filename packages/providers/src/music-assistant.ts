@@ -119,6 +119,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   // (getProviderAlbum → getTracks); reusing them when you then hit play makes the play
   // path skip that round-trip, so playback starts sooner.
   private readonly trackCache = new Map<string, { tracks: Track[]; at: number }>();
+  // The source list changes rarely; cache it briefly so search/library keystrokes don't each round-trip.
+  private providersCache: { at: number; data: Array<{ instanceId: string; name: string }> } | null = null;
   private static readonly TRACK_TTL_MS = 5 * 60_000;
 
   constructor(opts: MaClientOptions) {
@@ -275,11 +277,13 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   /** Remove a provider instance, incl. MA's default source (`config/providers/remove`). */
   async removeSource(instanceId: string): Promise<void> {
     await this.client.command('config/providers/remove', { instance_id: instanceId });
+    this.providersCache = null;
   }
 
   /** Reload a provider instance (`config/providers/reload`). */
   async reloadSource(instanceId: string): Promise<void> {
     await this.client.command('config/providers/reload', { instance_id: instanceId });
+    this.providersCache = null;
   }
 
   /** The builtin provider's stored config values, keyed by entry key → resolved value.
@@ -497,12 +501,16 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   /** Connected streaming music sources (e.g. Apple Music accounts) — for searching
       each and labelling results by source. */
   async listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>> {
+    const now = Date.now();
+    if (this.providersCache && now - this.providersCache.at < 30_000) return this.providersCache.data;
     const raw = arr(await this.client.command('providers', {}));
-    return raw
+    const data = raw
       .map(rec)
       .filter((p) => p['type'] === 'music' && p['is_streaming_provider'] === true && p['available'] !== false)
       .map((p) => ({ instanceId: str(p['instance_id']) ?? '', name: str(p['name']) ?? 'Music' }))
       .filter((p) => p.instanceId);
+    this.providersCache = { at: now, data };
+    return data;
   }
 
   /** The user's saved albums. MA returns `library://album/N` uris (canonical + playable)

@@ -108,6 +108,10 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+-- shelf_members' PK is (shelf_id, album_id), so lookups/CASCADE by album_id alone would
+-- table-scan; index it. shelf_items is filtered by kind and ordered by sort_order constantly.
+CREATE INDEX IF NOT EXISTS idx_shelf_members_album ON shelf_members(album_id);
+CREATE INDEX IF NOT EXISTS idx_shelf_items_kind ON shelf_items(kind, sort_order);
 `;
 
 export function rowToAlbum(r: AlbumRow): Album {
