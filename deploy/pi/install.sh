@@ -9,8 +9,8 @@
 #   sudo bash deploy/pi/install.sh              # server only
 #   sudo bash deploy/pi/install.sh --kiosk      # also set up the fullscreen browser
 #
-# Music Assistant itself is NOT installed here — point MA_URL at your MA (e.g. a NAS),
-# or run it in Docker with the co-hosted compose profile (see INSTALL.md).
+# On first run it asks whether to install Music Assistant alongside Crate (in Docker) or
+# point at an existing MA — the token can be set up later via the admin's setup wizard.
 
 set -euo pipefail
 
@@ -30,6 +30,16 @@ RUN_USER="${SUDO_USER:-$(id -un)}"
 DATA_DIR="/var/lib/crate"
 ENV_FILE="$REPO_DIR/.env"
 NODE_MAJOR=22
+IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+
+ensure_docker() {
+  if ! command -v docker >/dev/null; then
+    echo "==> Installing Docker"
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable --now docker
+  fi
+  usermod -aG docker "$RUN_USER" 2>/dev/null || true
+}
 
 echo "==> Crate appliance install"
 echo "    repo:  $REPO_DIR"
@@ -51,12 +61,28 @@ sudo -u "$RUN_USER" bash -lc "cd '$REPO_DIR' && npm ci && npm run build"
 # ---- Data dir ----
 install -d -o "$RUN_USER" -g "$RUN_USER" "$DATA_DIR"
 
-# ---- Config (.env) ----
+# ---- Music Assistant + config (.env) ----
+MA_NOTE=""
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "==> Creating $ENV_FILE"
-  read -rp "    Music Assistant URL [http://homeassistant.local:8095]: " MA_URL
-  MA_URL="${MA_URL:-http://homeassistant.local:8095}"
-  read -rp "    Music Assistant long-lived token (blank to add later in the admin): " MA_TOKEN
+  echo "==> Music Assistant"
+  read -rp "    Install Music Assistant alongside Crate, in Docker? [y/N]: " INSTALL_MA
+  if [[ "${INSTALL_MA:-}" =~ ^[Yy] ]]; then
+    ensure_docker
+    echo "==> Starting the Music Assistant container"
+    docker rm -f music-assistant >/dev/null 2>&1 || true
+    docker run -d --name music-assistant --restart unless-stopped --network host \
+      -v music-assistant-data:/data ghcr.io/music-assistant/server:latest
+    MA_URL="http://localhost:8095"
+    MA_TOKEN=""
+    MANAGES_MA=1
+    MA_NOTE="Music Assistant is running. Finish its setup at http://${IP:-<pi-ip>}:8095 (create your account), then open Crate's admin — the setup wizard signs in and creates its own token."
+  else
+    read -rp "    Music Assistant URL [http://homeassistant.local:8095]: " MA_URL
+    MA_URL="${MA_URL:-http://homeassistant.local:8095}"
+    read -rp "    Long-lived token (blank = set it up later in the Crate admin): " MA_TOKEN
+    MANAGES_MA=0
+    [[ -z "$MA_TOKEN" ]] && MA_NOTE="No MA token yet — open Crate's admin and the setup wizard will connect you (or add it under Settings → Music Assistant)."
+  fi
   cat > "$ENV_FILE" <<EOF
 MA_URL=$MA_URL
 MA_TOKEN=$MA_TOKEN
@@ -64,7 +90,7 @@ CRATE_PORT=8080
 CRATE_HOST=0.0.0.0
 CRATE_DATA_DIR=$DATA_DIR
 CRATE_APPLIANCE=1
-CRATE_MANAGES_MA=0
+CRATE_MANAGES_MA=$MANAGES_MA
 EOF
   chown "$RUN_USER:$RUN_USER" "$ENV_FILE"
   chmod 600 "$ENV_FILE"
@@ -128,10 +154,10 @@ EOF
   echo "    see the notes in INSTALL.md (X11 vs Wayland, seat/DRM access)."
 fi
 
-IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 echo "==> Done."
 echo "    Wall:  http://${IP:-<pi-ip>}:8080"
 echo "    Admin: http://${IP:-<pi-ip>}:8080/admin/"
 echo "    Logs:  journalctl -u crate -f"
+[[ -n "$MA_NOTE" ]] && { echo; echo "    $MA_NOTE"; }
 [[ $WITH_KIOSK -eq 1 ]] && echo "    Reboot to launch the kiosk: sudo reboot"

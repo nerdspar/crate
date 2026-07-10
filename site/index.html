@@ -357,7 +357,7 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
 
       <!-- HERO: the real wall shelf -->
       <div class="hero-shelf-wrap">
-        <img class="hero-shelf-img" src="screenshots/wall.jpg" alt="The Crate wall — an ultrawide shelf of album cases">
+        <img class="hero-shelf-img" src="screenshots/wall.jpg?v=2" alt="The Crate wall — an ultrawide shelf of album cases">
       </div>
     </section>
 
@@ -373,7 +373,7 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
         <!-- WALL SCREENSHOTS — 2×2 grid -->
         <div class="shot-grid">
           <div class="shot-card">
-            <img class="shot-img" src="screenshots/flip-play.gif" alt="Tapping a case flips the album open, then Play starts it" loading="lazy">
+            <img class="shot-img" src="screenshots/flip-play.gif?v=2" alt="Tapping a case flips the album open, then Play starts it" loading="lazy">
             <div class="shot-cap">
               <div class="shot-cap-title">Flip open &amp; play</div>
               <div class="shot-cap-desc">Tap a case and the album opens to the cover and track list. Pick the room, hit play; a spinner holds until the room actually reports playing.</div>
@@ -387,14 +387,14 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
             </div>
           </div>
           <div class="shot-card">
-            <img class="shot-img" src="screenshots/search.gif" alt="Tiered search across your shelf, library, and sources" loading="lazy">
+            <img class="shot-img" src="screenshots/search.gif?v=2" alt="Tiered search across your shelf, library, and sources" loading="lazy">
             <div class="shot-cap">
               <div class="shot-cap-title">Search everything</div>
               <div class="shot-cap-desc">One box, tiered <em>On your shelf → In your library → From your sources</em>, plus artists and songs. Recent searches and explicit tags.</div>
             </div>
           </div>
           <div class="shot-card">
-            <img class="shot-img" src="screenshots/control-center.gif" alt="The control center: now playing, transport, and per-room volume" loading="lazy">
+            <img class="shot-img" src="screenshots/control-center.gif?v=2" alt="The control center: now playing, transport, and per-room volume" loading="lazy">
             <div class="shot-cap">
               <div class="shot-cap-title">Control center</div>
               <div class="shot-cap-desc">Play target, per-room and group volume, brightness, sleep schedule, and live system status &mdash; all from a swipe on the wall.</div>
@@ -779,7 +779,13 @@ CRATE_COVER_HEIGHT 1440                             # Cover rendition height (px
     <div style="display:flex;gap:20px;align-items:center">
       <a href="https://github.com/nerdspar/crate" target="_blank" rel="noopener">GitHub</a>
       <a onclick="showPage('docs')" style="cursor:pointer">Documentation</a>
-      <span>&copy; 2026 Crate. Open source.</span>
+      <span>&copy; 2026 Crate. MIT-licensed.</span>
+    </div>
+    <div style="flex-basis:100%;font-size:12px;line-height:1.5;color:var(--cr-muted);opacity:0.8;margin-top:14px;border-top:1px solid var(--cr-border);padding-top:14px">
+      Album titles, artist names, and cover artwork shown in these screenshots and demos are
+      &copy; their respective artists and record labels, used here solely to demonstrate the
+      interface. Crate is not affiliated with or endorsed by them, or by Apple, Sonos, or the
+      Music Assistant project.
     </div>
   </footer>
 

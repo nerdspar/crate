@@ -6,6 +6,13 @@ open, hit play, and it starts on your speakers. Open-source, commodity hardware.
 
 See [`CRATE_BUILD_PLAN.md`](./CRATE_BUILD_PLAN.md) for the full design.
 
+> [!NOTE]
+> **AI-assisted project.** Crate was built largely with the help of AI coding assistants
+> (Anthropic's Claude), including much of its code, documentation, and this README. It is a
+> personal hobby project, shared **as-is and without warranty** — review the code yourself
+> before running it, and don't assume it has been security-audited or hardened for
+> production. Contributions and scrutiny are welcome.
+
 ## Features
 
 - **Spine shelf** — your library as CD-jewel-case spines on an ultrawide display; tap to
@@ -91,3 +98,40 @@ it. It appears on the **shelf** (`http://localhost:5173`); tap it and press Play
 - `npm run typecheck` — typecheck all workspaces (TypeScript strict).
 - `npm run build` — build the frontends.
 - `npm run phase0:ma -- "<album>" "<player>" --ma-url <url>` — the Phase 0 MA spike.
+
+## Acknowledgments
+
+Crate is a **client of [Music Assistant](https://github.com/music-assistant/server)** — the
+open-source media library manager that does the real work of streaming to your speakers.
+Crate talks to a Music Assistant server over its WebSocket API for search, metadata, artwork,
+playback, and live state; it does **not** bundle, fork, or modify Music Assistant, and it is
+**not affiliated with or endorsed by** the Music Assistant project. Music Assistant is
+licensed under Apache-2.0.
+
+Crate is also built on open-source libraries, each under its own license — including
+[Fastify](https://fastify.dev) (MIT), [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) (MIT),
+[sharp](https://sharp.pixelplumbing.com) (Apache-2.0), [Vite](https://vitejs.dev) (MIT),
+[node-vibrant](https://github.com/Vibrant-Colors/node-vibrant) (MIT), and
+[ws](https://github.com/websockets/ws) (MIT) — plus fonts via [Fontsource](https://fontsource.org)
+(Archivo Narrow, Oswald, Newsreader; SIL Open Font License / Apache-2.0).
+
+## Trademarks & content
+
+Apple Music, AirPlay, Sonos, and Music Assistant are trademarks of their respective owners.
+Crate uses these names only to describe interoperability and is **not** affiliated with,
+sponsored by, or endorsed by Apple, Sonos, or the Music Assistant project. Crate plays only
+the content you are entitled to through your own Music Assistant / streaming-service accounts.
+
+**Album artwork.** The album cover art displayed by the app and shown in this repo's
+screenshots and demo site — e.g. Green Day's *American Idiot*, and the other albums on the
+shelf (Taylor Swift, My Chemical Romance, Fall Out Boy, Paramore, Avicii, and others) — is
+© the respective recording artists and record labels. It is reproduced here **solely to
+identify the albums and demonstrate the interface**; Crate claims no rights to it and no
+affiliation with or endorsement by the artists or labels.
+
+## License
+
+Crate is released under the [MIT License](./LICENSE) — use, copy, modify, and redistribute it
+freely, just keep the copyright and license notice. It comes with no warranty. Third-party
+dependencies and Music Assistant remain under their own licenses (see
+[Acknowledgments](#acknowledgments) above).

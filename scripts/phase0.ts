@@ -31,7 +31,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 // Settings & CLI
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SONOS_URL = 'http://sonos.nerdspar.com:5005';
+const DEFAULT_SONOS_URL = 'http://localhost:5005';
 
 interface Options {
   album: string;

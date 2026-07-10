@@ -27,7 +27,7 @@ Two CLIs came out of this spike:
 
 ## The node-sonos-http-api dead-end (why we pivoted)
 
-Investigated step by step against the operator's instance at `sonos.nerdspar.com:5005`:
+Investigated step by step against the operator's instance at `sonos-http-api.local:5005`:
 
 1. **iTunes search (step 1): passes.** `Rumours Fleetwood Mac` → `collectionId=594061854`,
    artwork upscaled to `3000x3000bb`.
@@ -56,7 +56,7 @@ volume, grouping, `/state`) but not for *originating* Apple Music albums.
 ## The Music Assistant path (what works)
 
 MA 2.9.5 (schema 31), reached directly on its own port (**not** through the HA reverse
-proxy): `http://<ha-host>:8095`. For this system: `http://10.0.1.96:8095`.
+proxy): `http://<ha-host>:8095`. For this system: `http://192.168.1.50:8095`.
 
 WebSocket API at `ws://<host>:8095/ws`. Protocol:
 
@@ -86,8 +86,8 @@ The four Phase 0 steps map to:
 Run:
 ```bash
 export MA_TOKEN='<ma long-lived token>'
-npm run phase0:ma -- "Rumours Fleetwood Mac" --ma-url http://10.0.1.96:8095        # discovery
-npm run phase0:ma -- "Rumours Fleetwood Mac" "Kitchen" --ma-url http://10.0.1.96:8095  # play
+npm run phase0:ma -- "Rumours Fleetwood Mac" --ma-url http://192.168.1.50:8095        # discovery
+npm run phase0:ma -- "Rumours Fleetwood Mac" "Kitchen" --ma-url http://192.168.1.50:8095  # play
 ```
 
 ## Implications for Phase 1 (architecture change from the plan)
