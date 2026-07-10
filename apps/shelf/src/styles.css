@@ -962,22 +962,16 @@ body.idle #find-grip::after { opacity: 0; }
 /* Sort buttons match the Settings button's size (smaller than the default .choice) to free space. */
 .find-row .choices .choice { font-size: 1.9vh; padding: 1vh 3vw; border-radius: 999px; }
 
-/* Shelf switcher: the Albums/Playlists tabs live as rotated (sideways) labels in the empty
-   black margin on the LEFT of the sheet — out of the content flow — so the shelf list and
-   results keep the full width. The tabs are absolutely placed against the sheet's left edge. */
+/* Shelf switcher (top of the Find bar): horizontal Albums/Playlists tabs + a list of shelves. */
 #find-shelves { display: flex; flex-direction: column; gap: 1.2vh; }
-.find-shelf-tabs {
-  position: absolute; left: 0.3vw; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: row; gap: 0.4vw; z-index: 3;
-}
+.find-shelf-tabs { display: flex; gap: 4vw; border-bottom: 1px solid rgba(236,231,221,0.12); }
 .find-shelf-tab {
-  writing-mode: vertical-rl; /* text reads top-to-bottom, sideways */
-  background: transparent; border: none; border-left: 3px solid transparent; border-radius: 0;
-  color: var(--ink-dim);
-  font-family: 'Newsreader Variable', serif; font-size: 2.6vh; font-weight: 500;
-  padding: 0.8vh 0.15vw;
+  background: transparent; border: none; border-bottom: 3px solid transparent; border-radius: 0;
+  margin-bottom: -1px; color: var(--ink-dim);
+  font-family: 'Newsreader Variable', serif; font-size: 2.8vh; font-weight: 500;
+  padding: 0 0.5vw 1vh;
 }
-.find-shelf-tab.on { color: var(--ink); border-left-color: var(--brass); }
+.find-shelf-tab.on { color: var(--ink); border-bottom-color: var(--brass); }
 #find-shelf-list { display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
 .find-shelf {
   text-align: left; background: transparent; color: var(--ink-dim);
