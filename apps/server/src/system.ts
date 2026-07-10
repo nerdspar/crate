@@ -132,6 +132,25 @@ export async function checkForUpdate(): Promise<GitUpdateInfo> {
   }
 }
 
+/** Latest Music Assistant server version published on GitHub (releases/latest
+    tag_name, e.g. "2.9.6"), or null if it can't be reached. Read-only, best-effort. */
+export async function latestMaRelease(): Promise<string | null> {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 12000);
+    const res = await fetch('https://api.github.com/repos/music-assistant/server/releases/latest', {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'crate-appliance' },
+      signal: ctl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { tag_name?: string };
+    return (data.tag_name ?? '').trim().replace(/^v/i, '') || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Launch deploy/pi/update.sh detached, OUTSIDE crate.service's cgroup, so it
     survives the `systemctl restart crate` it runs at the end. Prefers a transient
     systemd unit (the appliance always has systemd); falls back to a detached child.

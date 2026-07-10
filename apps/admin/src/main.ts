@@ -1734,8 +1734,8 @@ function renderSystemCat(body: HTMLElement): void {
   const up = document.createElement('div');
   up.className = 'sw-update';
   const swStatus = document.createElement('div');
-  swStatus.className = 'hint';
-  swStatus.textContent = 'Check for a newer version of Crate.';
+  swStatus.className = 'sw-versions';
+  swStatus.innerHTML = '<span class="hint">Check Crate and Music Assistant against GitHub.</span>';
   const swActions = document.createElement('div');
   swActions.className = 'sys-actions';
   up.append(swStatus, swActions);
@@ -1749,32 +1749,58 @@ function renderSystemCat(body: HTMLElement): void {
       .catch(() => showToast('Failed'));
   };
 
+  // One "App — current / latest-on-GitHub" block. `cur`/`latest` are pre-built HTML.
+  const verRow = (app: string, cur: string, latest: string, isUpd: boolean): string =>
+    `<div class="sw-row"><div class="sw-head"><span class="sw-app">${esc(app)}</span> <span class="sw-cur">${cur}</span></div>` +
+    (latest ? `<div class="sw-latest${isUpd ? ' has-update' : ''}">${latest}</div>` : '') +
+    '</div>';
+
   const doCheck = (): void => {
-    swStatus.textContent = 'Checking…';
+    swStatus.innerHTML = '<span class="hint">Checking…</span>';
     swActions.innerHTML = '';
     up.querySelector('.sw-note')?.remove();
     void client
       .checkUpdate()
       .then((u: UpdateStatus) => {
-        if (u.error) {
-          swStatus.textContent =
-            u.error === 'not-a-git-checkout'
-              ? 'This is a container deployment — update by pulling a new image (see INSTALL.md), not from here.'
-              : `Couldn’t check for updates: ${u.error.replace(/\s+/g, ' ').trim().slice(0, 160)}`;
+        // Crate: declared version + running SHA; latest = the tracked GitHub tip.
+        const crateCur = `${esc(u.crateVersion)}${u.current && u.current !== u.crateVersion ? ` · <code>${esc(u.current)}</code>` : ''}`;
+        let crateLatest: string;
+        let crateUpd = false;
+        if (u.error === 'not-a-git-checkout') {
+          crateLatest = 'container deploy — pull a new image (see INSTALL.md)';
+        } else if (u.error) {
+          crateLatest = `couldn’t check: ${esc(u.error.replace(/\s+/g, ' ').trim().slice(0, 90))}`;
         } else if (u.updateAvailable) {
-          swStatus.innerHTML = `Update available — <code>${esc(u.current)}</code> → <code>${esc(u.latest ?? '?')}</code> · ${u.behind} commit${u.behind === 1 ? '' : 's'} behind.`;
+          crateLatest = `GitHub <code>${esc(u.latest ?? '?')}</code> · ${u.behind} commit${u.behind === 1 ? '' : 's'} behind`;
+          crateUpd = true;
         } else {
-          swStatus.innerHTML = `Crate is up to date (<code>${esc(u.current)}</code>).`;
+          crateLatest = `up to date${u.latest ? ` (GitHub <code>${esc(u.latest)}</code>)` : ''}`;
         }
-        swActions.innerHTML = '';
+        const rows = [verRow('Crate', crateCur, crateLatest, crateUpd)];
+        // Music Assistant: running version vs latest GitHub release (when connected/co-hosted).
+        if (u.maVersion || u.managesMa) {
+          const maCur = u.maVersion ? esc(u.maVersion) : 'not connected';
+          let maLatest = '';
+          let maUpd = false;
+          if (u.maVersion) {
+            if (u.maLatest == null) maLatest = 'couldn’t reach GitHub';
+            else if (u.maUpdateAvailable) {
+              maLatest = `GitHub ${esc(u.maLatest)} · update available`;
+              maUpd = true;
+            } else maLatest = `up to date (GitHub ${esc(u.maLatest)})`;
+          }
+          rows.push(verRow('Music Assistant', maCur, maLatest, maUpd));
+        }
+        swStatus.innerHTML = rows.join('');
+
+        // Actions.
         const crateBtn = document.createElement('button');
         crateBtn.className = 'ghost';
         crateBtn.textContent = 'Update Crate';
         // Enable when there's a known update, or when the check itself failed (don't let a
         // flaky root-side check block the updater, which runs git as the repo owner). A
         // confirmed up-to-date checkout, or a container (non-git) deploy, leaves it disabled.
-        const canUpdateCrate = u.appliance && u.error !== 'not-a-git-checkout' && (u.updateAvailable || !!u.error);
-        crateBtn.disabled = !canUpdateCrate;
+        crateBtn.disabled = !(u.appliance && u.error !== 'not-a-git-checkout' && (u.updateAvailable || !!u.error));
         crateBtn.addEventListener('click', () =>
           startUpdate('crate', 'Update Crate now', 'Updating Crate — the wall restarts when it finishes (a few minutes).'),
         );
@@ -1783,7 +1809,8 @@ function renderSystemCat(body: HTMLElement): void {
           const maBtn = document.createElement('button');
           maBtn.className = 'ghost';
           maBtn.textContent = 'Update Music Assistant';
-          maBtn.disabled = !u.appliance;
+          // Enabled when a newer release exists, or the release couldn't be checked (allow forcing).
+          maBtn.disabled = !(u.appliance && (u.maUpdateAvailable || u.maLatest == null));
           maBtn.title = 'Pulls the latest Music Assistant image and restarts it — your library is preserved.';
           maBtn.addEventListener('click', () =>
             startUpdate('ma', 'Update Music Assistant now', 'Updating Music Assistant — your library is preserved.'),
@@ -1795,7 +1822,7 @@ function renderSystemCat(body: HTMLElement): void {
         again.textContent = 'Check again';
         again.addEventListener('click', doCheck);
         swActions.appendChild(again);
-        if (!u.appliance) {
+        if (!u.appliance && u.error !== 'not-a-git-checkout') {
           const n = document.createElement('p');
           n.className = 'hint sw-note';
           n.textContent = 'Updates run on the wall appliance — or run deploy/pi/update.sh over SSH.';
@@ -1803,7 +1830,7 @@ function renderSystemCat(body: HTMLElement): void {
         }
       })
       .catch(() => {
-        swStatus.textContent = 'Check failed.';
+        swStatus.innerHTML = '<span class="hint">Check failed.</span>';
       });
   };
   const checkBtn = document.createElement('button');

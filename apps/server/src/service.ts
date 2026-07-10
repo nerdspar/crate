@@ -50,7 +50,7 @@ import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
-import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower, spawnUpdate } from './system.js';
+import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, rebootSystem, setDisplayPower, spawnUpdate } from './system.js';
 import { githubCheck, githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
@@ -1264,17 +1264,24 @@ export class Service {
     return { ok: true };
   }
 
-  /** Whether a newer Crate is available upstream (git), plus MA topology so the
-      admin can offer an MA-image update. Read-only; safe to call anywhere. */
+  /** Current vs latest for both Crate (git) and Music Assistant (GitHub releases),
+      plus MA topology so the admin can offer an MA-image update. Read-only. */
   async checkUpdate(): Promise<UpdateStatus> {
-    const git = await checkForUpdate();
+    const maVersion = this.ma.serverVersion ?? null;
+    const [git, maLatest] = await Promise.all([
+      checkForUpdate(),
+      maVersion ? latestMaRelease() : Promise.resolve(null),
+    ]);
     return {
       current: git.current ?? this.cfg.version,
       latest: git.latest,
       updateAvailable: git.updateAvailable,
       behind: git.behind,
+      crateVersion: this.cfg.version,
       managesMa: this.cfg.managesMa,
-      maVersion: this.ma.serverVersion ?? null,
+      maVersion,
+      maLatest,
+      maUpdateAvailable: !!(maVersion && maLatest && cmpSemver(maLatest, maVersion) > 0),
       appliance: this.cfg.appliance,
       error: git.error ?? null,
     };
@@ -1303,4 +1310,18 @@ function fmtUptime(sec: number): string {
 /** "1 client" / "2 clients" / "0 clients". */
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/** Compare dotted numeric versions ("2.9.6" vs "2.9.5"): >0 if a is newer, <0 if
+    older, 0 if equal. Non-numeric/short parts are treated as 0, so odd tags degrade
+    gracefully rather than throwing. */
+function cmpSemver(a: string, b: string): number {
+  const parts = (v: string): number[] => v.split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const pa = parts(a);
+  const pb = parts(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
 }

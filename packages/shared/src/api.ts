@@ -91,16 +91,24 @@ export interface ServicesStatus {
     SHAs of the checkout and its upstream tip; `updateAvailable` means it's behind.
     Updates only actually run on the appliance. */
 export interface UpdateStatus {
+  /** Running Crate's short git SHA, or the version string if it isn't a checkout. */
   current: string;
+  /** Upstream (GitHub) tip short SHA after a fetch — Crate has no releases/tags. */
   latest: string | null;
   updateAvailable: boolean;
   behind: number;
+  /** Crate's declared version (CRATE_VERSION, e.g. "0.1.0"), for a human-readable line. */
+  crateVersion: string;
   /** True when Crate co-hosts Music Assistant, so it can update that container too. */
   managesMa: boolean;
   /** Running MA server version, if connected. */
   maVersion: string | null;
+  /** Latest MA server version on GitHub (releases/latest), or null if unreachable. */
+  maLatest: string | null;
+  /** True when maLatest is newer than the running maVersion. */
+  maUpdateAvailable: boolean;
   appliance: boolean;
-  /** Set when the git check itself failed (offline, no git, etc.). */
+  /** Set when the git check itself failed (offline, no git, container deploy, etc.). */
   error: string | null;
 }
 
