@@ -6,7 +6,7 @@
 
 import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem } from '@crate/shared';
 import crateMark from './crate-mark.svg';
-import crateMarkMono from './crate-mark-mono.svg';
+import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
@@ -2662,7 +2662,7 @@ function buildOnboarding(): void {
     '<div class="ob-nav"><button class="ob-back ghost" hidden>Back</button><div class="ob-dots"></div><button class="ob-next">Continue</button></div>' +
     '</div>';
   document.body.appendChild(ov);
-  (ov.querySelector('.ob-logo') as HTMLImageElement).src = crateMarkMono;
+  (ov.querySelector('.ob-logo') as HTMLImageElement).src = crateLogo;
   const body = ov.querySelector('.ob-body') as HTMLElement;
   const backBtn = ov.querySelector('.ob-back') as HTMLButtonElement;
   const nextBtn = ov.querySelector('.ob-next') as HTMLButtonElement;
@@ -2893,8 +2893,8 @@ async function obDone(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
 }
 
 /* ================= Init ================= */
-// Crate mark, top-right of each main tab header.
-document.querySelectorAll<HTMLImageElement>('img[data-logo]').forEach((img) => (img.src = crateMarkMono));
+// Crate logo, top-right of each main tab header.
+document.querySelectorAll<HTMLImageElement>('img[data-logo]').forEach((img) => (img.src = crateLogo));
 void loadSources();
 updateAddToolbar();
 setContentType('album'); // seeds Add + Shelves for the shared Albums/Playlists choice
