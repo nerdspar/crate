@@ -935,6 +935,16 @@ export class Service {
     return this.ma.reloadSource(instanceId);
   }
 
+  /** Whether MA's builtin smart playlists are exposed (they otherwise clutter Crate search). */
+  maBuiltinPlaylistsEnabled(): Promise<boolean> {
+    return this.ma.getBuiltinPlaylistsEnabled();
+  }
+
+  /** Turn MA's builtin smart playlists on/off. The install flow disables them by default. */
+  maSetBuiltinPlaylists(enabled: boolean): Promise<void> {
+    return this.ma.setBuiltinPlaylists(enabled);
+  }
+
   // --- Backup / restore (Phase 5) -----------------------------------------
 
   /** A portable snapshot of the user-authored config, for download or GitHub push. */

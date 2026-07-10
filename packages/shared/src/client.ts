@@ -291,6 +291,13 @@ export class CrateClient {
   reloadMaSource(instanceId: string): Promise<{ ok: true }> {
     return this.post(`/api/admin/ma/sources/${encodeURIComponent(instanceId)}/reload`, {});
   }
+  /** Whether MA's builtin smart playlists (Random Album, Infinite Mix, …) are exposed to search. */
+  getMaBuiltinPlaylists(): Promise<{ enabled: boolean }> {
+    return this.req('/api/admin/ma/builtin-playlists');
+  }
+  setMaBuiltinPlaylists(enabled: boolean): Promise<{ ok: true; enabled: boolean }> {
+    return this.post('/api/admin/ma/builtin-playlists', { enabled });
+  }
 
   // --- Config backup / restore (Phase 5) ---
   /** Download the full config snapshot (settings, library, shelves, curation). */

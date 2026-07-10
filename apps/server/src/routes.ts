@@ -289,6 +289,16 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
       return { ok: true };
     });
   });
+  app.get('/api/admin/ma/builtin-playlists', (_req, reply) =>
+    maCall(reply, async () => ({ enabled: await service.maBuiltinPlaylistsEnabled() })),
+  );
+  app.post('/api/admin/ma/builtin-playlists', (req, reply) => {
+    const enabled = (req.body as { enabled?: boolean }).enabled === true;
+    return maCall(reply, async () => {
+      await service.maSetBuiltinPlaylists(enabled);
+      return { ok: true, enabled };
+    });
+  });
 
   // --- Config backup / restore (Phase 5) ---
   app.get('/api/admin/backup/export', (_req, reply) => {

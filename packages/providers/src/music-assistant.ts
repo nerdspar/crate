@@ -97,6 +97,19 @@ function mapRepeat(v: string | undefined): RepeatMode {
   return v === 'one' || v === 'all' ? v : 'off';
 }
 
+/** Config keys of MA's builtin provider's auto-generated "smart" playlists (Random Album,
+    Infinite Mix, Recently played, …) — the ones that clutter Crate search when left on. */
+const BUILTIN_PLAYLIST_KEYS = [
+  'all_favorite_tracks',
+  'random_artist',
+  'random_album',
+  'random_tracks',
+  'recently_played',
+  'recently_added_tracks',
+  'infinite_mix',
+  'infinite_mix_favorites',
+];
+
 export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   readonly id = 'music-assistant';
   private readonly client: MaClient;
@@ -267,6 +280,38 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   /** Reload a provider instance (`config/providers/reload`). */
   async reloadSource(instanceId: string): Promise<void> {
     await this.client.command('config/providers/reload', { instance_id: instanceId });
+  }
+
+  /** The builtin provider's stored config values, keyed by entry key → resolved value.
+      `config/providers/get`.values is a dict of full ConfigEntry objects (each with a `.value`);
+      collapse it to key → (value ?? default), skipping display-only entries. */
+  private async builtinConfigValues(): Promise<Record<string, unknown>> {
+    const conf = rec(await this.client.command('config/providers/get', { instance_id: 'builtin' }));
+    const stored = rec(conf['values']);
+    const values: Record<string, unknown> = {};
+    for (const [k, raw] of Object.entries(stored)) {
+      const entry = rec(raw);
+      if (entry['type'] === 'label' || entry['type'] === 'alert') continue;
+      const v = entry['value'] ?? entry['default_value'];
+      if (v !== null && v !== undefined) values[k] = v;
+    }
+    return values;
+  }
+
+  /** Whether MA's builtin smart playlists are currently exposed (any of them still enabled). */
+  async getBuiltinPlaylistsEnabled(): Promise<boolean> {
+    const values = await this.builtinConfigValues();
+    // Each defaults to true, so "enabled" = not explicitly set to false.
+    return BUILTIN_PLAYLIST_KEYS.some((k) => values[k] !== false);
+  }
+
+  /** Enable or disable ALL of MA's builtin smart playlists at once. Submits the provider's full
+      config (MA's save validates the whole set, e.g. it rejects a missing log_level) with just the
+      playlist keys overridden, preserving every other builtin setting (`config/providers/save`). */
+  async setBuiltinPlaylists(enabled: boolean): Promise<void> {
+    const values = await this.builtinConfigValues();
+    for (const k of BUILTIN_PLAYLIST_KEYS) values[k] = enabled;
+    await this.client.command('config/providers/save', { provider_domain: 'builtin', values, instance_id: 'builtin' });
   }
 
   // --- Artwork ------------------------------------------------------------

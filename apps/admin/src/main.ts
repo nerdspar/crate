@@ -2247,6 +2247,31 @@ function renderMaCat(body: HTMLElement): void {
     add.textContent = '+ Add source';
     add.addEventListener('click', () => void showPicker());
     body.appendChild(add);
+
+    // Built-in smart playlists — MA auto-generates these; off by default so they don't clutter search.
+    const plField = document.createElement('div');
+    plField.className = 'field field-toggle ma-builtin-pl';
+    const plCb = document.createElement('input');
+    plCb.type = 'checkbox';
+    plCb.disabled = true;
+    const plLab = document.createElement('label');
+    plLab.appendChild(plCb);
+    plLab.append(' Show built-in smart playlists');
+    plField.appendChild(plLab);
+    const plHint = document.createElement('p');
+    plHint.className = 'field-desc';
+    plHint.textContent = 'Music Assistant auto-generates playlists (Random Album, Infinite Mix, Recently played…). Turn this off to keep them out of Crate search.';
+    plField.appendChild(plHint);
+    body.appendChild(plField);
+    void client.getMaBuiltinPlaylists().then((r) => { plCb.checked = r.enabled; plCb.disabled = false; }).catch(() => (plCb.disabled = false));
+    plCb.addEventListener('change', () => {
+      plCb.disabled = true;
+      void client
+        .setMaBuiltinPlaylists(plCb.checked)
+        .then((r) => showToast(r.enabled ? 'Built-in playlists shown' : 'Built-in playlists hidden'))
+        .catch((e) => { plCb.checked = !plCb.checked; maErr(e); })
+        .finally(() => (plCb.disabled = false));
+    });
   };
 
   const showPicker = async (): Promise<void> => {
