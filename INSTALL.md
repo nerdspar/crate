@@ -5,7 +5,7 @@ Crate is a wall-mounted music shelf that plays through [Music Assistant](https:/
 You can run it two ways:
 
 - **Docker Compose** (below) — the portable path. Best for a NAS/mini-PC/server, or any host where Crate doesn't drive the display itself. Works with an MA you already run, or can bring MA up alongside it.
-- **Raspberry Pi appliance** — a native install that also drives the touchscreen in kiosk mode and controls brightness/sleep/reboot. _(Coming next — see the roadmap.)_
+- **Raspberry Pi appliance** — a native install (below) that also drives the touchscreen in kiosk mode and controls brightness/sleep/reboot.
 
 ---
 
@@ -56,6 +56,36 @@ docker compose up -d --build     # add --profile cohosted if you use it
 ```sh
 docker compose logs -f crate
 docker compose down              # stop (keeps volumes/data)
+```
+
+---
+
+## Raspberry Pi appliance
+
+For a Pi that drives the wall touchscreen. Runs the server **natively** (not Docker) so it can control the display's brightness/sleep and reboot. Targets Raspberry Pi OS Bookworm.
+
+```sh
+git clone https://github.com/<you>/crate.git
+cd crate
+sudo bash deploy/pi/install.sh            # server only
+sudo bash deploy/pi/install.sh --kiosk    # also install the fullscreen browser
+```
+
+The script installs Node, builds Crate, prompts for `MA_URL` + `MA_TOKEN` (written to `.env`), and installs a `crate.service` systemd unit with `CRATE_APPLIANCE=1`. Data lives in `/var/lib/crate`.
+
+- **Music Assistant** isn't installed by this script. Point `MA_URL` at an MA you already run, or run it in Docker (`docker compose --profile cohosted up -d`) and set `MA_URL` + `CRATE_MANAGES_MA=1`.
+- **Kiosk (`--kiosk`)** installs `cage` + Chromium and a `crate-kiosk.service` that opens `http://localhost:8080` fullscreen on boot. This is **best-effort** — the display stack varies (Pi OS Bookworm uses Wayland/labwc; older setups use X11). If the screen stays blank, run the server without `--kiosk` and launch a fullscreen browser however suits your device.
+
+Manage it:
+```sh
+systemctl status crate            # server
+journalctl -u crate -f            # server logs
+systemctl restart crate           # after a `git pull` + `npm run build`
+```
+
+Updating:
+```sh
+cd crate && git pull && npm ci && npm run build && sudo systemctl restart crate
 ```
 
 ---
