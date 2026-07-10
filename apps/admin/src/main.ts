@@ -2720,21 +2720,35 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
   statusEl.textContent = conn.connected ? `Connected · MA ${conn.serverVersion ?? ''}` : '';
 
   if (coHosted) {
-    // MA is co-hosted → mint a token from the user's MA credentials automatically.
-    const user = input('text', 'Music Assistant username');
+    // MA is co-hosted → Crate creates the account (if the instance is fresh) and mints a token,
+    // all from these credentials. The user never opens Music Assistant.
+    const lead = body.querySelector('.ob-lead') as HTMLElement;
+    const user = input('text', 'username');
     user.autocomplete = 'username';
     const pass = input('password', 'password');
-    pass.autocomplete = 'current-password';
+    pass.autocomplete = 'new-password';
     form.append(field('Server URL', url), field('Username', user), field('Password', pass));
     body.append(form, statusEl);
     ctx.setNext('Connect');
+    void client
+      .maNeedsSetup(url.value)
+      .then((r) => {
+        if (r.needsSetup) {
+          lead.textContent = 'This Music Assistant is brand new. Choose a username and password (8+ characters) — Crate creates the account and its own token. Nothing else to set up.';
+          pass.placeholder = 'password (8+ characters)';
+          ctx.setNext('Create account');
+        } else {
+          lead.textContent = 'Sign in to Music Assistant and Crate will create its own access token — nothing to copy.';
+        }
+      })
+      .catch(() => {});
     return async () => {
-      statusEl.textContent = 'Signing in…';
+      statusEl.textContent = 'Setting up…';
       const r = await client
         .mintMaConnection({ url: url.value, username: user.value, password: pass.value })
         .catch((e) => { statusEl.textContent = '✕ ' + obErr(e); return null; });
       if (r?.connected) return true;
-      if (statusEl.textContent === 'Signing in…') statusEl.textContent = '✕ Couldn’t connect.';
+      if (statusEl.textContent === 'Setting up…') statusEl.textContent = '✕ Couldn’t connect.';
       return false;
     };
   }

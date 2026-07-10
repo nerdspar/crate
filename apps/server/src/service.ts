@@ -38,7 +38,7 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import { MusicAssistantProvider, mintMaToken } from '@crate/providers';
+import { MusicAssistantProvider, maNeedsSetup, mintMaToken, setupMaAccount } from '@crate/providers';
 import type { ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
@@ -173,13 +173,24 @@ export class Service {
     return { done: true };
   }
 
-  /** Co-hosted onboarding: mint a long-lived token from MA credentials, then connect with it. */
+  /** Whether the (co-hosted) MA still needs its first admin account created. */
+  maNeedsSetup(url?: string): Promise<boolean> {
+    const u = (url?.trim() || this.db.getRaw<string>('ma.url', this.cfg.maUrl)).replace(/\/+$/, '');
+    return maNeedsSetup(u);
+  }
+
+  /** Co-hosted onboarding: create the first MA admin account if the instance is fresh, then mint a
+      long-lived token from those credentials and connect — no Music Assistant UI needed. */
   async mintMaConnection(input: { url?: string; username?: string; password?: string }): Promise<MaConnection> {
     const url = (input.url?.trim() || this.db.getRaw<string>('ma.url', this.cfg.maUrl)).replace(/\/+$/, '');
-    if (!input.username?.trim() || !input.password) {
-      throw new Error('Enter your Music Assistant username and password.');
+    const username = input.username?.trim();
+    if (!username || !input.password) {
+      throw new Error('Enter a Music Assistant username and password.');
     }
-    const token = await mintMaToken(url, input.username.trim(), input.password);
+    if (await maNeedsSetup(url)) {
+      await setupMaAccount(url, username, input.password);
+    }
+    const token = await mintMaToken(url, username, input.password);
     return this.setMaConnection({ url, token });
   }
 

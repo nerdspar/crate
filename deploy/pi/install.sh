@@ -75,7 +75,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     MA_URL="http://localhost:8095"
     MA_TOKEN=""
     MANAGES_MA=1
-    MA_NOTE="Music Assistant is running. Finish its setup at http://${IP:-<pi-ip>}:8095 (create your account), then open Crate's admin — the setup wizard signs in and creates its own token."
+    MA_NOTE="Music Assistant is running — nothing to configure there. Open Crate's admin; the setup wizard creates your Music Assistant account and its own token."
   else
     read -rp "    Music Assistant URL [http://homeassistant.local:8095]: " MA_URL
     MA_URL="${MA_URL:-http://homeassistant.local:8095}"

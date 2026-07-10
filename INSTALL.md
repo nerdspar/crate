@@ -73,7 +73,7 @@ sudo bash deploy/pi/install.sh --kiosk    # also install the fullscreen browser
 
 The script installs Node, builds Crate, and installs a `crate.service` systemd unit with `CRATE_APPLIANCE=1`. Data lives in `/var/lib/crate`.
 
-- **Music Assistant**: on first run it asks whether to **install MA alongside Crate** (in Docker — sets `CRATE_MANAGES_MA=1`) or **point at an existing MA** (enter its URL). Either way the **token can be left blank** — open Crate's admin afterward and the **setup wizard** connects: for a co-hosted MA it signs in with your MA account and mints its own token; for an external MA you paste a long-lived token. You can also do it later in **Settings → Music Assistant**.
+- **Music Assistant**: on first run it asks whether to **install MA alongside Crate** (in Docker — sets `CRATE_MANAGES_MA=1`) or **point at an existing MA** (enter its URL). Either way the **token is left blank** — open Crate's admin afterward and the **setup wizard** handles it: for a co-hosted MA it **creates your Music Assistant account and mints its own token** (you never open MA's UI); for an external MA you paste a long-lived token. You can also do it later in **Settings → Music Assistant**.
 - **Kiosk (`--kiosk`)** installs `cage` + Chromium and a `crate-kiosk.service` that opens `http://localhost:8080` fullscreen on boot. This is **best-effort** — the display stack varies (Pi OS Bookworm uses Wayland/labwc; older setups use X11). If the screen stays blank, run the server without `--kiosk` and launch a fullscreen browser however suits your device.
 
 Manage it:

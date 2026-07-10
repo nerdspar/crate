@@ -275,9 +275,13 @@ export class CrateClient {
   testMaConnection(cfg: { url?: string; token?: string }): Promise<{ ok: boolean; serverVersion: string | null }> {
     return this.post('/api/admin/ma/connection/test', cfg);
   }
-  /** Co-hosted: mint a long-lived token from MA credentials and connect with it. */
+  /** Co-hosted: create the MA account if fresh, mint a long-lived token, and connect. */
   mintMaConnection(cfg: { url?: string; username?: string; password?: string }): Promise<MaConnection> {
     return this.post('/api/admin/ma/connection/mint', cfg);
+  }
+  /** Whether the co-hosted MA still needs its first admin account created. */
+  maNeedsSetup(url?: string): Promise<{ needsSetup: boolean }> {
+    return this.post('/api/admin/ma/connection/needs-setup', url ? { url } : {});
   }
 
   /** First-run onboarding state. */

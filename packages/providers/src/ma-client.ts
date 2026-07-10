@@ -312,3 +312,35 @@ export async function mintMaToken(url: string, username: string, password: strin
     setTimeout(() => finish(new Error('Music Assistant login timed out.')), 15_000);
   });
 }
+
+/**
+ * Whether a (co-hosted) MA still needs its first admin account created. A fresh MA blocks the WS
+ * API with "Setup required" and only accepts the owner via the unauthenticated `POST /setup` route;
+ * probing it with an empty body distinguishes a fresh instance ("username required" style error)
+ * from a configured one ("Setup already completed"). Ambiguous/unreachable → false (don't prompt).
+ */
+export async function maNeedsSetup(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${url.replace(/\/+$/, '')}/setup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (!j || typeof j.error !== 'string') return false;
+    return j.error !== 'Setup already completed';
+  } catch {
+    return false;
+  }
+}
+
+/** Create the first admin account on a fresh MA via the unauthenticated `POST /setup` route. */
+export async function setupMaAccount(url: string, username: string, password: string): Promise<void> {
+  const res = await fetch(`${url.replace(/\/+$/, '')}/setup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, password, device_name: 'Crate' }),
+  });
+  const j = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+  if (!j.success) throw new Error(j.error || `Music Assistant setup failed (HTTP ${res.status}).`);
+}
