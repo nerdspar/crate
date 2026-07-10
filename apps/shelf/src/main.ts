@@ -5190,13 +5190,21 @@ function connectWs(): void {
     }
     if (msg.type === 'state') handleState(msg.state);
     else if (msg.type === 'progress') handleProgress(msg.playerId, msg.elapsed);
-    else if (msg.type === 'shelf' || msg.type === 'shelves') void reloadShelf();
+    else if (msg.type === 'shelf' || msg.type === 'shelves') scheduleReloadShelf();
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
     else if (msg.type === 'system') applySystemStatus(msg.status);
     else if (msg.type === 'reload' && msg.app === 'shelf') location.reload();
   };
   ws.onclose = () => setTimeout(connectWs, 2000);
+}
+
+// The server emits `shelf` liberally (art + enrichment land per item), and each rebuilds the
+// whole spine DOM. Coalesce a burst into one rebuild ~200ms after it settles.
+let reloadShelfTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleReloadShelf(): void {
+  clearTimeout(reloadShelfTimer);
+  reloadShelfTimer = setTimeout(() => void reloadShelf(), 200);
 }
 
 async function reloadShelf(): Promise<void> {
@@ -5290,8 +5298,14 @@ function applySettings(s: Settings): void {
     zones stay live regardless, so a single swipe both reveals and opens. */
 const IDLE_MS = 10000;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let lastMarkActive = 0;
 function markActive(): void {
-  lastTouchAt = performance.now();
+  const t = performance.now();
+  // Fires on every pointermove during a drag; the idle timeout is 10s, so re-arming it more than
+  // ~twice a second is wasted work. Throttle the heavy path (the first move of a gesture still runs).
+  if (t - lastMarkActive < 500) return;
+  lastMarkActive = t;
+  lastTouchAt = t;
   document.body.classList.remove('idle');
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => document.body.classList.add('idle'), IDLE_MS);
