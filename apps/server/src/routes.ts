@@ -309,6 +309,13 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   app.put('/api/admin/backup/github', (req) =>
     service.setGithubConfig(req.body as { repo?: string; branch?: string; path?: string; token?: string }),
   );
+  app.get('/api/admin/backup/github/repos', async (_req, reply) => {
+    try {
+      return await service.listGithubRepos();
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'Failed to list repos' });
+    }
+  });
   app.post('/api/admin/backup/github/push', async (_req, reply) => {
     try {
       return await service.pushGithubBackup();

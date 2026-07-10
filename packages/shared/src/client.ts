@@ -309,6 +309,10 @@ export class CrateClient {
   setGithubBackup(cfg: { repo?: string; branch?: string; path?: string; token?: string }): Promise<GithubBackupConfig> {
     return this.req('/api/admin/backup/github', { method: 'PUT', body: JSON.stringify(cfg) });
   }
+  /** Repos the stored token can reach, for the repo picker. */
+  listGithubRepos(): Promise<Array<{ fullName: string; private: boolean }>> {
+    return this.req('/api/admin/backup/github/repos');
+  }
   /** Commit the current config to the configured GitHub repo. */
   pushGithubBackup(): Promise<{ ok: true; url: string; at: string }> {
     return this.post('/api/admin/backup/github/push', {});

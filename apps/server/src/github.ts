@@ -79,6 +79,23 @@ export async function githubPush(t: GithubTarget, content: string, message: stri
   return { url: j.content?.html_url ?? '', commit: j.commit?.sha ?? '' };
 }
 
+/** List the repos the token can reach (for the admin repo picker). Newest-updated first. */
+export async function githubListRepos(token: string): Promise<Array<{ fullName: string; private: boolean }>> {
+  const res = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member', {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'Crate',
+    },
+  });
+  if (!res.ok) throw await ghError(res);
+  const j = (await res.json()) as Array<{ full_name?: string; private?: boolean }>;
+  return j
+    .filter((r) => typeof r.full_name === 'string')
+    .map((r) => ({ fullName: r.full_name as string, private: r.private === true }));
+}
+
 /** Fetch the file's decoded text content. */
 export async function githubGet(t: GithubTarget): Promise<string> {
   const { owner, name } = splitRepo(t.repo);

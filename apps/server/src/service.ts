@@ -42,7 +42,7 @@ import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
 import { applyBrightness, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower } from './system.js';
-import { githubGet, githubPush, type GithubTarget } from './github.js';
+import { githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
 const ART_BASE = '/art';
@@ -989,6 +989,13 @@ export class Service {
       hasToken: !!this.db.getRaw<string>('backup.github.token', ''),
       lastBackupAt: this.db.getRaw<string | null>('backup.github.lastAt', null),
     };
+  }
+
+  /** Repos the stored token can reach, for the admin repo picker. */
+  listGithubRepos(): Promise<Array<{ fullName: string; private: boolean }>> {
+    const token = this.db.getRaw<string>('backup.github.token', '');
+    if (!token) throw new Error('Add a GitHub token first.');
+    return githubListRepos(token);
   }
 
   setGithubConfig(input: { repo?: string; branch?: string; path?: string; token?: string }): GithubBackupConfig {

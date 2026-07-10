@@ -1798,68 +1798,141 @@ function renderBackupCat(body: HTMLElement): void {
   actions.append(exportBtn, restoreBtn);
   body.append(actions, fileInput);
 
-  // --- GitHub auto-backup ---
-  const ghHead = document.createElement('div');
-  ghHead.className = 'set-subhead';
-  ghHead.textContent = 'GitHub';
-  body.appendChild(ghHead);
-  const ghHint = document.createElement('p');
-  ghHint.className = 'hint';
-  ghHint.textContent = 'Commit backups to a private GitHub repo. Needs a token with contents write access (a classic “repo” token, or a fine-grained one with Contents: read & write).';
-  body.appendChild(ghHint);
+  // --- GitHub auto-backup (its own re-renderable block) ---
+  const ghHost = document.createElement('div');
+  body.appendChild(ghHost);
+  void renderGithubSection(ghHost);
+}
 
-  const mkField = (label: string, placeholder: string, type = 'text'): { field: HTMLElement; input: HTMLInputElement } => {
-    const field = document.createElement('div');
-    field.className = 'field';
+/** Renders (and re-renders) the GitHub backup block: a repo dropdown once a token is saved,
+    else a text field; branch / path / token; and back-up / restore actions. */
+async function renderGithubSection(host: HTMLElement): Promise<void> {
+  host.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'set-subhead';
+  head.textContent = 'GitHub';
+  host.appendChild(head);
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = 'Commit backups to a private GitHub repo — Crate can push a backup and restore from it. Needs a token with Contents: read & write (a classic “repo” token, or a fine-grained token scoped to the repo).';
+  host.appendChild(hint);
+
+  let cfg: GithubBackupConfig;
+  try {
+    cfg = await client.getGithubBackup();
+  } catch {
+    cfg = { repo: '', branch: 'main', path: 'crate-backup.json', hasToken: false, lastBackupAt: null };
+  }
+
+  const form = document.createElement('div');
+  form.className = 'ma-form';
+  host.appendChild(form);
+  const field = (label: string): HTMLElement => {
+    const f = document.createElement('div');
+    f.className = 'field';
     const l = document.createElement('label');
     l.textContent = label;
-    const input = document.createElement('input');
-    input.type = type;
-    input.placeholder = placeholder;
-    field.append(l, input);
-    return { field, input };
+    f.appendChild(l);
+    return f;
   };
-  const repo = mkField('Repository', 'owner/repo');
-  const branch = mkField('Branch', 'main');
-  const path = mkField('File path', 'crate-backup.json');
-  const token = mkField('Access token', 'ghp_… (write-only)', 'password');
-  const ghForm = document.createElement('div');
-  ghForm.className = 'ma-form';
-  ghForm.append(repo.field, branch.field, path.field, token.field);
-  body.appendChild(ghForm);
+
+  // Repository: a dropdown of the token's repos once a token is saved, else a text box.
+  const repoField = field('Repository');
+  let repoControl: HTMLInputElement | HTMLSelectElement;
+  if (cfg.hasToken) {
+    const sel = document.createElement('select');
+    sel.add(new Option('Loading your repositories…', cfg.repo));
+    sel.disabled = true;
+    repoControl = sel;
+    repoField.appendChild(sel);
+    void client
+      .listGithubRepos()
+      .then((repos) => {
+        sel.innerHTML = '';
+        sel.disabled = false;
+        sel.add(new Option('— choose a repository —', ''));
+        const names = new Set(repos.map((r) => r.fullName));
+        if (cfg.repo && !names.has(cfg.repo)) sel.add(new Option(cfg.repo, cfg.repo));
+        for (const r of repos) sel.add(new Option(r.private ? `${r.fullName} (private)` : r.fullName, r.fullName));
+        sel.value = cfg.repo;
+      })
+      .catch((e) => {
+        sel.innerHTML = '';
+        sel.disabled = false;
+        if (cfg.repo) sel.add(new Option(cfg.repo, cfg.repo));
+        sel.add(new Option('Couldn’t load repos — check the token', ''));
+        maErr(e);
+      });
+  } else {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = 'owner/repo';
+    inp.value = cfg.repo;
+    repoControl = inp;
+    repoField.appendChild(inp);
+    const note = document.createElement('p');
+    note.className = 'field-desc';
+    note.textContent = 'Enter a token below and Save to pick from your repositories.';
+    repoField.appendChild(note);
+  }
+  form.appendChild(repoField);
+
+  const branchField = field('Branch');
+  const branch = document.createElement('input');
+  branch.type = 'text';
+  branch.placeholder = 'main';
+  branch.value = cfg.branch;
+  branchField.appendChild(branch);
+  form.appendChild(branchField);
+
+  const pathField = field('File path');
+  const path = document.createElement('input');
+  path.type = 'text';
+  path.placeholder = 'crate-backup.json';
+  path.value = cfg.path;
+  pathField.appendChild(path);
+  form.appendChild(pathField);
+
+  const tokenField = field('Access token');
+  const token = document.createElement('input');
+  token.type = 'password';
+  token.placeholder = cfg.hasToken ? 'saved — leave blank to keep it' : 'ghp_…';
+  tokenField.appendChild(token);
+  const tokenNote = document.createElement('p');
+  tokenNote.className = 'field-desc';
+  tokenNote.textContent = 'Stored on the server and never shown again. Needs read + write so Crate can both back up and restore.';
+  tokenField.appendChild(tokenNote);
+  form.appendChild(tokenField);
 
   const lastLine = document.createElement('p');
   lastLine.className = 'hint';
-  body.appendChild(lastLine);
+  lastLine.textContent = cfg.lastBackupAt ? `Last GitHub backup: ${new Date(cfg.lastBackupAt).toLocaleString()}` : 'No GitHub backup yet.';
+  host.appendChild(lastLine);
 
-  const ghActions = document.createElement('div');
-  ghActions.className = 'sys-actions';
+  const actions = document.createElement('div');
+  actions.className = 'sys-actions';
   const saveCfg = document.createElement('button');
   saveCfg.className = 'ghost';
   saveCfg.textContent = 'Save GitHub settings';
   const pushBtn = document.createElement('button');
   pushBtn.className = 'ghost';
   pushBtn.textContent = 'Back up now';
-  const ghRestore = document.createElement('button');
-  ghRestore.className = 'ghost danger';
-  ghRestore.textContent = 'Restore from GitHub';
-  ghActions.append(saveCfg, pushBtn, ghRestore);
-  body.appendChild(ghActions);
-
-  const applyCfg = (c: GithubBackupConfig): void => {
-    repo.input.value = c.repo;
-    branch.input.value = c.branch;
-    path.input.value = c.path;
-    token.input.placeholder = c.hasToken ? '•••••••• saved — leave blank to keep' : 'ghp_… (write-only)';
-    lastLine.textContent = c.lastBackupAt ? `Last GitHub backup: ${new Date(c.lastBackupAt).toLocaleString()}` : 'No GitHub backup yet.';
-  };
-  void client.getGithubBackup().then(applyCfg).catch(() => {});
+  const restore = document.createElement('button');
+  restore.className = 'ghost danger';
+  restore.textContent = 'Restore from GitHub';
+  actions.append(saveCfg, pushBtn, restore);
+  host.appendChild(actions);
 
   saveCfg.addEventListener('click', () => {
+    const addedToken = !!token.value.trim();
     saveCfg.disabled = true;
     void client
-      .setGithubBackup({ repo: repo.input.value, branch: branch.input.value, path: path.input.value, ...(token.input.value ? { token: token.input.value } : {}) })
-      .then((c) => { token.input.value = ''; applyCfg(c); showToast('Saved'); })
+      .setGithubBackup({ repo: repoControl.value, branch: branch.value, path: path.value, ...(addedToken ? { token: token.value } : {}) })
+      .then(() => {
+        showToast('Saved');
+        // A newly-added token unlocks the repo dropdown — re-render to load it.
+        if (addedToken) void renderGithubSection(host);
+      })
       .catch(maErr)
       .finally(() => (saveCfg.disabled = false));
   });
@@ -1871,14 +1944,14 @@ function renderBackupCat(body: HTMLElement): void {
       .catch(maErr)
       .finally(() => (pushBtn.disabled = false));
   });
-  ghRestore.addEventListener('click', () => {
+  restore.addEventListener('click', () => {
     if (!confirm('Restore from the backup in GitHub?\n\nThis replaces your current library, shelves, and settings.')) return;
-    ghRestore.disabled = true;
+    restore.disabled = true;
     void client
       .restoreGithubBackup()
       .then((res) => showToast(`Restored ${res.counts.albums} albums · ${res.counts.shelves} shelves`))
       .catch(maErr)
-      .finally(() => (ghRestore.disabled = false));
+      .finally(() => (restore.disabled = false));
   });
 }
 
