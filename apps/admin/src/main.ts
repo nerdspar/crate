@@ -1725,6 +1725,14 @@ function renderSystemCat(body: HTMLElement): void {
 }
 
 /* ---- Backup: config export / restore (Phase 5) ---- */
+/** "18h ago" / "in 5h" style relative time. */
+function relTime(iso: string | null): string {
+  if (!iso) return 'never';
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.abs(diff) / 1000;
+  const v = s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`;
+  return diff >= 0 ? `${v} ago` : `in ${v}`;
+}
 function renderBackupCat(body: HTMLElement): void {
   const intro = document.createElement('p');
   intro.className = 'hint';
@@ -1821,7 +1829,7 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   try {
     cfg = await client.getGithubBackup();
   } catch {
-    cfg = { repo: '', branch: 'main', path: 'crate-backup.json', hasToken: false, lastBackupAt: null };
+    cfg = { repo: '', branch: 'main', path: 'crate-backup.json', hasToken: false, interval: 'off', lastBackupAt: null, lastStatus: null, nextBackupAt: null, history: [] };
   }
 
   const form = document.createElement('div');
@@ -1904,10 +1912,30 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   tokenField.appendChild(tokenNote);
   form.appendChild(tokenField);
 
-  const lastLine = document.createElement('p');
-  lastLine.className = 'hint';
-  lastLine.textContent = cfg.lastBackupAt ? `Last GitHub backup: ${new Date(cfg.lastBackupAt).toLocaleString()}` : 'No GitHub backup yet.';
-  host.appendChild(lastLine);
+  // Automatic backup cadence.
+  const autoField = field('Automatic backup');
+  const autoSel = document.createElement('select');
+  for (const [v, l] of [['off', 'Off — manual only'], ['hourly', 'Hourly'], ['daily', 'Daily'], ['weekly', 'Weekly']] as const) {
+    const o = new Option(l, v);
+    if (cfg.interval === v) o.selected = true;
+    autoSel.add(o);
+  }
+  autoSel.addEventListener('change', () => {
+    void client
+      .setGithubBackup({ interval: autoSel.value as GithubBackupConfig['interval'] })
+      .then(() => { showToast('Saved'); void renderGithubSection(host); })
+      .catch(maErr);
+  });
+  autoField.appendChild(autoSel);
+  form.appendChild(autoField);
+
+  // Status line: last attempt (+ status) and next scheduled run.
+  const status = document.createElement('p');
+  status.className = 'hint';
+  const bits = [cfg.lastBackupAt ? `Last backup: ${relTime(cfg.lastBackupAt)}${cfg.lastStatus ? ` · ${cfg.lastStatus}` : ''}` : 'No GitHub backup yet.'];
+  if (cfg.interval !== 'off' && cfg.nextBackupAt) bits.push(`Next: ${relTime(cfg.nextBackupAt)}`);
+  status.textContent = bits.join(' · ');
+  host.appendChild(status);
 
   const actions = document.createElement('div');
   actions.className = 'sys-actions';
@@ -1917,22 +1945,62 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   const pushBtn = document.createElement('button');
   pushBtn.className = 'ghost';
   pushBtn.textContent = 'Back up now';
+  const testBtn = document.createElement('button');
+  testBtn.className = 'ghost';
+  testBtn.textContent = 'Test';
   const restore = document.createElement('button');
   restore.className = 'ghost danger';
   restore.textContent = 'Restore from GitHub';
-  actions.append(saveCfg, pushBtn, restore);
+  actions.append(saveCfg, pushBtn, testBtn, restore);
   host.appendChild(actions);
+
+  // History log.
+  if (cfg.history.length) {
+    const histHead = document.createElement('div');
+    histHead.className = 'set-subhead ma-hist-head';
+    const label = document.createElement('span');
+    label.textContent = 'History';
+    const clear = document.createElement('button');
+    clear.className = 'ma-hist-clear';
+    clear.textContent = 'Clear';
+    clear.addEventListener('click', () => void client.clearGithubHistory().then(() => renderGithubSection(host)).catch(maErr));
+    histHead.append(label, clear);
+    host.appendChild(histHead);
+    const table = document.createElement('div');
+    table.className = 'ma-hist';
+    for (const e of cfg.history) {
+      const row = document.createElement('div');
+      row.className = 'ma-hist-row';
+      const date = document.createElement('span');
+      date.className = 'ma-hist-date';
+      date.textContent = new Date(e.at).toLocaleString();
+      const st = document.createElement('span');
+      st.className = `ma-hist-status ${e.status}`;
+      st.textContent = e.status;
+      const commit = document.createElement('span');
+      commit.className = 'ma-hist-commit';
+      if (e.commit && e.url) {
+        const a = document.createElement('a');
+        a.href = e.url;
+        a.target = '_blank';
+        a.rel = 'noreferrer';
+        a.textContent = e.commit;
+        commit.appendChild(a);
+      } else {
+        commit.textContent = e.status === 'error' ? (e.message ?? 'error') : '—';
+      }
+      row.append(date, st, commit);
+      table.appendChild(row);
+    }
+    host.appendChild(table);
+  }
 
   saveCfg.addEventListener('click', () => {
     const addedToken = !!token.value.trim();
     saveCfg.disabled = true;
     void client
       .setGithubBackup({ repo: repoControl.value, branch: branch.value, path: path.value, ...(addedToken ? { token: token.value } : {}) })
-      .then(() => {
-        showToast('Saved');
-        // A newly-added token unlocks the repo dropdown — re-render to load it.
-        if (addedToken) void renderGithubSection(host);
-      })
+      .then(() => { showToast('Saved'); void renderGithubSection(host); })
       .catch(maErr)
       .finally(() => (saveCfg.disabled = false));
   });
@@ -1940,9 +2008,17 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
     pushBtn.disabled = true;
     void client
       .pushGithubBackup()
-      .then((r) => { showToast('Backed up to GitHub'); lastLine.textContent = `Last GitHub backup: ${new Date(r.at).toLocaleString()}`; })
+      .then((r) => { showToast(r.status === 'skipped' ? 'No changes to back up' : 'Backed up to GitHub'); void renderGithubSection(host); })
       .catch(maErr)
       .finally(() => (pushBtn.disabled = false));
+  });
+  testBtn.addEventListener('click', () => {
+    testBtn.disabled = true;
+    void client
+      .testGithubBackup()
+      .then((r) => showToast(`Connected to ${r.repo}`))
+      .catch(maErr)
+      .finally(() => (testBtn.disabled = false));
   });
   restore.addEventListener('click', () => {
     if (!confirm('Restore from the backup in GitHub?\n\nThis replaces your current library, shelves, and settings.')) return;

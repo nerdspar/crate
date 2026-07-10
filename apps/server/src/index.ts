@@ -47,5 +47,9 @@ app.get('/ws', { websocket: true }, (socket, req) => {
 registerRoutes(app, service);
 
 await service.init();
+
+// Automatic GitHub backups: check each minute whether one is due (no-op unless enabled).
+setInterval(() => void service.maybeAutoBackup(), 60_000).unref();
+
 await app.listen({ host: cfg.host, port: cfg.port });
 process.stdout.write(`[crate] server listening on http://${cfg.host}:${cfg.port} (MA: ${cfg.maUrl})\n`);

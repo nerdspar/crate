@@ -330,4 +330,12 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
       return reply.code(502).send({ error: e instanceof Error ? e.message : 'Restore failed' });
     }
   });
+  app.post('/api/admin/backup/github/test', async (_req, reply) => {
+    try {
+      return await service.testGithubBackup();
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'Test failed' });
+    }
+  });
+  app.delete('/api/admin/backup/github/history', () => service.clearGithubHistory());
 }

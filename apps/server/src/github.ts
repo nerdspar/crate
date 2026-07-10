@@ -96,6 +96,16 @@ export async function githubListRepos(token: string): Promise<Array<{ fullName: 
     .map((r) => ({ fullName: r.full_name as string, private: r.private === true }));
 }
 
+/** Verify the token can reach the repo + branch (for the "Test" button). Returns the repo's
+    default branch as a sanity detail. Throws a friendly error otherwise. */
+export async function githubCheck(t: GithubTarget): Promise<{ repo: string; defaultBranch: string }> {
+  const { owner, name } = splitRepo(t.repo);
+  const res = await gh(t, 'GET', `/repos/${owner}/${name}`);
+  if (!res.ok) throw await ghError(res);
+  const j = (await res.json()) as { full_name?: string; default_branch?: string };
+  return { repo: j.full_name ?? t.repo, defaultBranch: j.default_branch ?? 'main' };
+}
+
 /** Fetch the file's decoded text content. */
 export async function githubGet(t: GithubTarget): Promise<string> {
   const { owner, name } = splitRepo(t.repo);

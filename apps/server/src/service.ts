@@ -1,7 +1,12 @@
+import { createHash } from 'node:crypto';
 import { BACKUP_VERSION } from '@crate/shared';
 import type {
   AlbumDetail,
+  BackupHistoryEntry,
   BackupImportResult,
+  BackupInterval,
+  BackupRunResult,
+  BackupStatus,
   CrateBackup,
   GithubBackupConfig,
   GlobalSearchResponse,
@@ -42,7 +47,7 @@ import { rowToAlbum } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, songShelfItem, spineWidthFor } from './shelf.js';
 import { applyBrightness, detectBrightnessMethod, getLocalIp, rebootSystem, setDisplayPower } from './system.js';
-import { githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
+import { githubCheck, githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
 const ART_BASE = '/art';
@@ -980,14 +985,27 @@ export class Service {
     };
   }
 
+  private intervalMs(iv: BackupInterval): number {
+    return iv === 'hourly' ? 3_600_000 : iv === 'daily' ? 86_400_000 : iv === 'weekly' ? 604_800_000 : 0;
+  }
+
   getGithubConfig(): GithubBackupConfig {
-    const cfg = this.db.getRaw<{ repo?: string; branch?: string; path?: string }>('backup.github', {});
+    const cfg = this.db.getRaw<{ repo?: string; branch?: string; path?: string; interval?: BackupInterval }>('backup.github', {});
+    const interval = cfg.interval ?? 'off';
+    const lastAt = this.db.getRaw<string | null>('backup.github.lastAt', null);
+    const ms = this.intervalMs(interval);
+    const nextBackupAt =
+      interval === 'off' ? null : new Date((lastAt ? new Date(lastAt).getTime() : Date.now() - ms) + ms).toISOString();
     return {
       repo: cfg.repo ?? '',
       branch: cfg.branch ?? 'main',
       path: cfg.path ?? 'crate-backup.json',
       hasToken: !!this.db.getRaw<string>('backup.github.token', ''),
-      lastBackupAt: this.db.getRaw<string | null>('backup.github.lastAt', null),
+      interval,
+      lastBackupAt: lastAt,
+      lastStatus: this.db.getRaw<BackupStatus | null>('backup.github.lastStatus', null),
+      nextBackupAt,
+      history: this.db.getRaw<BackupHistoryEntry[]>('backup.github.history', []),
     };
   }
 
@@ -998,12 +1016,13 @@ export class Service {
     return githubListRepos(token);
   }
 
-  setGithubConfig(input: { repo?: string; branch?: string; path?: string; token?: string }): GithubBackupConfig {
-    const prev = this.db.getRaw<{ repo?: string; branch?: string; path?: string }>('backup.github', {});
+  setGithubConfig(input: { repo?: string; branch?: string; path?: string; token?: string; interval?: BackupInterval }): GithubBackupConfig {
+    const prev = this.db.getRaw<{ repo?: string; branch?: string; path?: string; interval?: BackupInterval }>('backup.github', {});
     this.db.setRaw('backup.github', {
       repo: (input.repo ?? prev.repo ?? '').trim(),
       branch: (input.branch ?? prev.branch ?? 'main').trim() || 'main',
       path: (input.path ?? prev.path ?? 'crate-backup.json').trim() || 'crate-backup.json',
+      interval: input.interval ?? prev.interval ?? 'off',
     });
     // The token is write-only: replace it only when a non-empty value is supplied.
     if (typeof input.token === 'string' && input.token.trim()) {
@@ -1012,14 +1031,84 @@ export class Service {
     return this.getGithubConfig();
   }
 
-  async pushGithubBackup(): Promise<{ ok: true; url: string; at: string }> {
+  /** Verify the token + repo are reachable, without committing. */
+  async testGithubBackup(): Promise<{ ok: true; repo: string; defaultBranch: string }> {
+    const t = this.githubTarget();
+    if (!t) throw new Error('Set a GitHub repository first.');
+    if (!t.token) throw new Error('Add a GitHub token first.');
+    return { ok: true, ...(await githubCheck(t)) };
+  }
+
+  clearGithubHistory(): GithubBackupConfig {
+    this.db.setRaw('backup.github.history', []);
+    return this.getGithubConfig();
+  }
+
+  private recordBackupHistory(entry: BackupHistoryEntry): void {
+    const hist = this.db.getRaw<BackupHistoryEntry[]>('backup.github.history', []);
+    hist.unshift(entry);
+    this.db.setRaw('backup.github.history', hist.slice(0, 20));
+    this.db.setRaw('backup.github.lastStatus', entry.status);
+  }
+
+  /** Push a backup, skipping when the config hasn't changed since the last push (no empty
+      commits). Records a history entry. `lastAt` marks the attempt time (any status) so the
+      schedule advances even on a skip. */
+  async runBackup(auto: boolean): Promise<BackupRunResult> {
     const t = this.githubTarget();
     if (!t) throw new Error('Set a GitHub repository first.');
     if (!t.token) throw new Error('Add a GitHub token first.');
     const at = new Date().toISOString();
-    const { url } = await githubPush(t, JSON.stringify(this.exportBackup(), null, 2), `Crate backup ${at}`);
     this.db.setRaw('backup.github.lastAt', at);
-    return { ok: true, url, at };
+    const tables = this.db.exportConfig();
+    const hash = createHash('sha256').update(JSON.stringify(tables)).digest('hex');
+    if (hash === this.db.getRaw<string>('backup.github.lastHash', '')) {
+      this.recordBackupHistory({ at, status: 'skipped', commit: null, url: null, message: 'No changes', auto });
+      return { status: 'skipped', commit: null, url: null, at, message: 'No changes' };
+    }
+    const backup: CrateBackup = {
+      crate: 'crate-backup',
+      version: BACKUP_VERSION,
+      exportedAt: at,
+      crateVersion: this.cfg.version,
+      tables,
+    };
+    try {
+      const { url, commit } = await githubPush(t, JSON.stringify(backup, null, 2), `Crate backup ${at}`);
+      const short = commit ? commit.slice(0, 7) : null;
+      this.db.setRaw('backup.github.lastHash', hash);
+      this.recordBackupHistory({ at, status: 'success', commit: short, url, message: null, auto });
+      return { status: 'success', commit: short, url, at, message: null };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Push failed';
+      this.recordBackupHistory({ at, status: 'error', commit: null, url: null, message, auto });
+      throw e;
+    }
+  }
+
+  /** Manual "Back up now". */
+  pushGithubBackup(): Promise<BackupRunResult> {
+    return this.runBackup(false);
+  }
+
+  /** Called by the scheduler: run a backup if auto is enabled and one is due. */
+  private autoBackupRunning = false;
+  async maybeAutoBackup(): Promise<void> {
+    if (this.autoBackupRunning) return;
+    const cfg = this.db.getRaw<{ repo?: string; interval?: BackupInterval }>('backup.github', {});
+    const interval = cfg.interval ?? 'off';
+    if (interval === 'off' || !cfg.repo || !this.db.getRaw<string>('backup.github.token', '')) return;
+    const ms = this.intervalMs(interval);
+    const lastAt = this.db.getRaw<string | null>('backup.github.lastAt', null);
+    if (lastAt && Date.now() - new Date(lastAt).getTime() < ms) return; // not due yet
+    this.autoBackupRunning = true;
+    try {
+      await this.runBackup(true);
+    } catch {
+      /* the failure is recorded in history */
+    } finally {
+      this.autoBackupRunning = false;
+    }
   }
 
   async restoreGithubBackup(): Promise<BackupImportResult> {

@@ -55,6 +55,26 @@ export interface BackupImportResult {
   counts: { albums: number; shelves: number; shelfItems: number };
 }
 
+/** How often the server pushes a backup automatically. */
+export type BackupInterval = 'off' | 'hourly' | 'daily' | 'weekly';
+
+export type BackupStatus = 'success' | 'skipped' | 'error';
+
+/** One entry in the backup history log. */
+export interface BackupHistoryEntry {
+  /** ISO time of the attempt. */
+  at: string;
+  status: BackupStatus;
+  /** Short commit sha for a success, else null. */
+  commit: string | null;
+  /** Link to the commit/file on GitHub, else null. */
+  url: string | null;
+  /** Error message, or "No changes" for a skip. */
+  message: string | null;
+  /** Scheduled run vs a manual "Back up now". */
+  auto: boolean;
+}
+
 /** GitHub auto-backup config as surfaced to the admin (PAT is never returned — only whether one is set). */
 export interface GithubBackupConfig {
   /** "owner/repo". */
@@ -64,6 +84,23 @@ export interface GithubBackupConfig {
   path: string;
   /** True when a token is stored (the token value itself is never sent to the client). */
   hasToken: boolean;
+  /** Automatic backup cadence ('off' = manual only). */
+  interval: BackupInterval;
   /** ISO time of the last successful push, or null. */
   lastBackupAt: string | null;
+  /** Status of the most recent attempt. */
+  lastStatus: BackupStatus | null;
+  /** ISO time the next automatic backup is due, or null when off / never run. */
+  nextBackupAt: string | null;
+  /** Recent attempts, newest first. */
+  history: BackupHistoryEntry[];
+}
+
+/** Result of a manual "Back up now" / a scheduled run. */
+export interface BackupRunResult {
+  status: BackupStatus;
+  commit: string | null;
+  url: string | null;
+  at: string;
+  message: string | null;
 }

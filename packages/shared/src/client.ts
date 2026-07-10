@@ -27,7 +27,7 @@ import type {
 } from './api.js';
 import type { Settings, Shelf, Track } from './domain.js';
 import type { MaConfigEntry, MaConfigValue, MaProviderManifest, MaSource, MaStatus } from './ma.js';
-import type { BackupImportResult, CrateBackup, GithubBackupConfig } from './backup.js';
+import type { BackupImportResult, BackupInterval, BackupRunResult, CrateBackup, GithubBackupConfig } from './backup.js';
 
 export class CrateClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -306,19 +306,27 @@ export class CrateClient {
   getGithubBackup(): Promise<GithubBackupConfig> {
     return this.req('/api/admin/backup/github');
   }
-  setGithubBackup(cfg: { repo?: string; branch?: string; path?: string; token?: string }): Promise<GithubBackupConfig> {
+  setGithubBackup(cfg: { repo?: string; branch?: string; path?: string; token?: string; interval?: BackupInterval }): Promise<GithubBackupConfig> {
     return this.req('/api/admin/backup/github', { method: 'PUT', body: JSON.stringify(cfg) });
   }
   /** Repos the stored token can reach, for the repo picker. */
   listGithubRepos(): Promise<Array<{ fullName: string; private: boolean }>> {
     return this.req('/api/admin/backup/github/repos');
   }
-  /** Commit the current config to the configured GitHub repo. */
-  pushGithubBackup(): Promise<{ ok: true; url: string; at: string }> {
+  /** Commit the current config to GitHub now (skips when nothing changed). */
+  pushGithubBackup(): Promise<BackupRunResult> {
     return this.post('/api/admin/backup/github/push', {});
+  }
+  /** Verify the token + repo are reachable, without committing. */
+  testGithubBackup(): Promise<{ ok: true; repo: string; defaultBranch: string }> {
+    return this.post('/api/admin/backup/github/test', {});
   }
   /** Restore from the backup file in the configured GitHub repo (destructive). */
   restoreGithubBackup(): Promise<BackupImportResult> {
     return this.post('/api/admin/backup/github/restore', {});
+  }
+  /** Clear the backup history log. */
+  clearGithubHistory(): Promise<GithubBackupConfig> {
+    return this.req('/api/admin/backup/github/history', { method: 'DELETE' });
   }
 }

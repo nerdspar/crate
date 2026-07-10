@@ -399,3 +399,16 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .ma-advanced .field { margin-top: 0.6rem; }
 .ma-alert { font-size: 0.82rem; color: var(--ink); background: color-mix(in srgb, var(--brass) 10%, transparent); border: 1px solid color-mix(in srgb, var(--brass) 30%, var(--line)); border-radius: 8px; padding: 0.5rem 0.6rem; margin: 0; }
 .ma-save { margin-top: 0.4rem; align-self: flex-start; border-color: var(--brass); color: var(--ink); }
+/* Backup history log */
+.ma-hist-head { display: flex; align-items: center; justify-content: space-between; }
+.ma-hist-clear { background: none; border: none; color: var(--ink-dim); font-size: 0.85rem; cursor: pointer; padding: 0.2rem 0.3rem; }
+.ma-hist { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; max-width: 460px; }
+.ma-hist-row { display: grid; grid-template-columns: 1fr auto minmax(4.5rem, auto); gap: 0.6rem; align-items: center; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line); font-size: 0.85rem; }
+.ma-hist-row:last-child { border-bottom: none; }
+.ma-hist-date { color: var(--ink-dim); }
+.ma-hist-status { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.08rem 0.45rem; border-radius: 999px; justify-self: start; }
+.ma-hist-status.success { color: #46c46e; background: color-mix(in srgb, #46c46e 15%, transparent); }
+.ma-hist-status.skipped { color: #c9a54a; background: color-mix(in srgb, #c9a54a 15%, transparent); }
+.ma-hist-status.error { color: #c83a3a; background: color-mix(in srgb, #c83a3a 15%, transparent); }
+.ma-hist-commit { color: var(--ink-dim); font-variant-numeric: tabular-nums; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.ma-hist-commit a { color: var(--brass); }
