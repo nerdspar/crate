@@ -16,6 +16,7 @@ import type {
   LibraryPlaylist,
   MaConfigEntry,
   MaConfigValue,
+  MaConnection,
   MaProviderManifest,
   MaSource,
   MaStatus,
@@ -37,7 +38,8 @@ import type {
   SystemStatus,
   TransportCmd,
 } from '@crate/shared';
-import type { MusicAssistantProvider, ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
+import { MusicAssistantProvider } from '@crate/providers';
+import type { ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
@@ -80,16 +82,28 @@ function sumDuration(tracks: Track[]): number | null {
 }
 
 export class Service {
+  // Not readonly: onboarding / MA settings can swap the connection, which recreates the provider.
+  private ma: MusicAssistantProvider;
+
   constructor(
     private readonly cfg: Config,
     private readonly db: Db,
-    private readonly ma: MusicAssistantProvider,
     private readonly hub: Hub,
-  ) {}
+  ) {
+    this.ma = new MusicAssistantProvider(this.maOpts());
+  }
 
-  async init(): Promise<void> {
-    // Restore the panel to the last-set brightness (no-op under 'software').
-    void applyBrightness(this.db.getRaw<number>('system.brightness', 100));
+  /** MA connection options — a DB override (set via onboarding / MA settings) wins over env. */
+  private maOpts() {
+    return {
+      url: this.db.getRaw<string>('ma.url', this.cfg.maUrl),
+      token: this.db.getRaw<string>('ma.token', this.cfg.maToken),
+      log: (level: 'info' | 'warn' | 'error', msg: string) => process.stderr.write(`[ma:${level}] ${msg}\n`),
+    };
+  }
+
+  /** (Re)wire the live MA event handlers to the hub. Call after (re)creating the provider. */
+  private wireMa(): void {
     this.ma.onConnect(() => {
       void this.refreshPlayers();
       void this.pushState();
@@ -102,12 +116,64 @@ export class Service {
     this.ma.onProgress((playerId, elapsed) => {
       this.hub.broadcast({ type: 'progress', playerId, elapsed });
     });
+  }
+
+  async init(): Promise<void> {
+    // Restore the panel to the last-set brightness (no-op under 'software').
+    void applyBrightness(this.db.getRaw<number>('system.brightness', 100));
+    this.wireMa();
     try {
       await this.ma.start();
       await this.refreshPlayers();
       await this.pushState();
     } catch (err) {
       process.stderr.write(`[crate] MA not reachable yet, will retry: ${(err as Error).message}\n`);
+    }
+  }
+
+  // --- MA connection (Phase 5 onboarding): editable URL + token, stored in the DB ---------
+
+  getMaConnection(): MaConnection {
+    return {
+      url: this.db.getRaw<string>('ma.url', this.cfg.maUrl),
+      hasToken: !!this.db.getRaw<string>('ma.token', this.cfg.maToken),
+      connected: this.ma.connected,
+      serverVersion: this.ma.serverVersion ?? null,
+    };
+  }
+
+  /** Point Crate at a (new) MA URL/token and reconnect by recreating the provider. The token is
+      write-only: only replaced when a non-empty value is supplied. */
+  async setMaConnection(input: { url?: string; token?: string }): Promise<MaConnection> {
+    if (typeof input.url === 'string' && input.url.trim()) {
+      this.db.setRaw('ma.url', input.url.trim().replace(/\/+$/, ''));
+    }
+    if (typeof input.token === 'string' && input.token.trim()) {
+      this.db.setRaw('ma.token', input.token.trim());
+    }
+    this.ma.close();
+    this.ma = new MusicAssistantProvider(this.maOpts());
+    this.wireMa();
+    try {
+      await this.ma.start();
+      await this.refreshPlayers();
+      await this.pushState();
+    } catch {
+      /* not reachable — getMaConnection() reflects connected:false */
+    }
+    return this.getMaConnection();
+  }
+
+  /** Verify a URL+token (falling back to the stored ones) without touching the live connection. */
+  async testMaConnection(input: { url?: string; token?: string }): Promise<{ ok: boolean; serverVersion: string | null }> {
+    const url = (input.url?.trim() || this.db.getRaw<string>('ma.url', this.cfg.maUrl)).replace(/\/+$/, '');
+    const token = input.token?.trim() || this.db.getRaw<string>('ma.token', this.cfg.maToken);
+    const probe = new MusicAssistantProvider({ url, token, log: () => {} });
+    try {
+      const info = await probe.start();
+      return { ok: true, serverVersion: info.server_version ?? null };
+    } finally {
+      probe.close();
     }
   }
 

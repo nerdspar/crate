@@ -265,6 +265,15 @@ export function registerRoutes(app: FastifyInstance, service: Service): void {
   };
 
   app.get('/api/admin/ma/status', () => service.maStatus());
+  app.get('/api/admin/ma/connection', () => service.getMaConnection());
+  app.put('/api/admin/ma/connection', (req, reply) => {
+    const b = req.body as { url?: string; token?: string };
+    return maCall(reply, () => service.setMaConnection(b));
+  });
+  app.post('/api/admin/ma/connection/test', (req, reply) => {
+    const b = req.body as { url?: string; token?: string };
+    return maCall(reply, () => service.testMaConnection(b));
+  });
   app.get('/api/admin/ma/sources', (_req, reply) => maCall(reply, () => service.maSources()));
   app.get('/api/admin/ma/providers', (_req, reply) => maCall(reply, () => service.maAvailableProviders()));
   app.post('/api/admin/ma/sources/entries', (req, reply) => {

@@ -26,7 +26,7 @@ import type {
   VolumeRequest,
 } from './api.js';
 import type { Settings, Shelf, Track } from './domain.js';
-import type { MaConfigEntry, MaConfigValue, MaProviderManifest, MaSource, MaStatus } from './ma.js';
+import type { MaConfigEntry, MaConfigValue, MaConnection, MaProviderManifest, MaSource, MaStatus } from './ma.js';
 import type { BackupImportResult, BackupInterval, BackupRunResult, CrateBackup, GithubBackupConfig } from './backup.js';
 
 export class CrateClient {
@@ -262,6 +262,18 @@ export class CrateClient {
   /** MA connection + topology status for the Settings card. */
   getMaStatus(): Promise<MaStatus> {
     return this.req('/api/admin/ma/status');
+  }
+  /** Editable MA connection (URL + whether a token is stored + live state). */
+  getMaConnection(): Promise<MaConnection> {
+    return this.req('/api/admin/ma/connection');
+  }
+  /** Point Crate at a (new) MA URL/token and reconnect. Token is write-only (blank keeps it). */
+  setMaConnection(cfg: { url?: string; token?: string }): Promise<MaConnection> {
+    return this.req('/api/admin/ma/connection', { method: 'PUT', body: JSON.stringify(cfg) });
+  }
+  /** Verify a URL+token without changing the live connection. */
+  testMaConnection(cfg: { url?: string; token?: string }): Promise<{ ok: boolean; serverVersion: string | null }> {
+    return this.post('/api/admin/ma/connection/test', cfg);
   }
   /** All configured MA providers (filter to type 'music' for manageable sources). */
   getMaSources(): Promise<MaSource[]> {

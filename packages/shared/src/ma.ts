@@ -78,6 +78,16 @@ export interface MaConfigEntry {
   helpLink: string | null;
 }
 
+/** MA connection config + live state (the token value never leaves the server). */
+export interface MaConnection {
+  /** MA base URL Crate points at. */
+  url: string;
+  /** Whether a token is stored. */
+  hasToken: boolean;
+  connected: boolean;
+  serverVersion: string | null;
+}
+
 /** MA connection status for the Settings status card. */
 export interface MaStatus {
   connected: boolean;

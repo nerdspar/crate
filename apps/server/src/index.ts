@@ -3,7 +3,6 @@ import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
-import { MusicAssistantProvider } from '@crate/providers';
 import { loadConfig } from './config.js';
 import { Db } from './db.js';
 import { Hub } from './hub.js';
@@ -13,12 +12,8 @@ import { Service } from './service.js';
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
 const hub = new Hub();
-const ma = new MusicAssistantProvider({
-  url: cfg.maUrl,
-  token: cfg.maToken,
-  log: (level, msg) => process.stderr.write(`[ma:${level}] ${msg}\n`),
-});
-const service = new Service(cfg, db, ma, hub);
+// The service owns the MA provider (it can swap the connection at runtime via onboarding/settings).
+const service = new Service(cfg, db, hub);
 
 const app = Fastify({ logger: false });
 
