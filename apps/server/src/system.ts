@@ -107,8 +107,16 @@ export interface GitUpdateInfo {
     Read-only and best-effort: any git/network failure returns updateAvailable:false
     with the error, so "check for updates" degrades to a clear message. */
 export async function checkForUpdate(): Promise<GitUpdateInfo> {
+  // Container deployments (Docker/TrueNAS) ship a built image, not a checkout —
+  // there's nothing to git-pull, so say so instead of a misleading "offline".
+  if (!existsSync(resolve(REPO_ROOT, '.git'))) {
+    return { current: null, latest: null, behind: 0, updateAvailable: false, error: 'not-a-git-checkout' };
+  }
   const git = (args: string[]): Promise<string> =>
-    pexec('git', ['-C', REPO_ROOT, ...args], { timeout: 20000 }).then((r) => r.stdout.trim());
+    // `-c safe.directory=*` disarms git's dubious-ownership guard: crate.service runs
+    // as root, but the checkout is owned by the install user, which git would otherwise
+    // refuse to touch. (update.sh runs git as that owner via sudo, so it's unaffected.)
+    pexec('git', ['-c', 'safe.directory=*', '-C', REPO_ROOT, ...args], { timeout: 20000 }).then((r) => r.stdout.trim());
   try {
     await git(['fetch', '--quiet']);
     const current = await git(['rev-parse', '--short', 'HEAD']);

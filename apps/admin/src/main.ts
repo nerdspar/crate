@@ -1757,7 +1757,10 @@ function renderSystemCat(body: HTMLElement): void {
       .checkUpdate()
       .then((u: UpdateStatus) => {
         if (u.error) {
-          swStatus.textContent = 'Couldn’t check for updates — offline, or git is unavailable here.';
+          swStatus.textContent =
+            u.error === 'not-a-git-checkout'
+              ? 'This is a container deployment — update by pulling a new image (see INSTALL.md), not from here.'
+              : `Couldn’t check for updates: ${u.error.replace(/\s+/g, ' ').trim().slice(0, 160)}`;
         } else if (u.updateAvailable) {
           swStatus.innerHTML = `Update available — <code>${esc(u.current)}</code> → <code>${esc(u.latest ?? '?')}</code> · ${u.behind} commit${u.behind === 1 ? '' : 's'} behind.`;
         } else {
@@ -1767,7 +1770,11 @@ function renderSystemCat(body: HTMLElement): void {
         const crateBtn = document.createElement('button');
         crateBtn.className = 'ghost';
         crateBtn.textContent = 'Update Crate';
-        crateBtn.disabled = !u.appliance || !u.updateAvailable;
+        // Enable when there's a known update, or when the check itself failed (don't let a
+        // flaky root-side check block the updater, which runs git as the repo owner). A
+        // confirmed up-to-date checkout, or a container (non-git) deploy, leaves it disabled.
+        const canUpdateCrate = u.appliance && u.error !== 'not-a-git-checkout' && (u.updateAvailable || !!u.error);
+        crateBtn.disabled = !canUpdateCrate;
         crateBtn.addEventListener('click', () =>
           startUpdate('crate', 'Update Crate now', 'Updating Crate — the wall restarts when it finishes (a few minutes).'),
         );
