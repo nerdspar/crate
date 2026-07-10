@@ -7,7 +7,9 @@
   --ink-dim: #9a948a;
   --brass: #8a8578;
   --flip-t: 0.55s;
-  --year-gutter: 3.2rem;
+  --year-gutter: 2rem; /* = the year stamp's footprint (≈24px tall + 8px lip) so the label's
+                          content box ends right at the year — centering then gives an equal gap
+                          above the text and between the text and the year. */
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; background: var(--bg); }
