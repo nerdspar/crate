@@ -74,7 +74,13 @@ if ! command -v node >/dev/null || [[ "$(node -v | sed 's/v\([0-9]*\).*/\1/')" -
 fi
 echo "    node $(node -v)"
 
-# ---- Build (as the repo owner, not root) ----
+# ---- Build (as the login user, not root, so node_modules isn't root-owned) ----
+# The build runs as $RUN_USER, so the checkout must be writable by them. A repo cloned
+# via sudo is root-owned and `npm ci` would fail with EACCES creating node_modules — fix it.
+if [[ "$(stat -c '%U' "$REPO_DIR")" != "$RUN_USER" ]]; then
+  echo "==> Fixing checkout ownership ($REPO_DIR -> $RUN_USER)"
+  chown -R "$RUN_USER:$RUN_USER" "$REPO_DIR"
+fi
 echo "==> Installing dependencies + building (this takes a while on a Pi)"
 sudo -u "$RUN_USER" bash -lc "cd '$REPO_DIR' && npm ci && npm run build"
 
