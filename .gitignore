@@ -9,5 +9,6 @@ apps/*/data/
 # secrets — MA token etc. Never commit.
 .env
 .env.*
+!.env.example
 *.secret
 .claude/launch.json
