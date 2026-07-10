@@ -5165,11 +5165,19 @@ function handleProgress(playerId: string, elapsed: number): void {
   if (now.state === 'idle') now.state = 'playing';
 }
 
+/** The seek bar only advances while actually playing with a seek view visible. */
+function needsSmoothTick(): boolean {
+  return now.state === 'playing' && ((openIdx !== null && playingIdx === openIdx) || !albumModal.hidden || ccIsOpen());
+}
 function tick(): void {
   if (openIdx !== null && playingIdx === openIdx) updateNowbar();
   if (!albumModal.hidden) updateModalNowbar();
   if (ccIsOpen()) updateCCSeek();
-  requestAnimationFrame(tick);
+  // Run at 60fps only while the bar is advancing; otherwise self-poll slowly so the wall's
+  // browser can idle instead of a perpetual rAF (constant CPU/GPU wake on an always-on panel).
+  // The loop never stops, so it resumes on its own within 500ms once playback begins.
+  if (needsSmoothTick()) requestAnimationFrame(tick);
+  else setTimeout(tick, 500);
 }
 
 function connectWs(): void {
