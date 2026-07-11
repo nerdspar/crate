@@ -1,6 +1,6 @@
 /** Core domain types shared across the device service, shelf, and admin. */
 
-export type MediaKind = 'album' | 'playlist';
+export type MediaKind = 'album' | 'playlist' | 'radio';
 
 /** Extracted artwork palette (§4). Colors are `#rrggbb`. */
 export interface Palette {
@@ -160,9 +160,10 @@ export interface Stack {
   order: number;
 }
 
-/** A shelf holds albums or playlists (never mixed). "All" is the virtual shelf
-    of every album (id 'all'). */
-export type ShelfKind = 'album' | 'playlist';
+/** A shelf holds albums, playlists, or radio stations (never mixed). "All" is the
+    virtual shelf of every album (id 'all'); "Radio" (id 'radio') is the virtual
+    shelf of every saved station. */
+export type ShelfKind = 'album' | 'playlist' | 'radio';
 export interface Shelf {
   id: string;
   name: string;

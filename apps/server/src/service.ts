@@ -26,6 +26,9 @@ import type {
   PlayerState,
   PlayersResponse,
   ProviderAlbumDetail,
+  RadioSearchResponse,
+  RadioStation,
+  RadioSyncResult,
   RepeatMode,
   SearchAlbum,
   SearchArtist,
@@ -42,7 +45,7 @@ import type {
   UpdateTarget,
 } from '@crate/shared';
 import { MusicAssistantProvider, maSetupState, mintMaToken, setupMaAccount } from '@crate/providers';
-import type { ProviderAlbum, ProviderLibraryAlbum, ProviderTrackHit } from '@crate/providers';
+import type { ProviderAlbum, ProviderLibraryAlbum, ProviderRadio, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
 import { findSpineScans } from './musicbrainz.js';
@@ -281,7 +284,9 @@ export class Service {
         ? this.db.listShelf('album')
         : shelfId === 'playlists'
           ? this.db.listShelf('playlist')
-          : this.db.listShelfMembers(shelfId);
+          : shelfId === 'radio'
+            ? this.db.listShelf('radio')
+            : this.db.listShelfMembers(shelfId);
     return {
       items: rows.map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
       stacks: this.db.listStacks(),
@@ -765,6 +770,91 @@ export class Service {
     }
   }
 
+  // --- Radio (stations from TuneIn etc.) ----------------------------------
+
+  /** Store one station as a `kind='radio'` media row (reuses the album store + artwork
+      pipeline). A station has no tracks — it's a live stream. Returns the Crate id. */
+  private ingestRadio(st: ProviderRadio): string {
+    const id = albumIdFromUri(st.providerUri);
+    const existing = this.db.getAlbum(id);
+    const row: AlbumRow = {
+      id,
+      provider_uri: st.providerUri,
+      provider: st.provider,
+      title: st.name,
+      // Second spine line: the station tagline, unless it just repeats the name.
+      artist: st.description && st.description !== st.name ? st.description : 'Radio',
+      year: null,
+      artwork_url: st.artworkUrl,
+      artwork_path: existing?.artwork_path ?? null,
+      palette: existing?.palette ?? null,
+      spine_strip_path: existing?.spine_strip_path ?? null,
+      spine_scan_path: existing?.spine_scan_path ?? null,
+      spine_width: existing?.spine_width ?? spineWidthFor(id),
+      total_duration: null, // radio uses a uniform spine width, not runtime
+      added_at: existing?.added_at ?? new Date().toISOString(),
+      play_count: existing?.play_count ?? 0,
+      overrides: existing?.overrides ?? null,
+    };
+    this.db.upsertAlbum(row);
+    this.db.addToShelf(id, 'radio');
+    // Palette + blurred strip from the station logo; no spine scan (no artist/title).
+    if (st.artworkUrl) void this.processArtwork(id, st.artworkUrl, { scan: false });
+    return id;
+  }
+
+  /** Save one station to the Radio shelf (resolves it from MA by uri, like addPlaylist). */
+  async addRadio(providerUri: string): Promise<void> {
+    const st = await this.ma.getRadio(providerUri);
+    if (!st) throw new Error(`radio station not found: ${providerUri}`);
+    this.ingestRadio(st);
+    this.hub.broadcast({ type: 'shelf' });
+  }
+
+  /** Search radio stations across the connected radio sources; marks already-saved ones. */
+  async searchRadio(query: string, source?: string): Promise<RadioSearchResponse> {
+    const sources = await this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []);
+    const scope = source && source !== 'all' ? source : undefined;
+    const shelved = this.db.shelfedUris();
+    const raw = query ? await this.ma.searchRadio(query, 30, scope).catch((): ProviderRadio[] => []) : [];
+    const stations: RadioStation[] = raw.map((r) => ({
+      providerUri: r.providerUri,
+      provider: r.provider,
+      name: r.name,
+      description: r.description,
+      artworkUrl: r.artworkUrl,
+      onShelf: shelved.has(r.providerUri),
+      source: sources.find((s) => s.instanceId === r.provider)?.name,
+    }));
+    return { stations, sources };
+  }
+
+  /** MA's saved radio stations (your custom TuneIn stations), marked with shelf state. */
+  async listLibraryRadios(): Promise<RadioStation[]> {
+    const [radios, shelved] = [await this.ma.listLibraryRadios(), this.db.shelfedUris()];
+    return radios.map((r) => ({
+      providerUri: r.providerUri,
+      provider: r.provider,
+      name: r.name,
+      description: r.description,
+      artworkUrl: r.artworkUrl,
+      onShelf: shelved.has(r.providerUri),
+    }));
+  }
+
+  /** Pull every MA library radio onto the Radio shelf (idempotent). Returns how many were new. */
+  async syncLibraryRadios(): Promise<RadioSyncResult> {
+    const radios = await this.ma.listLibraryRadios().catch((): ProviderRadio[] => []);
+    let added = 0;
+    for (const r of radios) {
+      if (this.db.isOnShelf(albumIdFromUri(r.providerUri))) continue;
+      this.ingestRadio(r);
+      added++;
+    }
+    if (added) this.hub.broadcast({ type: 'shelf' });
+    return { added, total: radios.length };
+  }
+
   private async processArtwork(id: string, url: string, opts: { scan?: boolean } = {}): Promise<void> {
     try {
       const art = await buildArtwork(id, url, { artDir: this.cfg.artDir, coverHeightPx: this.cfg.coverHeightPx });
@@ -820,9 +910,9 @@ export class Service {
 
   /** Manually order albums: the library (no shelfId) or a specific crate. */
   reorder(albumIds: string[], shelfId?: string): void {
-    // 'all' (albums) and 'playlists' are both virtual views over shelf_items; named shelves
-    // reorder their members.
-    if (shelfId && shelfId !== 'all' && shelfId !== 'playlists') this.db.reorderShelfMembers(shelfId, albumIds);
+    // 'all' (albums), 'playlists', and 'radio' are all virtual views over shelf_items;
+    // named shelves reorder their members.
+    if (shelfId && shelfId !== 'all' && shelfId !== 'playlists' && shelfId !== 'radio') this.db.reorderShelfMembers(shelfId, albumIds);
     else this.db.reorderShelfItems(albumIds);
     this.hub.broadcast({ type: 'shelf' });
   }

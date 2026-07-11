@@ -53,6 +53,17 @@ export interface ProviderArtist {
   artworkUrl: string | null;
 }
 
+/** A radio station (e.g. from TuneIn) — a live stream, no tracks. */
+export interface ProviderRadio {
+  /** Provider playback ref, e.g. `library://radio/1` or `tunein--xxx://radio/s27421`. */
+  providerUri: string;
+  provider: string;
+  name: string;
+  /** Station tagline / network (shown where an album shows the artist); null if none. */
+  description: string | null;
+  artworkUrl: string | null;
+}
+
 export interface ProviderPlayer {
   id: string;
   name: string;

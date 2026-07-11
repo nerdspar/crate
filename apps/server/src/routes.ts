@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
   AddPlaylistRequest,
+  AddRadioRequest,
   AddToShelfRequest,
   BrightnessRequest,
   CrateBackup,
@@ -280,6 +281,20 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     const uri = ((req.query as { uri?: string }).uri ?? '').trim();
     return uri ? service.providerPlaylistTracks(uri) : [];
   });
+
+  // --- Radio (stations from TuneIn etc. via MA) ---
+  app.get('/api/radio/library', () => service.listLibraryRadios());
+  app.get('/api/radio/search', (req) => {
+    const q = req.query as { q?: string; source?: string };
+    return service.searchRadio((q.q ?? '').trim(), q.source);
+  });
+  app.post('/api/radio', async (req) => {
+    const b = req.body as AddRadioRequest;
+    await service.addRadio(b.providerUri);
+    return { ok: true };
+  });
+  // Import every station saved in MA's library onto the Radio shelf.
+  app.post('/api/radio/sync', () => service.syncLibraryRadios());
 
   // Per-album overrides: upload custom spine/cover, or set label font/color/spacing.
   app.post('/api/albums/:id/art/:kind', async (req, reply) => {

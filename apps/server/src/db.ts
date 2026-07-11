@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS stacks (
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL
 );
--- Named curated shelves (kind 'album'|'playlist'). "All" is virtual (every album).
+-- Named curated shelves (kind 'album'|'playlist'). "All"/"Radio" are virtual.
 CREATE TABLE IF NOT EXISTS shelves (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -310,6 +310,7 @@ export class Db {
     return [
       { id: 'all', name: 'All', kind: 'album' as ShelfKind, order: -1 },
       { id: 'playlists', name: 'All Playlists', kind: 'playlist' as ShelfKind, order: -1 },
+      { id: 'radio', name: 'Radio', kind: 'radio' as ShelfKind, order: -1 },
       ...user,
     ];
   }

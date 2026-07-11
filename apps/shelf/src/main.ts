@@ -880,6 +880,11 @@ function attachRoomLongPress(b: HTMLElement, id: string, el: HTMLElement): void 
 async function renderTracks(el: HTMLElement, i: number): Promise<void> {
   const item = items[i]!;
   const wrap = el.querySelector('.tracks') as HTMLElement;
+  // A radio station is a live stream — no track list. Show a single "live" row instead.
+  if (item.kind === 'radio') {
+    wrap.innerHTML = `<div class="track radio-live"><span class="n">◉</span><span class="tt">Live radio stream</span></div>`;
+    return;
+  }
   const draw = (tracks: Track[], cueIdx: number): void => {
     wrap.innerHTML = '';
     tracks.forEach((t, ti) => {
@@ -4048,7 +4053,7 @@ function renderShelfList(): void {
   }
   for (const s of shelves.filter((sh) => sh.kind === shelfTab)) {
     const selected = s.id === activeShelf;
-    const editable = selected && s.id !== 'all' && s.id !== 'playlists';
+    const editable = selected && s.id !== 'all' && s.id !== 'playlists' && s.id !== 'radio';
     const chip = document.createElement('div');
     chip.className = 'find-shelf chip' + (selected ? ' on' : '') + (editable ? ' has-actions' : '');
     if (editable && shelfRenaming === s.id) {
@@ -4105,8 +4110,11 @@ function renderShelfList(): void {
     }
     findShelfList.appendChild(chip);
   }
-  // Add control: album shelves are named here; playlist shelves come from the library.
-  if (shelfTab === 'playlist') {
+  // Add control: album shelves are named here; playlist shelves come from the library;
+  // radio has one virtual shelf whose stations are added from the admin app (no control).
+  if (shelfTab === 'radio') {
+    /* nothing to add on the wall */
+  } else if (shelfTab === 'playlist') {
     const add = document.createElement('button');
     add.className = 'find-shelf find-shelf-new';
     add.textContent = '+ Add playlists';

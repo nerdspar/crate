@@ -304,6 +304,36 @@ export interface AddPlaylistRequest {
   providerUri: string;
 }
 
+/** A radio station (from a music-provider like TuneIn via MA), plus whether it's
+    already saved to Crate's Radio shelf. Radio has no tracks — it's a live stream. */
+export interface RadioStation {
+  providerUri: string;
+  provider: string;
+  name: string;
+  /** Station tagline / network (shown where an album shows the artist); null if none. */
+  description: string | null;
+  artworkUrl: string | null;
+  onShelf: boolean;
+  /** Streaming source display name (e.g. "Tune-In Radio"); optional. */
+  source?: string;
+}
+
+/** Radio search: stations across the connected radio sources, plus the source list. */
+export interface RadioSearchResponse {
+  stations: RadioStation[];
+  sources: MusicSourceInfo[];
+}
+
+export interface AddRadioRequest {
+  providerUri: string;
+}
+
+/** Result of syncing MA's saved radio stations into Crate's Radio shelf. */
+export interface RadioSyncResult {
+  added: number;
+  total: number;
+}
+
 export interface PlayersResponse {
   players: Player[];
   state: PlayerState[];

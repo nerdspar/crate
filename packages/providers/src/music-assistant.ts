@@ -29,6 +29,7 @@ import type {
   ProviderLibraryAlbum,
   ProviderPlayer,
   ProviderPlaylist,
+  ProviderRadio,
   ProviderTrackHit,
   TransportCommand,
 } from './interfaces.js';
@@ -670,6 +671,51 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   async getPlaylist(providerUri: string): Promise<ProviderPlaylist | null> {
     const item = rec(await this.client.command('music/item_by_uri', { uri: providerUri }));
     return this.toProviderPlaylist(item);
+  }
+
+  // --- Radio (TuneIn etc.) ------------------------------------------------
+
+  private toProviderRadio(item: Record<string, unknown>): ProviderRadio | null {
+    const uri = str(item['uri']);
+    const name = str(item['name']);
+    if (!uri || !name) return null;
+    const md = rec(item['metadata']);
+    return {
+      providerUri: uri,
+      provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
+      name,
+      description: str(md['description']) ?? null,
+      artworkUrl: this.artworkUrl(item),
+    };
+  }
+
+  /** Search radio stations (across all radio providers, or one when scoped). */
+  async searchRadio(query: string, limit = 20, providerInstance?: string): Promise<ProviderRadio[]> {
+    const result = rec(
+      await this.client.command('music/search', {
+        search_query: query,
+        media_types: ['radio'],
+        limit,
+        library_only: false,
+        ...(providerInstance ? { provider: providerInstance } : {}),
+      }),
+    );
+    return arr(result['radio'])
+      .map((r) => this.toProviderRadio(rec(r)))
+      .filter((r): r is ProviderRadio => r !== null);
+  }
+
+  /** The user's saved radio stations (MA library) — e.g. custom TuneIn stations. */
+  async listLibraryRadios(limit = 200): Promise<ProviderRadio[]> {
+    const raw = await this.client.command('music/radios/library_items', { limit, favorite: false });
+    const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);
+    return items.map((r) => this.toProviderRadio(rec(r))).filter((r): r is ProviderRadio => r !== null);
+  }
+
+  /** Resolve one radio station (name, tagline, artwork) for ingestion. */
+  async getRadio(providerUri: string): Promise<ProviderRadio | null> {
+    const item = rec(await this.client.command('music/item_by_uri', { uri: providerUri }));
+    return this.toProviderRadio(item);
   }
 
   // --- PlayerTarget -------------------------------------------------------

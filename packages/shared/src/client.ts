@@ -14,6 +14,9 @@ import type {
   PlayRequest,
   PlayersResponse,
   ProviderAlbumDetail,
+  RadioSearchResponse,
+  RadioStation,
+  RadioSyncResult,
   RepeatRequest,
   SearchAlbum,
   SearchSong,
@@ -191,6 +194,26 @@ export class CrateClient {
   /** Start resolving a playlist's track art before opening its song shelf. */
   prewarmPlaylist(providerUri: string): Promise<{ ok: true }> {
     return this.post('/api/playlists/prewarm', { providerUri });
+  }
+
+  // --- Radio (stations from TuneIn etc. via MA) ---
+  /** Search radio stations across the connected radio sources. */
+  searchRadio(query: string, source?: string): Promise<RadioSearchResponse> {
+    const q = new URLSearchParams({ q: query });
+    if (source && source !== 'all') q.set('source', source);
+    return this.req(`/api/radio/search?${q.toString()}`);
+  }
+  /** The stations already saved in MA's library (e.g. your custom TuneIn stations). */
+  listLibraryRadios(): Promise<RadioStation[]> {
+    return this.req('/api/radio/library');
+  }
+  /** Save one station to Crate's Radio shelf. */
+  addRadio(providerUri: string): Promise<{ ok: true }> {
+    return this.post('/api/radio', { providerUri });
+  }
+  /** Pull MA's saved library radios onto the Radio shelf; returns how many were added. */
+  syncRadios(): Promise<RadioSyncResult> {
+    return this.post('/api/radio/sync', {});
   }
 
   removeFromShelf(albumId: string): Promise<{ ok: true }> {

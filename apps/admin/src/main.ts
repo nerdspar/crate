@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
+import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type RadioStation, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -19,7 +19,7 @@ const toast = document.getElementById('toast') as HTMLElement;
 
 type ShelfView = 'list' | 'tile';
 type ShelfSort = 'custom' | 'added' | 'artist' | 'title' | 'year';
-type AddType = 'album' | 'playlist';
+type AddType = 'album' | 'playlist' | 'radio';
 
 // Add tab: one search over your library + the catalog, per content type. Source-aware.
 let addType: AddType = 'album';
@@ -30,6 +30,8 @@ let libAlbums: LibraryAlbum[] = [];
 let catAlbums: SearchAlbum[] = [];
 let libPlaylists: LibraryPlaylist[] = [];
 let catPlaylists: LibraryPlaylist[] = [];
+let libRadios: RadioStation[] = []; // your saved MA radio stations
+let catRadios: RadioStation[] = []; // radio search results (TuneIn etc.)
 let addOffset = 0;
 let addHasMore = false;
 let addLoading = false;
@@ -40,6 +42,7 @@ let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
 let libraryCount = 0; // size of the "All" shelf
 let playlistCount = 0; // size of the "All Playlists" shelf
+let radioCount = 0; // size of the "Radio" shelf
 const playlistSongCounts = new Map<string, number>(); // named playlist shelf id → song count
 
 // Currently open shelf detail: 'all' = the library, else a named shelf id; null = index.
@@ -144,8 +147,14 @@ function mkBtn(label: string, cls: string): HTMLButtonElement {
 const taKey = (t: string, a: string): string => `${t} ${a}`.toLowerCase().replace(/\s+/g, ' ').trim();
 
 function updateAddToolbar(): void {
-  addSearchInput.placeholder = `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
-  importBtn.hidden = addType !== 'album'; // "Add all" only for albums
+  addSearchInput.placeholder =
+    addType === 'radio'
+      ? 'Search radio stations — name or network…'
+      : `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
+  // The right-hand action: "Add all" (albums), "Sync saved" (radio), hidden for playlists.
+  importBtn.hidden = addType === 'playlist';
+  importBtn.textContent = addType === 'radio' ? 'Sync saved' : 'Add all';
+  syncSourceSel(); // hide the album-source dropdown when on Radio
 }
 // Albums vs Playlists is one shared choice across Add and Shelves.
 function setContentType(type: AddType): void {
@@ -163,7 +172,8 @@ document
   .forEach((b) => b.addEventListener('click', () => setContentType(b.dataset['type'] as AddType)));
 
 function syncSourceSel(): void {
-  if (sources.length <= 1) {
+  if (addType === 'radio' || sources.length <= 1) {
+    // Radio searches all radio providers; the album-source dropdown doesn't apply.
     sourceSel.hidden = true;
     return;
   }
@@ -224,7 +234,7 @@ async function reloadAdd(reset: boolean): Promise<void> {
       addOffset += res.items.length;
       catAlbums = q ? await client.search(q, curSource) : [];
       if (token !== addToken) return;
-    } else {
+    } else if (addType === 'playlist') {
       let pls = await client.listLibraryPlaylists();
       if (token !== addToken) return;
       if (q) {
@@ -233,6 +243,17 @@ async function reloadAdd(reset: boolean): Promise<void> {
       }
       libPlaylists = pls;
       catPlaylists = q ? await client.searchPlaylists(q) : [];
+      if (token !== addToken) return;
+    } else {
+      // Radio: your saved stations on top, plus TuneIn (etc.) search results below.
+      let radios = await client.listLibraryRadios();
+      if (token !== addToken) return;
+      if (q) {
+        const ql = q.toLowerCase();
+        radios = radios.filter((r) => r.name.toLowerCase().includes(ql) || (r.description ?? '').toLowerCase().includes(ql));
+      }
+      libRadios = radios;
+      catRadios = q ? (await client.searchRadio(q)).stations : [];
       if (token !== addToken) return;
     }
     renderAdd();
@@ -264,13 +285,15 @@ function renderAdd(): void {
   const searching = !!addQuery;
   addListEl.className = '';
   addListEl.innerHTML = '';
-  const kind = addType === 'album' ? 'albums' : 'playlists';
+  const kind = addType === 'album' ? 'albums' : addType === 'playlist' ? 'playlists' : 'stations';
 
   // Browsing (no query): just your library, one flat grid.
   if (!searching) {
-    const cards = addType === 'album' ? libAlbums.map(albumCard) : libPlaylists.map(playlistCard);
+    const cards =
+      addType === 'album' ? libAlbums.map(albumCard) : addType === 'playlist' ? libPlaylists.map(playlistCard) : libRadios.map(radioCard);
     if (!cards.length) {
-      addListEl.innerHTML = `<div class="empty">No ${kind} in your library yet.</div>`;
+      const hint = addType === 'radio' ? 'No saved stations yet — search above, or Sync saved.' : `No ${kind} in your library yet.`;
+      addListEl.innerHTML = `<div class="empty">${hint}</div>`;
       addMoreBtn.hidden = true;
       return;
     }
@@ -303,7 +326,7 @@ function renderAdd(): void {
     if (onShelf.length) addSection('On your shelf', onShelf.map(albumCard));
     if (owned.length) addSection('In your library', owned.map(albumCard));
     if (catalog.length) addSection(catalogLabel(), catalog.map(albumCard));
-  } else {
+  } else if (addType === 'playlist') {
     const uris = new Set(libPlaylists.map((p) => p.providerUri));
     const names = new Set(libPlaylists.map((p) => p.name.toLowerCase()));
     const dup = (p: LibraryPlaylist): boolean => uris.has(p.providerUri) || names.has(p.name.toLowerCase());
@@ -323,6 +346,25 @@ function renderAdd(): void {
     if (onShelf.length) addSection('On your shelf', onShelf.map(playlistCard));
     if (owned.length) addSection('In your library', owned.map(playlistCard));
     if (catalog.length) addSection(catalogLabel(), catalog.map(playlistCard));
+  } else {
+    // Radio: On your shelf → Your saved stations → From radio search.
+    const seen = new Set<string>();
+    const dedupe = (r: RadioStation): boolean => {
+      if (seen.has(r.providerUri)) return false;
+      seen.add(r.providerUri);
+      return true;
+    };
+    const libUris = new Set(libRadios.map((r) => r.providerUri));
+    const onShelf = [...libRadios.filter((r) => r.onShelf), ...catRadios.filter((r) => r.onShelf && !libUris.has(r.providerUri))].filter(dedupe);
+    const owned = libRadios.filter((r) => !r.onShelf);
+    const catalog = catRadios.filter((r) => !r.onShelf && !libUris.has(r.providerUri));
+    if (!onShelf.length && !owned.length && !catalog.length) {
+      addListEl.innerHTML = `<div class="empty">No stations found.</div>`;
+      return;
+    }
+    if (onShelf.length) addSection('On your shelf', onShelf.map(radioCard));
+    if (owned.length) addSection('Your saved stations', owned.map(radioCard));
+    if (catalog.length) addSection('From radio search', catalog.map(radioCard));
   }
 }
 
@@ -463,6 +505,69 @@ async function addPlaylistToShelf(p: LibraryPlaylist, card: HTMLElement, btn: HT
   }
 }
 
+function radioCard(r: RadioStation): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const sub = r.description && r.description !== r.name ? r.description : (r.source ?? 'Radio');
+  card.innerHTML = `
+    ${artHtml(r.artworkUrl)}
+    <div class="body">
+      <div class="meta">
+        <div class="t">${esc(r.name)}</div>
+        <div class="a">${esc(sub)}</div>
+      </div>
+      <div class="card-actions"></div>
+    </div>`;
+  const actions = card.querySelector('.card-actions') as HTMLElement;
+  if (r.onShelf) {
+    const b = mkBtn('Added', 'ghost');
+    b.disabled = true;
+    actions.append(b);
+  } else {
+    const b = mkBtn('Add', '');
+    b.addEventListener('click', () => void addRadioToShelf(r, card, b));
+    actions.append(b);
+  }
+  return card;
+}
+
+async function addRadioToShelf(r: RadioStation, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  card.classList.add('busy');
+  try {
+    await client.addRadio(r.providerUri);
+    r.onShelf = true;
+    showToast(`Added ${r.name}`);
+    renderAdd();
+    void loadShelvesIndex();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Add';
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    card.classList.remove('busy');
+  }
+}
+
+/** "Sync saved" — pull every station saved in Music Assistant onto the Radio shelf. */
+async function syncSavedRadios(): Promise<void> {
+  const orig = importBtn.textContent;
+  importBtn.disabled = true;
+  importBtn.textContent = 'Syncing…';
+  try {
+    const r = await client.syncRadios();
+    showToast(r.added ? `Added ${r.added} station${r.added === 1 ? '' : 's'}` : 'Saved stations already added');
+    await reloadAdd(true);
+    void loadShelvesIndex();
+  } catch (e) {
+    showToast(`Sync failed: ${(e as Error).message}`);
+  } finally {
+    importBtn.disabled = false;
+    importBtn.textContent = orig;
+  }
+}
+
 async function importAll(): Promise<void> {
   const where =
     curSource !== 'all' ? (sources.find((s) => s.instanceId === curSource)?.name ?? 'this source') : 'your library';
@@ -500,7 +605,7 @@ addClearBtn.addEventListener('click', () => {
   addSearchInput.focus();
   void reloadAdd(true);
 });
-importBtn.addEventListener('click', () => void importAll());
+importBtn.addEventListener('click', () => void (addType === 'radio' ? syncSavedRadios() : importAll()));
 addMoreBtn.addEventListener('click', () => void reloadAdd(false));
 
 /* ================= Shelves — index ================= */
@@ -516,12 +621,18 @@ function albumCrates(): Shelf[] {
 
 async function loadShelvesIndex(): Promise<void> {
   try {
-    const [res, pl] = [await client.getShelf(), await client.getShelf('playlists').catch(() => ({ items: [] }))];
+    const [res, pl, ra] = [
+      await client.getShelf(),
+      await client.getShelf('playlists').catch(() => ({ items: [] })),
+      await client.getShelf('radio').catch(() => ({ items: [] })),
+    ];
     shelves = res.shelves;
     libraryCount = res.items.length;
     playlistCount = pl.items.length;
+    radioCount = ra.items.length;
     if (openShelfId === 'all') detailItems = res.items; // keep the open All detail fresh
     if (openShelfId === 'playlists') detailItems = pl.items;
+    if (openShelfId === 'radio') detailItems = ra.items;
   } catch {
     shelvesListEl.innerHTML = `<div class="empty">Could not reach the device service.</div>`;
     return;
@@ -553,6 +664,11 @@ async function loadShelvesIndex(): Promise<void> {
 
 function renderShelvesIndex(): void {
   shelvesListEl.innerHTML = '';
+  if (addType === 'radio') {
+    crateForm.hidden = true; // radio has one virtual shelf; no named radio shelves
+    shelvesListEl.appendChild(shelfRow('radio', 'Radio', radioCount, true, 'station'));
+    return;
+  }
   if (addType === 'playlist') {
     crateForm.hidden = true; // playlist shelves are created by opening a playlist, not named here
     shelvesListEl.appendChild(shelfRow('playlists', 'All Playlists', playlistCount, true, 'playlist'));
@@ -570,7 +686,7 @@ function renderShelvesIndex(): void {
   }
 }
 
-function shelfRow(id: string, name: string, count: number, isDefault: boolean, unit: 'album' | 'playlist'): HTMLElement {
+function shelfRow(id: string, name: string, count: number, isDefault: boolean, unit: 'album' | 'playlist' | 'station'): HTMLElement {
   const row = document.createElement('button');
   row.className = 'shelf-row' + (isDefault ? ' default' : '');
   row.innerHTML =
@@ -823,7 +939,8 @@ function sortedDetail(): ShelfItem[] {
 function renderShelfDetail(): void {
   if (!openShelfId) return;
   const playlists = openShelfId === 'playlists';
-  const unit = playlists ? 'playlist' : 'album';
+  const radios = openShelfId === 'radio';
+  const unit = playlists ? 'playlist' : radios ? 'station' : 'album';
   const view = viewByShelf.get(openShelfId) ?? 'tile';
   const sort = sortByShelf.get(openShelfId) ?? 'custom';
   shelfDetailCount.textContent = `${detailItems.length} ${unit}${detailItems.length === 1 ? '' : 's'}`;
@@ -831,9 +948,11 @@ function renderShelfDetail(): void {
   if (detailItems.length === 0) {
     const msg = playlists
       ? 'No playlists yet — add them from Add › Playlists.'
-      : openShelfId === 'all'
-        ? 'Nothing on the shelf yet — add albums from Add.'
-        : 'No albums in this shelf yet — add them from All albums.';
+      : radios
+        ? 'No stations yet — add them from Add › Radio.'
+        : openShelfId === 'all'
+          ? 'Nothing on the shelf yet — add albums from Add.'
+          : 'No albums in this shelf yet — add them from All albums.';
     shelfListEl.innerHTML = `<div class="empty">${msg}</div>`;
     return;
   }
@@ -871,6 +990,21 @@ function renderShelfDetail(): void {
       meta.classList.add('tappable');
       art.addEventListener('click', nav);
       meta.addEventListener('click', nav);
+      card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
+      card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
+    } else if (radios) {
+      card.innerHTML = `
+        ${artHtml(it.artworkUrl)}
+        <div class="body">
+          <div class="meta">
+            <div class="t">${esc(it.title)}</div>
+            <div class="a">${esc(it.artist)}</div>
+          </div>
+          <div class="card-actions">
+            <button class="ghost ico-btn edit-btn" aria-label="Edit spine" title="Edit spine">${ICO_EDIT}</button>
+            <button class="ghost ico-btn rm-btn" aria-label="Remove" title="Remove">${ICO_TRASH}</button>
+          </div>
+        </div>`;
       card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
       card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
     } else {
@@ -959,13 +1093,15 @@ function wirePointerDrag(row: HTMLElement, handle: HTMLElement, container: HTMLE
 }
 
 async function removeFromDetail(albumId: string): Promise<void> {
-  const fromLibrary = openShelfId === 'all' || openShelfId === 'playlists';
+  const fromLibrary = openShelfId === 'all' || openShelfId === 'playlists' || openShelfId === 'radio';
   try {
     if (fromLibrary) await client.removeFromShelf(albumId);
     else if (openShelfId) await client.removeAlbumFromShelf(openShelfId, albumId);
     detailItems = detailItems.filter((it) => it.albumId !== albumId);
     renderShelfDetail();
-    showToast(openShelfId === 'playlists' ? 'Removed playlist' : fromLibrary ? 'Removed from library' : 'Taken out of shelf');
+    showToast(
+      openShelfId === 'playlists' ? 'Removed playlist' : openShelfId === 'radio' ? 'Removed station' : fromLibrary ? 'Removed from library' : 'Taken out of shelf',
+    );
     void loadShelvesIndex();
   } catch (e) {
     showToast(`Failed: ${(e as Error).message}`);
