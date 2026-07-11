@@ -2416,7 +2416,7 @@ function renderMaCat(body: HTMLElement): void {
     }
   };
 
-  const showForm = async (manifest: MaProviderManifest, state: { action?: string; values?: Record<string, MaConfigValue> } = {}): Promise<void> => {
+  const showForm = async (manifest: MaProviderManifest, state: { action?: string; values?: Record<string, MaConfigValue>; waiting?: boolean } = {}): Promise<void> => {
     body.innerHTML = '';
     body.appendChild(maBackLink('‹ Add source', () => void showPicker()));
     const title = document.createElement('div');
@@ -2434,7 +2434,9 @@ function renderMaCat(body: HTMLElement): void {
     }
     const formEl = document.createElement('div');
     formEl.className = 'ma-form';
-    formEl.innerHTML = '<p class="hint">Loading…</p>';
+    formEl.innerHTML = state.waiting
+      ? '<p class="hint">Waiting for the Apple Music sign-in in the new tab — finish it there and this completes automatically.</p>'
+      : '<p class="hint">Loading…</p>';
     body.appendChild(formEl);
 
     let entries: MaConfigEntry[];
@@ -2457,12 +2459,30 @@ function renderMaCat(body: HTMLElement): void {
       return dv != null && dv !== false && dv !== '';
     };
 
+    // Apple Music auth is an interactive MusicKit browser flow: generate a session id, open MA's
+    // auth page (rewriting a co-hosted MA's localhost to this browser's host so it's reachable), then
+    // advance get_entries with that session id — it blocks until sign-in finishes and returns the token.
+    const advanceAction = (en: MaConfigEntry): void => {
+      if (manifest.domain === 'apple_music' && en.action === 'CONF_ACTION_AUTH') {
+        void (async () => {
+          const conn = await client.getMaConnection().catch(() => null);
+          if (!conn?.url) return showToast('Music Assistant URL unknown');
+          const sessionId = `crate-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+          const base = conn.url.replace(/\/+$/, '').replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)/, `$1${location.hostname}`);
+          window.open(`${base}/apple_music_auth/${sessionId}/index.html`, '_blank', 'noopener');
+          void showForm(manifest, { action: en.action ?? undefined, values: { ...values, session_id: sessionId }, waiting: true });
+        })();
+      } else {
+        void showForm(manifest, { action: en.action ?? undefined, values });
+      }
+    };
+
     const drawFields = (): void => {
       formEl.innerHTML = '';
       const advanced: HTMLElement[] = [];
       for (const en of entries) {
         if (en.hidden || !visible(en)) continue;
-        const field = maField(en, values, drawFields, () => void showForm(manifest, { action: en.action ?? undefined, values }));
+        const field = maField(en, values, drawFields, () => advanceAction(en));
         if (!field) continue;
         if (en.advanced) advanced.push(field);
         else formEl.appendChild(field);

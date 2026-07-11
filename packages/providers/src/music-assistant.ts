@@ -224,12 +224,18 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     domain: string,
     opts: { instanceId?: string; action?: string; values?: Record<string, MaConfigValue> } = {},
   ): Promise<MaConfigEntry[]> {
-    const raw = await this.client.command<unknown[]>('config/providers/get_entries', {
-      provider_domain: domain,
-      instance_id: opts.instanceId ?? null,
-      action: opts.action ?? null,
-      values: opts.values ?? null,
-    });
+    const raw = await this.client.command<unknown[]>(
+      'config/providers/get_entries',
+      {
+        provider_domain: domain,
+        instance_id: opts.instanceId ?? null,
+        action: opts.action ?? null,
+        values: opts.values ?? null,
+      },
+      // Advancing a flow (e.g. an OAuth "Authenticate" action) blocks server-side until the
+      // user completes the browser sign-in, so give it minutes rather than the default 20s.
+      opts.action ? 300_000 : 20_000,
+    );
     return arr(raw).map((r) => this.toConfigEntry(rec(r)));
   }
 
