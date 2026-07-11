@@ -4664,7 +4664,12 @@ vp.addEventListener('pointerdown', (e) => {
   // toggles the extended view — a faster trigger than the ⋯ button.
   vSwipe = 0;
   vSwipeDone = false;
-  downOnOpenCover = openIdx !== null && !!(e.target as HTMLElement).closest('.spine.open .flap');
+  // The open flap is rotated edge-on and its cover children are pointer-events:none, so a real
+  // press lands on `.spine.open` itself — match that (minus the scrollable panel), not `.flap`.
+  downOnOpenCover =
+    openIdx !== null &&
+    !!(e.target as HTMLElement).closest('.spine.open') &&
+    !(e.target as HTMLElement).closest('.panel');
 
   if (downTarget && openIdx === null) {
     holdTimer = setTimeout(() => {
