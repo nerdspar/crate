@@ -2416,7 +2416,7 @@ function renderMaCat(body: HTMLElement): void {
     }
   };
 
-  const showForm = async (manifest: MaProviderManifest, state: { action?: string; values?: Record<string, MaConfigValue>; waiting?: boolean } = {}): Promise<void> => {
+  const showForm = async (manifest: MaProviderManifest, state: { action?: string; values?: Record<string, MaConfigValue> } = {}): Promise<void> => {
     body.innerHTML = '';
     body.appendChild(maBackLink('‹ Add source', () => void showPicker()));
     const title = document.createElement('div');
@@ -2434,9 +2434,7 @@ function renderMaCat(body: HTMLElement): void {
     }
     const formEl = document.createElement('div');
     formEl.className = 'ma-form';
-    formEl.innerHTML = state.waiting
-      ? '<p class="hint">Waiting for the Apple Music sign-in in the new tab — finish it there and this completes automatically.</p>'
-      : '<p class="hint">Loading…</p>';
+    formEl.innerHTML = '<p class="hint">Loading…</p>';
     body.appendChild(formEl);
 
     let entries: MaConfigEntry[];
@@ -2461,20 +2459,45 @@ function renderMaCat(body: HTMLElement): void {
 
     // Apple Music auth is an interactive MusicKit browser flow: generate a session id, open MA's
     // auth page (rewriting a co-hosted MA's localhost to this browser's host so it's reachable), then
-    // advance get_entries with that session id — it blocks until sign-in finishes and returns the token.
+    // advance get_entries with that session id — it blocks until sign-in finishes and returns the token,
+    // at which point we save the source automatically (the token field is masked, so requiring a manual
+    // "Add" click reads as "nothing happened").
     const advanceAction = (en: MaConfigEntry): void => {
-      if (manifest.domain === 'apple_music' && en.action === 'CONF_ACTION_AUTH') {
-        void (async () => {
-          const conn = await client.getMaConnection().catch(() => null);
-          if (!conn?.url) return showToast('Music Assistant URL unknown');
-          const sessionId = `crate-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-          const base = conn.url.replace(/\/+$/, '').replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)/, `$1${location.hostname}`);
-          window.open(`${base}/apple_music_auth/${sessionId}/index.html`, '_blank', 'noopener');
-          void showForm(manifest, { action: en.action ?? undefined, values: { ...values, session_id: sessionId }, waiting: true });
-        })();
-      } else {
+      if (!(manifest.domain === 'apple_music' && en.action === 'CONF_ACTION_AUTH')) {
         void showForm(manifest, { action: en.action ?? undefined, values });
+        return;
       }
+      void (async () => {
+        const conn = await client.getMaConnection().catch(() => null);
+        if (!conn?.url) return showToast('Music Assistant URL unknown');
+        const sessionId = `crate-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+        const base = conn.url.replace(/\/+$/, '').replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)/, `$1${location.hostname}`);
+        window.open(`${base}/apple_music_auth/${sessionId}/index.html`, '_blank', 'noopener');
+        formEl.innerHTML = '<p class="hint">Waiting for the Apple Music sign-in in the new tab — finish it there, keep this tab open, and Crate adds the source automatically.</p>';
+        let result: MaConfigEntry[];
+        try {
+          result = await client.getMaSourceEntries(manifest.domain, { action: en.action ?? undefined, values: { ...values, session_id: sessionId } });
+        } catch (e) {
+          formEl.innerHTML = `<p class="hint">Apple Music sign-in didn’t complete (${esc(e instanceof Error ? e.message : 'error')}). Reopen the form to try again.</p>`;
+          return;
+        }
+        const merged: Record<string, MaConfigValue> = { ...values };
+        for (const e2 of result) merged[e2.key] = e2.value ?? e2.default;
+        if (!merged['music_user_token']) {
+          showToast('Apple Music sign-in was cancelled');
+          void showForm(manifest, { values: merged });
+          return;
+        }
+        formEl.innerHTML = '<p class="hint">Signed in — adding Apple Music…</p>';
+        try {
+          await client.saveMaSource(manifest.domain, merged);
+          showToast(`${manifest.name} added`);
+          showList();
+        } catch (e) {
+          maErr(e);
+          void showForm(manifest, { values: merged }); // fall back to the form so any required field can be filled
+        }
+      })();
     };
 
     const drawFields = (): void => {
