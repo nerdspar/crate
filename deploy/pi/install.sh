@@ -143,6 +143,11 @@ EnvironmentFile=$ENV_FILE
 ExecStart=/usr/bin/node --import tsx src/index.ts
 Restart=always
 RestartSec=3
+# Memory ceiling as a share of total RAM, so it adapts to the hardware automatically
+# (systemd computes it per host: ~680M on a 1GB Pi, ~3G on a 4GB Pi, ~6G on an 8GB Pi).
+# A leak/runaway is killed + restarted instead of taking down the whole Pi; it's a cap,
+# not a reservation, and normal use (a few hundred MB incl. sharp artwork) stays well under.
+MemoryMax=75%
 
 [Install]
 WantedBy=multi-user.target
