@@ -5,6 +5,9 @@ import { defineConfig } from 'vite';
 const target = process.env.CRATE_SERVER ?? 'http://localhost:8080';
 
 export default defineConfig({
+  // The device service serves the wall under /wall/ (the admin owns the root); base makes the
+  // wall's asset URLs resolve there.
+  base: '/wall/',
   server: {
     host: true,
     port: 5173,

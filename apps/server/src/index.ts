@@ -37,11 +37,15 @@ await app.register(fastifyStatic, { root: cfg.artDir, prefix: '/art/' });
 // were mounted so the System service-status view can report them as alive & serving.
 const shelfServed = existsSync(cfg.shelfDist);
 const adminServed = existsSync(cfg.adminDist);
+// The admin owns the root (phones open http://<host>/); the wall/kiosk lives under /wall/.
 if (shelfServed) {
-  await app.register(fastifyStatic, { root: cfg.shelfDist, prefix: '/', decorateReply: false });
+  await app.register(fastifyStatic, { root: cfg.shelfDist, prefix: '/wall/', decorateReply: false });
 }
 if (adminServed) {
-  await app.register(fastifyStatic, { root: cfg.adminDist, prefix: '/admin/', decorateReply: false });
+  await app.register(fastifyStatic, { root: cfg.adminDist, prefix: '/', decorateReply: false });
+  // Back-compat: old /admin bookmarks land on the admin root.
+  app.get('/admin', (_req, reply) => reply.redirect('/'));
+  app.get('/admin/', (_req, reply) => reply.redirect('/'));
 }
 service.setFrontendsServed({ shelf: shelfServed, admin: adminServed });
 

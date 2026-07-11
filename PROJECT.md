@@ -34,14 +34,14 @@ packages/
   │ (wall)  │              │  server  │             │                 │   └───────┘
   └─────────┘              │          │             └─────────────────┘   (+ Chromecast/AirPlay)
   ┌─────────┐  HTTP + /ws  │          │  serves the built bundles as static files:
-  │  admin  │◄────────────►│          │   shelf → `/`,  admin → `/admin/`
+  │  admin  │◄────────────►│          │   admin → `/`,  wall → `/wall/`
   └─────────┘              └──────────┘
 ```
 
 - The **server** is the single process: HTTP API + a `/ws` fan-out hub, the SQLite database, and
   one persistent WebSocket to Music Assistant.
 - **shelf** and **admin** are static bundles (`vite build` → `dist/`) with **no runtime of their
-  own** — the server mounts each `dist/` at its route (`/`, `/admin/`) if present. They share the
+  own** — the server mounts each `dist/` at its route (admin `/`, wall `/wall/`) if present. They share the
   protocol via **@crate/shared** (no duplicated API code).
 - They're separate because the runtimes differ (Node vs. browser) and the two UIs are genuinely
   different (always-on wide kiosk with a gesture engine vs. a portrait management UI); separate

@@ -1,6 +1,6 @@
 # Installing Crate
 
-Crate is a wall-mounted music shelf that plays through [Music Assistant](https://music-assistant.io) (MA). It runs as a small web server that serves the wall UI (`/`) and the admin app (`/admin/`).
+Crate is a wall-mounted music shelf that plays through [Music Assistant](https://music-assistant.io) (MA). It runs as a small web server that serves the admin app (`/`) and the wall UI (`/wall/`).
 
 You can run it two ways:
 
@@ -38,8 +38,8 @@ docker compose --profile cohosted up -d --build
 Set in `.env`: `MA_URL=http://host.docker.internal:8095` and `CRATE_MANAGES_MA=1`. First-time MA setup is at `http://<host>:8095`.
 
 ### 3. Open it
-- Wall: `http://<host>:8080`
-- Admin: `http://<host>:8080/admin/`
+- Admin: `http://<host>/`
+- Wall: `http://<host>/wall/`
 
 In the admin, **Settings → Music Assistant** manages sources; **Settings → Backup** exports your config or syncs it to GitHub.
 
@@ -76,7 +76,7 @@ sudo bash deploy/pi/install.sh            # asks about Music Assistant + the kio
 The script installs Node, builds Crate, and installs a `crate.service` systemd unit with `CRATE_APPLIANCE=1`. Data lives in `/var/lib/crate`. It asks two questions up front:
 
 - **"Will you be using an existing Music Assistant installation?"** — **No** (default) installs MA alongside Crate in Docker (`CRATE_MANAGES_MA=1`); **Yes** points at your existing MA (enter its URL, token optional). Either way the **token can be left blank** — open Crate's admin afterward and the **setup wizard** handles it: for a co-hosted MA it **creates your Music Assistant account and mints its own token** (you never open MA's UI); for an existing MA you can **sign in** (Crate mints the token) or paste a long-lived one. Also available later in **Settings → Music Assistant**.
-- **"Set up the fullscreen kiosk display?"** — installs `cage` + Chromium and a `crate-kiosk.service` that opens `http://localhost:8080` fullscreen on boot. Preset non-interactively with `--kiosk` / `--no-kiosk`. It's **best-effort** — the display stack varies (Pi OS Bookworm uses Wayland/labwc; older setups use X11); if the screen stays blank, the server still runs and you can point any fullscreen browser at `http://localhost:8080`.
+- **"Set up the fullscreen kiosk display?"** — installs `cage` + Chromium and a `crate-kiosk.service` that opens `http://localhost/wall/` fullscreen on boot. Preset non-interactively with `--kiosk` / `--no-kiosk`. It's **best-effort** — the display stack varies (Pi OS Bookworm uses Wayland/labwc; older setups use X11); if the screen stays blank, the server still runs and you can point any fullscreen browser at `http://localhost/wall/`.
 
 Manage it:
 ```sh
@@ -104,7 +104,7 @@ Or from the wall itself: **Settings → System → Software update → Check for
 |---------------------|----------------------------------|---------|
 | `MA_URL`            | `http://homeassistant.local:8095`| Music Assistant server URL. |
 | `MA_TOKEN`          | _(empty)_                        | Long-lived MA token (admin user). |
-| `CRATE_PORT`        | `8080`                           | Port for the wall + admin. |
+| `CRATE_PORT`        | `8080`                           | Server port (the Pi installer sets `80`). |
 | `CRATE_MANAGES_MA`  | `0`                              | `1` when Crate co-hosts MA (enables restart affordance). |
 | `CRATE_DATA_DIR`    | `/data` (in container)           | Where Crate stores its DB + art cache. |
 | `CRATE_VERSION`     | `0.1.0`                          | Shown in the admin System view. |

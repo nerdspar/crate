@@ -112,7 +112,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cat > "$ENV_FILE" <<EOF
 MA_URL=$MA_URL
 MA_TOKEN=$MA_TOKEN
-CRATE_PORT=8080
+CRATE_PORT=80
 CRATE_HOST=0.0.0.0
 CRATE_DATA_DIR=$DATA_DIR
 CRATE_APPLIANCE=1
@@ -171,8 +171,8 @@ User=$RUN_USER
 PAMName=login
 TTYPath=/dev/tty1
 Environment=XDG_RUNTIME_DIR=/run/user/%U
-ExecStartPre=/bin/sh -c 'until curl -sf http://localhost:8080 >/dev/null; do sleep 1; done'
-ExecStart=/usr/bin/cage -- $CHROMIUM --kiosk --noerrdialogs --disable-infobars --incognito --check-for-update-interval=31536000 http://localhost:8080
+ExecStartPre=/bin/sh -c 'until curl -sf http://localhost/wall/ >/dev/null; do sleep 1; done'
+ExecStart=/usr/bin/cage -- $CHROMIUM --kiosk --noerrdialogs --disable-infobars --incognito --check-for-update-interval=31536000 http://localhost/wall/
 Restart=always
 RestartSec=3
 
@@ -187,8 +187,8 @@ fi
 
 echo
 echo "==> Done."
-echo "    Wall:  http://${IP:-<pi-ip>}:8080"
-echo "    Admin: http://${IP:-<pi-ip>}:8080/admin/"
+echo "    Admin: http://${IP:-<pi-ip>}/"
+echo "    Wall:  http://${IP:-<pi-ip>}/wall/"
 echo "    Logs:  journalctl -u crate -f"
 [[ -n "$MA_NOTE" ]] && { echo; echo "    $MA_NOTE"; }
 [[ $WITH_KIOSK -eq 1 ]] && echo "    Reboot to launch the kiosk: sudo reboot"
