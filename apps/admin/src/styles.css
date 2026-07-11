@@ -251,6 +251,11 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .sw-cur { color: var(--ink); }
 .sw-latest { font-size: 0.85rem; color: var(--ink-dim); }
 .sw-latest.has-update { color: var(--accent, #c83a3a); }
+/* Live update progress: a status line + a scrolling log tail. */
+.sw-prog { display: flex; flex-direction: column; gap: 0.5rem; }
+.sw-prog-status { font-weight: 600; }
+.sw-prog-status.sw-fail { color: var(--accent, #c83a3a); }
+.sw-log { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; line-height: 1.4; color: var(--ink-dim); background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 0.4rem; padding: 0.5rem 0.6rem; max-height: 30vh; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 /* Device status: LAN IP + version, one label/value row each. */
 .sys-status { margin-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; max-width: 460px; }
 .sys-line { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; border-bottom: 1px solid var(--line); padding-bottom: 0.45rem; }

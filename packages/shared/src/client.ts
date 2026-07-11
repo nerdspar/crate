@@ -23,6 +23,7 @@ import type {
   ShuffleRequest,
   SystemStatus,
   TransportRequest,
+  UpdateProgress,
   UpdateStatus,
   UpdateTarget,
   VolumeRequest,
@@ -269,6 +270,11 @@ export class CrateClient {
       updates the co-hosted Music Assistant image, preserving MA's data. */
   runUpdate(target: UpdateTarget = 'both'): Promise<{ ok: boolean; started: boolean }> {
     return this.post('/api/system/update', { target });
+  }
+
+  /** Live progress of an in-flight update (unit state + journal tail). */
+  updateProgress(): Promise<UpdateProgress> {
+    return this.req('/api/system/update/progress');
   }
 
   // --- Music Assistant management (Phase 5) ---

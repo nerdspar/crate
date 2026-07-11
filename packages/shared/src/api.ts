@@ -115,6 +115,13 @@ export interface UpdateStatus {
 /** What to update: Crate, the co-hosted Music Assistant, or both. */
 export type UpdateTarget = 'crate' | 'ma' | 'both';
 
+/** Live progress of an in-flight update: whether the crate-update unit is still running,
+    plus the tail of its journal so the admin can show what's happening. */
+export interface UpdateProgress {
+  active: boolean;
+  log: string[];
+}
+
 export interface BrightnessRequest {
   /** 0–100. */
   level: number;

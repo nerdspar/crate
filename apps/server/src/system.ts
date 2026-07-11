@@ -174,6 +174,29 @@ export function spawnUpdate(target: 'crate' | 'ma' | 'both'): boolean {
   return launch('bash', [UPDATE_SCRIPT, ...flags]);
 }
 
+/** Progress of an in-flight update: whether the crate-update unit is still running, plus the tail
+    of its journal (git pull → build → restart). Best-effort — {active:false,log:[]} if systemctl/
+    journalctl aren't available or the unit was already collected. */
+export async function updateProgress(): Promise<{ active: boolean; log: string[] }> {
+  let active = false;
+  try {
+    const state = (await pexec('systemctl', ['show', 'crate-update.service', '--property=ActiveState', '--value', '--no-pager'], { timeout: 4000 })).stdout.trim();
+    active = state === 'activating' || state === 'active' || state === 'reloading';
+  } catch {
+    /* unit collected/absent → treat as not running */
+  }
+  let log: string[] = [];
+  try {
+    log = (await pexec('journalctl', ['-u', 'crate-update.service', '-n', '60', '--no-pager', '-o', 'cat'], { timeout: 5000 })).stdout
+      .split('\n')
+      .map((l) => l.replace(/\s+$/, ''))
+      .filter(Boolean);
+  } catch {
+    /* journal unavailable */
+  }
+  return { active, log };
+}
+
 /** First non-internal IPv4 address, for the system row. */
 export function getLocalIp(): string | null {
   const ifaces = networkInterfaces();

@@ -339,6 +339,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     const target: UpdateTarget = t === 'crate' || t === 'ma' ? t : 'both';
     return service.runUpdate(target);
   });
+  app.get('/api/system/update/progress', () => service.updateProgress());
 
   // --- Music Assistant management (Phase 5) ---
   // Status reads cached connection info (safe even when MA is down). The others talk to MA,

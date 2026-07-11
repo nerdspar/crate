@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateStatus, type UpdateTarget } from '@crate/shared';
+import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1745,8 +1745,64 @@ function renderSystemCat(body: HTMLElement): void {
     if (!confirm(`${label}?`)) return;
     void client
       .runUpdate(target)
-      .then((r) => showToast(r.started ? note : 'Updates run on the appliance'))
-      .catch(() => showToast('Failed'));
+      .then((r) => {
+        if (!r.started) return showToast('Updates run on the appliance');
+        showUpdateProgress(target, note);
+      })
+      .catch(() => showToast('Failed to start update'));
+  };
+
+  // Live progress for a running update: poll the crate-update journal, show the log tail, and
+  // detect completion — including the server restart a Crate update triggers (we lose contact,
+  // then it returns on the new build → reload the wall).
+  const showUpdateProgress = (target: UpdateTarget, note: string): void => {
+    up.querySelector('.sw-note')?.remove();
+    swActions.innerHTML = '';
+    swStatus.innerHTML = '<div class="sw-prog"><div class="sw-prog-status"></div><pre class="sw-log" aria-live="polite"></pre></div>';
+    const statusEl = swStatus.querySelector('.sw-prog-status') as HTMLElement;
+    const logEl = swStatus.querySelector('.sw-log') as HTMLElement;
+    statusEl.textContent = note;
+    const isCrate = target !== 'ma';
+    let restarting = false;
+    let tries = 0;
+    const done = (msg: string, ok: boolean, reload: boolean): void => {
+      statusEl.textContent = msg;
+      statusEl.classList.toggle('sw-fail', !ok);
+      if (reload) return void setTimeout(() => location.reload(), 1800);
+      const back = document.createElement('button');
+      back.className = 'ghost';
+      back.textContent = 'Done';
+      back.addEventListener('click', doCheck);
+      swActions.appendChild(back);
+    };
+    const poll = async (): Promise<void> => {
+      if (++tries > 180) return done('Still running — check `journalctl -u crate-update -f` on the Pi.', false, false);
+      let prog: UpdateProgress;
+      try {
+        prog = await client.updateProgress();
+      } catch {
+        // Server unreachable → almost certainly the Crate restart. Note it and keep waiting.
+        if (isCrate) {
+          restarting = true;
+          statusEl.textContent = 'Restarting Crate…';
+        }
+        setTimeout(() => void poll(), 2000);
+        return;
+      }
+      if (restarting) return done('Updated — reloading the wall…', true, true);
+      if (prog.log.length) logEl.textContent = prog.log.slice(-16).join('\n');
+      if (prog.active) {
+        statusEl.textContent = 'Updating…';
+        setTimeout(() => void poll(), 2000);
+        return;
+      }
+      // Finished without a restart: a no-op ("already up to date"), an MA-only update, or a failure.
+      if (/failed|fatal:|EACCES|error:/i.test(prog.log.slice(-6).join('\n'))) {
+        return done('Update failed — the previous version is still running. See the log.', false, false);
+      }
+      done(target === 'ma' ? 'Music Assistant updated.' : 'Already up to date — nothing to do.', true, false);
+    };
+    void poll();
   };
 
   // One "App — current / latest-on-GitHub" block. `cur`/`latest` are pre-built HTML.

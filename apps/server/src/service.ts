@@ -37,6 +37,7 @@ import type {
   ShelfResponse,
   SystemStatus,
   TransportCmd,
+  UpdateProgress,
   UpdateStatus,
   UpdateTarget,
 } from '@crate/shared';
@@ -50,7 +51,7 @@ import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum, titleArtistKey } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, invalidateArtCache, songShelfItem, spineWidthFor } from './shelf.js';
-import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, rebootSystem, setDisplayPower, spawnUpdate } from './system.js';
+import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, rebootSystem, setDisplayPower, spawnUpdate, updateProgress } from './system.js';
 import { githubCheck, githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
@@ -1310,6 +1311,12 @@ export class Service {
   /** Kick off deploy/pi/update.sh (detached, outside our cgroup). Appliance only —
       it rebuilds this checkout and restarts the service; a no-op elsewhere so dev
       previews aren't disturbed. MA-only updates need the co-hosted topology. */
+  /** Live progress of an in-flight update (crate-update unit state + journal tail). */
+  async updateProgress(): Promise<UpdateProgress> {
+    if (!this.cfg.appliance) return { active: false, log: [] };
+    return updateProgress();
+  }
+
   runUpdate(target: UpdateTarget): { ok: boolean; started: boolean } {
     if (!this.cfg.appliance) return { ok: false, started: false };
     if (target === 'ma' && !this.cfg.managesMa) return { ok: false, started: false };
