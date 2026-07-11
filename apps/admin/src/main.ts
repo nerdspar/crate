@@ -2829,7 +2829,7 @@ function buildOnboarding(): void {
     ov.remove();
   });
 
-  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obPlaylists, obSpeakers, obSecure, obDone];
+  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obSources, obPlaylists, obSpeakers, obSecure, obDone];
   let i = 0;
   let onNext: ObNext;
 
@@ -2977,6 +2977,18 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
     if (statusEl.textContent === 'Signing in…' || statusEl.textContent === 'Connecting…') statusEl.textContent = '✕ Couldn’t connect — check the details.';
     return false;
   };
+}
+
+async function obSources(body: HTMLElement): Promise<ObNext> {
+  body.innerHTML =
+    '<h2 class="ob-title">Add your music</h2>' +
+    '<p class="ob-lead">Connect the services you listen to — once they sync, your library fills the wall and Search.</p>';
+  // Reuse the full Music Assistant sources UI (list + add-source picker + config/auth flow).
+  const host = document.createElement('div');
+  host.className = 'ob-sources';
+  body.appendChild(host);
+  renderMaCat(host);
+  return undefined;
 }
 
 async function obPlaylists(body: HTMLElement): Promise<ObNext> {
