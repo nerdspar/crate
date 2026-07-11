@@ -54,7 +54,6 @@ packages/
   providers/ MusicSource/PlayerTarget interfaces + Music Assistant adapter
 hardware/    STLs, wiring, BOM (Phase 5+)
 deploy/      systemd units, kiosk setup, install.sh (Phase 5)
-scripts/     phase0 risk-spike CLIs
 ```
 
 ## Prerequisites
@@ -96,7 +95,6 @@ it. It appears on the **shelf** (`http://localhost:5173`); tap it and press Play
 
 - `npm run typecheck` — typecheck all workspaces (TypeScript strict).
 - `npm run build` — build the frontends.
-- `npm run phase0:ma -- "<album>" "<player>" --ma-url <url>` — the Phase 0 MA spike.
 
 ## Acknowledgments
 

@@ -10,9 +10,7 @@
     "apps/*"
   ],
   "scripts": {
-    "phase0": "tsx scripts/phase0.ts",
-    "phase0:ma": "tsx scripts/phase0-ma.ts",
-    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "dev:server": "npm run dev --workspace @crate/server",
     "dev:shelf": "npm run dev --workspace @crate/shelf",
