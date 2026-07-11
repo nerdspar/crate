@@ -53,6 +53,14 @@ echo "    user:  $RUN_USER"
 if [[ $DO_CRATE -eq 1 ]]; then
   echo "==> Updating Crate"
   as_user() { sudo -u "$RUN_USER" "$@"; }
+  # Self-heal ownership before dropping to $RUN_USER for git/npm. A prior
+  # root-run git or build can leave root-owned files inside this user-owned
+  # checkout (e.g. .git/FETCH_HEAD), which then makes `git fetch`/`pull` or
+  # `npm ci` fail with EACCES. Re-asserting ownership is idempotent — a no-op
+  # when it's already correct.
+  if [[ "$RUN_USER" != root ]]; then
+    chown -R "$RUN_USER" "$REPO_DIR"
+  fi
   BEFORE="$(as_user git -C "$REPO_DIR" rev-parse HEAD)"
   as_user git -C "$REPO_DIR" fetch --quiet
   # --ff-only: refuse to update if the checkout has diverged/uncommitted merges,
