@@ -2052,7 +2052,7 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
     repoField.appendChild(inp);
     const note = document.createElement('p');
     note.className = 'field-desc';
-    note.textContent = 'Enter a token below and Save to pick from your repositories.';
+    note.textContent = 'Apply a token above to pick from your repositories (or type owner/repo).';
     repoField.appendChild(note);
   }
   form.appendChild(repoField);
@@ -2076,16 +2076,41 @@ async function renderGithubSection(host: HTMLElement): Promise<void> {
   pathField.appendChild(pathNote);
   // Branch + file path are rarely changed; they're tucked into an Advanced disclosure below.
 
+  // Access token — put it FIRST (before the repo picker), since listing your repos needs it.
+  // "Apply token" saves just the token and re-renders, which loads the repo list (and surfaces
+  // a bad token there), so you apply the token, then choose the repo, then Save the rest.
   const tokenField = field('Access token');
   const token = document.createElement('input');
   token.type = 'password';
-  token.placeholder = cfg.hasToken ? 'saved — leave blank to keep it' : 'ghp_…';
+  token.placeholder = cfg.hasToken ? 'saved — leave blank to keep it' : 'github_pat_… or ghp_…';
   tokenField.appendChild(token);
   const tokenNote = document.createElement('p');
   tokenNote.className = 'field-desc';
-  tokenNote.textContent = 'Stored on the server and never shown again. Needs read + write so Crate can both back up and restore.';
+  tokenNote.textContent = 'Stored on the server, never shown again. A fine-grained token needs Contents: Read and write on the repo (or a classic “repo” token).';
   tokenField.appendChild(tokenNote);
-  form.appendChild(tokenField);
+  const tokenActions = document.createElement('div');
+  tokenActions.className = 'sys-actions';
+  const applyToken = document.createElement('button');
+  applyToken.className = 'ghost';
+  applyToken.textContent = cfg.hasToken ? 'Update token' : 'Apply token';
+  applyToken.addEventListener('click', () => {
+    const t = token.value.trim();
+    if (!t) return showToast(cfg.hasToken ? 'A token is already saved' : 'Enter a token first');
+    applyToken.disabled = true;
+    void client
+      .setGithubBackup({ token: t })
+      .then(() => {
+        showToast('Token applied');
+        void renderGithubSection(host); // re-render populates the repo list from the token
+      })
+      .catch((e) => {
+        applyToken.disabled = false;
+        maErr(e);
+      });
+  });
+  tokenActions.appendChild(applyToken);
+  tokenField.appendChild(tokenActions);
+  form.insertBefore(tokenField, form.firstChild);
 
   // Automatic backup cadence.
   const autoField = field('Automatic backup');
