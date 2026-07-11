@@ -52,7 +52,7 @@
       <div class="find-shelf-tabs">
         <button class="find-shelf-tab on" data-kind="album">Albums</button>
         <button class="find-shelf-tab" data-kind="playlist">Playlists</button>
-        <button class="find-shelf-tab" data-kind="radio">Radio</button>
+        <button class="find-shelf-tab" data-kind="radio" style="display:none">Radio</button>
       </div>
       <div id="find-shelf-list"></div>
     </div>
@@ -72,6 +72,7 @@
 <div id="album-modal" hidden>
   <div class="am-backdrop"></div>
   <div class="am-card">
+    <div class="am-add"></div>
     <div class="am-cover"></div>
     <div class="am-body">
       <div class="am-eyebrow"></div>
@@ -89,7 +90,6 @@
           <button class="np-btn am-next" aria-label="Next track" hidden><svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg></button>
           <button class="card-mode card-repeat" aria-label="Repeat"></button>
         </div>
-        <div class="am-add"></div>
       </div>
       <div class="am-rooms rooms"></div>
       <div class="am-vol vol">

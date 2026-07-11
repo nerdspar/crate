@@ -121,7 +121,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   // path skip that round-trip, so playback starts sooner.
   private readonly trackCache = new Map<string, { tracks: Track[]; at: number }>();
   // The source list changes rarely; cache it briefly so search/library keystrokes don't each round-trip.
-  private providersCache: { at: number; data: Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> } | null = null;
+  private providersCache: { at: number; data: Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null; features: string[] }> } | null = null;
   private static readonly TRACK_TTL_MS = 5 * 60_000;
 
   constructor(opts: MaClientOptions) {
@@ -363,9 +363,13 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     const uri = str(item['uri']);
     const name = str(item['name']);
     if (!uri || !name) return null;
+    // A library item's own `provider` is just "library"; the real streaming source is in its
+    // provider_mappings — prefer that so the source can be attributed/badged.
+    const map = rec(arr(item['provider_mappings'])[0]);
+    const source = str(map['provider_instance']) ?? str(map['provider_domain']);
     return {
       providerUri: uri,
-      provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
+      provider: source ?? str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
       name,
       owner: str(item['owner']) ?? null,
       artworkUrl: this.artworkUrl(item),
@@ -507,7 +511,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   /** Connected streaming music sources (e.g. Apple Music accounts) — for searching
       each and labelling results by source. */
-  async listMusicProviders(): Promise<Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }>> {
+  async listMusicProviders(): Promise<Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null; features: string[] }>> {
     const now = Date.now();
     if (this.providersCache && now - this.providersCache.at < 30_000) return this.providersCache.data;
     // Providers (which streaming sources are connected) + manifests (per-domain SVG icons).
@@ -527,11 +531,21 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       .map((p) => {
         const instanceId = str(p['instance_id']) ?? '';
         const domain = str(p['domain']) ?? instanceId.split('--')[0] ?? '';
-        return { instanceId, name: str(p['name']) ?? 'Music', domain, iconSvg: iconByDomain.get(domain) ?? null };
+        // `supported_features` (e.g. "library_radios", "library_albums") declares what the source
+        // actually serves — used to decide which media tabs to show, without hardcoding domains.
+        const features = arr(p['supported_features']).map((f) => str(f) ?? '').filter(Boolean);
+        return { instanceId, name: str(p['name']) ?? 'Music', domain, iconSvg: iconByDomain.get(domain) ?? null, features };
       })
       .filter((p) => p.instanceId);
     this.providersCache = { at: now, data };
     return data;
+  }
+
+  /** True when any connected streaming source can serve radio (has the `library_radios`
+      feature) — e.g. TuneIn. Drives whether the Radio tab is shown. */
+  async hasRadioSource(): Promise<boolean> {
+    const provs = await this.listMusicProviders().catch(() => []);
+    return provs.some((p) => p.features.includes('library_radios'));
   }
 
   /** The user's saved albums. MA returns `library://album/N` uris (canonical + playable)

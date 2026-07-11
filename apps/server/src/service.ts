@@ -274,10 +274,11 @@ export class Service {
 
   async getShelf(shelfId?: string): Promise<ShelfResponse> {
     const shelves = this.db.listShelves();
+    const hasRadioSource = await this.ma.hasRadioSource(); // cached; drives the Radio tab's visibility
     const shelf = shelfId ? shelves.find((s) => s.id === shelfId) : undefined;
     // A named playlist shelf holds ONE playlist, shown as its songs (spines).
     if (shelf && shelf.kind === 'playlist' && shelf.id !== 'playlists') {
-      return { items: await this.songItems(shelf.id), stacks: this.db.listStacks(), shelves };
+      return { items: await this.songItems(shelf.id), stacks: this.db.listStacks(), shelves, hasRadioSource };
     }
     const rows =
       !shelfId || shelfId === 'all'
@@ -291,6 +292,7 @@ export class Service {
       items: rows.map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
       stacks: this.db.listStacks(),
       shelves,
+      hasRadioSource,
     };
   }
 
@@ -457,8 +459,10 @@ export class Service {
     for (const s of providers) if (s.domain && !byDomain.has(s.domain)) byDomain.set(s.domain, { name: s.name, iconSvg: s.iconSvg });
     const byInstance = new Map(providers.map((s) => [s.instanceId, s.name] as const));
     const used = new Set<string>(); // source names actually present in the results
-    const srcOfDomain = (d?: string | null): string => {
-      const n = (d && byDomain.get(d)?.name) || 'Library';
+    // The provider on a hit may be a domain ("apple_music") or an instance ("apple_music--xxx"),
+    // depending on the media type — resolve either (and an instance's derived domain).
+    const srcOfDomain = (p?: string | null): string => {
+      const n = (p && (byInstance.get(p) ?? byDomain.get(p)?.name ?? byDomain.get(p.split('--')[0] ?? '')?.name)) || 'Library';
       used.add(n);
       return n;
     };
@@ -597,7 +601,18 @@ export class Service {
   // --- Playlists ----------------------------------------------------------
 
   /** The user's provider-library playlists, marked with whether they're added. */
+  /** A `provider → source display name` mapper for attributing hits to their real source. The
+      provider on a hit can be a domain ("apple_music") or an instance id ("apple_music--xxx"),
+      depending on the media type — resolve either. */
+  private async sourceNamer(): Promise<(provider?: string | null) => string> {
+    const provs = await this.ma.listMusicProviders().catch(() => []);
+    const byDomain = new Map(provs.map((s) => [s.domain, s.name] as const));
+    const byInstance = new Map(provs.map((s) => [s.instanceId, s.name] as const));
+    return (p) => (p ? (byInstance.get(p) ?? byDomain.get(p) ?? byDomain.get(p.split('--')[0] ?? '') ?? 'Music') : 'Music');
+  }
+
   async listLibraryPlaylists(): Promise<LibraryPlaylist[]> {
+    const nameOf = await this.sourceNamer();
     const [playlists, shelved] = [await this.ma.listLibraryPlaylists(), this.db.shelfedUris()];
     return playlists.map((p) => ({
       providerUri: p.providerUri,
@@ -606,11 +621,13 @@ export class Service {
       owner: p.owner,
       artworkUrl: p.artworkUrl,
       onShelf: shelved.has(p.providerUri),
+      source: nameOf(p.provider),
     }));
   }
 
   /** Search playlists (your library + provider-curated, e.g. Apple Music editorial). */
   async searchPlaylists(query: string): Promise<LibraryPlaylist[]> {
+    const nameOf = await this.sourceNamer();
     const [pls, shelved] = [await this.ma.searchPlaylists(query), this.db.shelfedUris()];
     return pls.map((p) => ({
       providerUri: p.providerUri,
@@ -619,6 +636,7 @@ export class Service {
       owner: p.owner,
       artworkUrl: p.artworkUrl,
       onShelf: shelved.has(p.providerUri),
+      source: nameOf(p.provider),
     }));
   }
 

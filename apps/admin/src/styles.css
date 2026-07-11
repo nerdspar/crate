@@ -100,10 +100,14 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 0.7rem;
 }
 .card .art {
+  position: relative;
   width: 100%; aspect-ratio: 1; border-radius: 7px; overflow: hidden; flex: 0 0 auto;
   background: #2a262c var(--crate-mark) center / 52% no-repeat; /* Crate mark shows when no image covers it */
 }
 .card .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Source icon overlaid on a search result's artwork corner. */
+.card .art .src-ico { position: absolute; right: 5px; bottom: 5px; width: 22px; height: 22px; border-radius: 4px; overflow: hidden; background: rgba(0, 0, 0, 0.45); display: flex; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+.card .art .src-ico svg { width: 100%; height: 100%; display: block; }
 .card .body { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; flex: 1; }
 .card .meta { min-width: 0; }
 .card .t { font-weight: 700; font-size: 1rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

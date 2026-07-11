@@ -32,7 +32,21 @@ let settings: Settings = { ...DEFAULT_SETTINGS };
 let shelves: Shelf[] = [];
 let activeShelf = 'all';
 let shelfTab: ShelfKind = 'album';
+let hasRadioSource = false; // is a radio-capable source (TuneIn etc.) connected? → show the Radio tab
 let shelfAdding = false; // showing the inline "name this shelf" box
+
+/** Show the Radio find-tab only when a radio source is connected; if it vanishes while active,
+    fall back to Albums. Called whenever a shelf response lands (carries hasRadioSource). */
+function updateRadioTab(): void {
+  const tab = document.querySelector<HTMLElement>('.find-shelf-tab[data-kind="radio"]');
+  if (tab) tab.style.display = hasRadioSource ? '' : 'none';
+  if (!hasRadioSource && shelfTab === 'radio') {
+    shelfTab = 'album';
+    document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset['kind'] === 'album'));
+    if (activeShelf === 'radio') void switchShelf('all');
+    else renderShelfList();
+  }
+}
 let shelfDeleteArmed: string | null = null; // shelf id whose ✕ is armed for confirm
 let shelfRenaming: string | null = null; // shelf id whose name is being edited
 let shelfLoadToken = 0; // guards against concurrent shelf loads clobbering each other
@@ -3695,18 +3709,18 @@ function cardShell(title: string, artist: string, artUrl: string | null, action:
   card.className = 'find-card';
   const art = artUrl ? ` style="background-image:url('${artUrl}')"` : '';
   card.innerHTML =
-    `<div class="find-card-art"${art}></div>` +
-    `<div class="find-card-meta"><span class="t">${escapeHtml(title)}</span><span class="a">${escapeHtml(artist)}</span>${srcBadge(source)}</div>` +
+    `<div class="find-card-art"${art}>${srcArtIcon(source)}</div>` +
+    `<div class="find-card-meta"><span class="t">${escapeHtml(title)}</span><span class="a">${escapeHtml(artist)}</span></div>` +
     `<button class="find-card-add">${action}</button>`;
   return card;
 }
 
-/** A small "from <source>" badge (icon + name) on a result — shown only when a search spans
-    more than one source, so single-source setups stay clean. */
-function srcBadge(source?: string): string {
-  if (!searchMultiSource || !source) return '';
+/** The result's source icon, overlaid on the artwork corner — shown whenever the source is known
+    (so you can see at a glance whether a hit is from Apple Music, TuneIn, etc.). */
+function srcArtIcon(source?: string): string {
+  if (!source) return '';
   const icon = searchSourceIcon.get(source);
-  return `<span class="find-card-src">${icon ?? ''}<span>${escapeHtml(source)}</span></span>`;
+  return icon ? `<span class="find-card-srcico" title="${escapeHtml(source)}">${icon}</span>` : '';
 }
 
 /** Switch focus to the shelf album by id and open its spine (from the Find bar). */
@@ -3896,6 +3910,8 @@ async function makeSongShelfFromPlaylist(pl: LibraryPlaylist): Promise<void> {
   }
   const res = await client.getShelf('playlists');
   shelves = res.shelves;
+  hasRadioSource = res.hasRadioSource;
+  updateRadioTab();
   const media = res.items.find((it) => it.title === pl.name);
   if (!media) {
     showToast('Could not open shelf');
@@ -4246,6 +4262,8 @@ async function switchShelf(id: string, close = true): Promise<void> {
   activeShelf = id;
   items = res.items;
   shelves = res.shelves;
+  hasRadioSource = res.hasRadioSource;
+  updateRadioTab();
   applySort();
   openIdx = null;
   buildShelf();
@@ -5269,6 +5287,8 @@ async function reloadShelf(): Promise<void> {
   const openId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
   items = res.items;
   shelves = res.shelves;
+  hasRadioSource = res.hasRadioSource;
+  updateRadioTab();
   applySort();
   openIdx = null;
   buildShelf();
@@ -5510,12 +5530,14 @@ window.addEventListener('scroll', () => {
 /* ---------- Boot ---------- */
 async function boot(): Promise<void> {
   const [shelfRes, playersRes, settingsRes] = await Promise.all([
-    client.getShelf().catch(() => ({ items: [], stacks: [], shelves: [] })),
+    client.getShelf().catch(() => ({ items: [], stacks: [], shelves: [], hasRadioSource: false })),
     client.getPlayers().catch(() => ({ players: [], state: [] })),
     client.getSettings().catch(() => settings),
   ]);
   items = shelfRes.items;
   shelves = shelfRes.shelves;
+  hasRadioSource = shelfRes.hasRadioSource;
+  updateRadioTab();
   players = playersRes.players;
   settings = settingsRes;
   computeRooms();

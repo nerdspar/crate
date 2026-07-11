@@ -43,6 +43,14 @@ const crateMembers = new Map<string, Set<string>>(); // shelf id → member albu
 let libraryCount = 0; // size of the "All" shelf
 let playlistCount = 0; // size of the "All Playlists" shelf
 let radioCount = 0; // size of the "Radio" shelf
+let hasRadioSource = false; // a radio-capable source (TuneIn etc.) is connected → show the Radio segments
+
+/** Show the Radio segments (Add + Shelves) only when a radio source is connected; if it vanishes
+    while Radio is the active type, fall back to Albums. */
+function updateRadioSegments(): void {
+  document.querySelectorAll<HTMLElement>('.seg-btn[data-type="radio"]').forEach((b) => (b.style.display = hasRadioSource ? '' : 'none'));
+  if (!hasRadioSource && addType === 'radio') setContentType('album');
+}
 const playlistSongCounts = new Map<string, number>(); // named playlist shelf id → song count
 
 // Currently open shelf detail: 'all' = the library, else a named shelf id; null = index.
@@ -76,12 +84,19 @@ function showToast(msg: string): void {
 // Cover art with the Crate mark as the fallback: shown when there's no artwork, or when the
 // image fails to load (e.g. personal Apple Music uploads whose signed art URLs MA can't re-serve).
 document.documentElement.style.setProperty('--crate-mark', `url("${crateMark}")`);
-function artHtml(url: string | null): string {
+function artHtml(url: string | null, source?: string): string {
   // No loading="lazy": on mobile (esp. iOS Safari) lazy thumbnails re-load/re-decode as they
   // scroll into view, which reads as perpetual flashing. These are small cached covers, so
   // load them once up front and let them stay decoded. decoding="async" keeps it off the main thread.
   const img = url ? `<img src="${esc(url)}" alt="" decoding="async" onerror="this.remove()">` : '';
-  return `<div class="art">${img}</div>`;
+  return `<div class="art">${img}${srcArtIcon(source)}</div>`;
+}
+
+/** The source's icon, overlaid on a search result's artwork corner (only in search views). */
+function srcArtIcon(source?: string): string {
+  if (!source) return '';
+  const icon = sources.find((s) => s.name === source)?.iconSvg;
+  return icon ? `<span class="src-ico" title="${esc(source)}">${icon}</span>` : '';
 }
 
 /* ================= Tab navigation ================= */
@@ -287,11 +302,15 @@ function renderAdd(): void {
   addListEl.className = '';
   addListEl.innerHTML = '';
   const kind = addType === 'album' ? 'albums' : addType === 'playlist' ? 'playlists' : 'stations';
+  // Source filter (the dropdown) applied client-side so playlists filter by source just like
+  // albums. curSource is a provider instance id; results carry the source display name.
+  const curSrcName = curSource === 'all' ? null : (sources.find((s) => s.instanceId === curSource)?.name ?? null);
+  const bySrc = <T extends { source?: string }>(list: T[]): T[] => (curSrcName ? list.filter((x) => x.source === curSrcName) : list);
 
   // Browsing (no query): just your library, one flat grid.
   if (!searching) {
     const cards =
-      addType === 'album' ? libAlbums.map(albumCard) : addType === 'playlist' ? libPlaylists.map(playlistCard) : libRadios.map(radioCard);
+      addType === 'album' ? libAlbums.map(albumCard) : addType === 'playlist' ? bySrc(libPlaylists).map(playlistCard) : libRadios.map(radioCard);
     if (!cards.length) {
       const hint = addType === 'radio' ? 'No saved stations yet — search above, or Sync saved.' : `No ${kind} in your library yet.`;
       addListEl.innerHTML = `<div class="empty">${hint}</div>`;
@@ -328,18 +347,20 @@ function renderAdd(): void {
     if (owned.length) addSection('In your library', owned.map(albumCard));
     if (catalog.length) addSection(catalogLabel(), catalog.map(albumCard));
   } else if (addType === 'playlist') {
-    const uris = new Set(libPlaylists.map((p) => p.providerUri));
-    const names = new Set(libPlaylists.map((p) => p.name.toLowerCase()));
+    const lp = bySrc(libPlaylists);
+    const cp = bySrc(catPlaylists);
+    const uris = new Set(lp.map((p) => p.providerUri));
+    const names = new Set(lp.map((p) => p.name.toLowerCase()));
     const dup = (p: LibraryPlaylist): boolean => uris.has(p.providerUri) || names.has(p.name.toLowerCase());
     const seenName = new Set<string>();
-    const onShelf = [...libPlaylists.filter((p) => p.onShelf), ...catPlaylists.filter((p) => p.onShelf && !dup(p))].filter((p) => {
+    const onShelf = [...lp.filter((p) => p.onShelf), ...cp.filter((p) => p.onShelf && !dup(p))].filter((p) => {
       const k = p.name.toLowerCase();
       if (seenName.has(k)) return false;
       seenName.add(k);
       return true;
     });
-    const owned = libPlaylists.filter((p) => !p.onShelf);
-    const catalog = catPlaylists.filter((p) => !p.onShelf && !dup(p));
+    const owned = lp.filter((p) => !p.onShelf);
+    const catalog = cp.filter((p) => !p.onShelf && !dup(p));
     if (!onShelf.length && !owned.length && !catalog.length) {
       addListEl.innerHTML = `<div class="empty">No matches.</div>`;
       return;
@@ -378,7 +399,7 @@ function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
   const ex = it.explicit ? ` <span class="ex-badge" title="Explicit">E</span>` : '';
   const ver = it.version && !it.title.toLowerCase().includes(it.version.toLowerCase()) ? ` <span class="ver-tag">${esc(it.version)}</span>` : '';
   card.innerHTML = `
-    ${artHtml(it.artworkUrl)}
+    ${artHtml(it.artworkUrl, it.source)}
     <div class="body">
       <div class="meta">
         <div class="t">${esc(it.title)}${ex}${ver}</div>
@@ -466,7 +487,7 @@ function playlistCard(p: LibraryPlaylist): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
-    ${artHtml(p.artworkUrl)}
+    ${artHtml(p.artworkUrl, p.source)}
     <div class="body">
       <div class="meta">
         <div class="t">${esc(p.name)}</div>
@@ -511,7 +532,7 @@ function radioCard(r: RadioStation): HTMLElement {
   card.className = 'card';
   const sub = r.description && r.description !== r.name ? r.description : (r.source ?? 'Radio');
   card.innerHTML = `
-    ${artHtml(r.artworkUrl)}
+    ${artHtml(r.artworkUrl, r.source)}
     <div class="body">
       <div class="meta">
         <div class="t">${esc(r.name)}</div>
@@ -658,6 +679,8 @@ async function loadShelvesIndex(): Promise<void> {
       await client.getShelf('radio').catch(() => ({ items: [] })),
     ];
     shelves = res.shelves;
+    hasRadioSource = res.hasRadioSource;
+    updateRadioSegments();
     libraryCount = res.items.length;
     playlistCount = pl.items.length;
     radioCount = ra.items.length;
@@ -2707,13 +2730,15 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
       return dv != null && dv !== false && dv !== '';
     };
 
-    // Apple Music auth is an interactive MusicKit browser flow: generate a session id, open MA's
-    // auth page (rewriting a co-hosted MA's localhost to this browser's host so it's reachable), then
-    // advance get_entries with that session id — it blocks until sign-in finishes and returns the token,
-    // at which point we save the source automatically (the token field is masked, so requiring a manual
-    // "Add" click reads as "nothing happened").
+    // Interactive auth actions (Apple Music's MusicKit flow, Spotify/other OAuth): generate a session
+    // id, open MA's per-provider auth page (served at /<domain>_auth/<session>/, rewriting a co-hosted
+    // MA's localhost to this browser's host so it's reachable), then advance get_entries with that
+    // session id — MA blocks until the sign-in finishes and returns the credentials, at which point we
+    // save the source. A missing session id is what makes MA reject the flow with `999: 'session_id'`.
+    // Non-auth actions (e.g. "Clear authentication") just re-fetch the form.
     const advanceAction = (en: MaConfigEntry): void => {
-      if (!(manifest.domain === 'apple_music' && en.action === 'CONF_ACTION_AUTH')) {
+      const isAuth = !!en.action && /auth/i.test(en.action) && !/clear/i.test(en.action);
+      if (!isAuth) {
         void showForm(manifest, { action: en.action ?? undefined, values });
         return;
       }
@@ -2722,23 +2747,24 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
         if (!conn?.url) return showToast('Music Assistant URL unknown');
         const sessionId = `crate-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
         const base = conn.url.replace(/\/+$/, '').replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)/, `$1${location.hostname}`);
-        window.open(`${base}/apple_music_auth/${sessionId}/index.html`, '_blank', 'noopener');
-        formEl.innerHTML = '<p class="hint">Waiting for the Apple Music sign-in in the new tab — finish it there, keep this tab open, and Crate adds the source automatically.</p>';
+        window.open(`${base}/${manifest.domain}_auth/${sessionId}/index.html`, '_blank', 'noopener');
+        formEl.innerHTML = `<p class="hint">Waiting for the ${esc(manifest.name)} sign-in in the new tab — finish it there, keep this tab open, and Crate adds the source automatically.</p>`;
         let result: MaConfigEntry[];
         try {
           result = await client.getMaSourceEntries(manifest.domain, { action: en.action ?? undefined, values: { ...values, session_id: sessionId } });
         } catch (e) {
-          formEl.innerHTML = `<p class="hint">Apple Music sign-in didn’t complete (${esc(e instanceof Error ? e.message : 'error')}). Reopen the form to try again.</p>`;
+          formEl.innerHTML = `<p class="hint">${esc(manifest.name)} sign-in didn’t complete (${esc(e instanceof Error ? e.message : 'error')}). Reopen the form to try again.</p>`;
           return;
         }
         const merged: Record<string, MaConfigValue> = { ...values };
         for (const e2 of result) merged[e2.key] = e2.value ?? e2.default;
-        if (!merged['music_user_token']) {
+        // Apple Music surfaces its MusicKit token here; its absence means the popup was cancelled.
+        if (manifest.domain === 'apple_music' && !merged['music_user_token']) {
           showToast('Apple Music sign-in was cancelled');
           void showForm(manifest, { values: merged });
           return;
         }
-        formEl.innerHTML = '<p class="hint">Signed in — adding Apple Music…</p>';
+        formEl.innerHTML = `<p class="hint">Signed in — adding ${esc(manifest.name)}…</p>`;
         try {
           await client.saveMaSource(manifest.domain, merged);
           showToast(`${manifest.name} added`);

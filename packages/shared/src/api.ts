@@ -42,6 +42,9 @@ export interface ShelfResponse {
   items: ShelfItem[];
   stacks: Stack[];
   shelves: Shelf[];
+  /** True when a radio-capable source (e.g. TuneIn) is connected — the front-ends show the
+      Radio tab only then. */
+  hasRadioSource: boolean;
 }
 
 export interface CreateShelfRequest {

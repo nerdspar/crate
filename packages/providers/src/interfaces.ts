@@ -89,7 +89,7 @@ export interface MusicSource {
   getArtistAlbums(providerUri: string): Promise<ProviderAlbum[]>;
   getArtistTopTracks(providerUri: string): Promise<ProviderTrackHit[]>;
   /** Connected streaming music sources, for per-source search. */
-  listMusicProviders(): Promise<Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }>>;
+  listMusicProviders(): Promise<Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null; features: string[] }>>;
   getAlbum(providerUri: string): Promise<ProviderAlbum | null>;
   getTracks(providerUri: string): Promise<Track[]>;
   /** The user's saved albums (library), optionally scoped to one source / filtered
