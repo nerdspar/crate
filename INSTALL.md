@@ -4,7 +4,7 @@ Crate is a wall-mounted music shelf that plays through [Music Assistant](https:/
 
 You can run it two ways:
 
-- **Docker Compose** (below) — the portable path. Best for a NAS/mini-PC/server, or any host where Crate doesn't drive the display itself. Works with an MA you already run, or can bring MA up alongside it.
+- **Docker Compose** (below) — the portable path. Best for a NAS/mini-PC/server, or any host where Crate doesn't drive the display itself. Works with an MA you already run, or can bring MA up alongside it. On **TrueNAS SCALE** run it as a Custom App instead — see [`deploy/truenas/README.md`](deploy/truenas/README.md).
 - **Raspberry Pi appliance** — a native install (below) that also drives the touchscreen in kiosk mode and controls brightness/sleep/reboot.
 
 ---

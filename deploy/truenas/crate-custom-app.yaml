@@ -1,0 +1,31 @@
+# Crate app — ready to paste into TrueNAS SCALE:
+#   Apps -> Discover Apps -> Custom App -> "Install via YAML"
+#
+# LAN-only: published on port 8080 and NOT placed on the Cloudflare tunnel,
+# because Crate has no login yet — anyone who could reach it could control
+# playback. Reach it at http://<truenas-ip>:8080/ (admin) and /wall/ (wall UI).
+#
+# Points at an EXISTING Music Assistant. Before pasting, replace the placeholders:
+#   MA_HOST            -> your Music Assistant host/IP (default MA port is 8095)
+#   PASTE_MA_TOKEN     -> long-lived MA admin token (or leave "" and set it later
+#                         in Crate's admin -> Settings -> Music Assistant)
+#   POOL               -> your storage pool; create a `crate-data` dataset first,
+#                         so its path is /mnt/<pool>/crate-data
+#
+# The image is pulled from GHCR — make sure the GitHub Action has published it
+# (and the package is public, or add a registry credential in the UI) first.
+
+services:
+  crate:
+    image: ghcr.io/nerdspar/crate:latest
+    container_name: crate
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      MA_URL: "http://MA_HOST:8095"
+      MA_TOKEN: "PASTE_MA_TOKEN"
+      CRATE_MANAGES_MA: "0"
+      CRATE_VERSION: "0.1.0"
+    volumes:
+      - /mnt/POOL/crate-data:/data
