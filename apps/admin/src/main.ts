@@ -151,9 +151,10 @@ function updateAddToolbar(): void {
     addType === 'radio'
       ? 'Search radio stations — name or network…'
       : `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
-  // The right-hand action: "Add all" (albums), "Sync saved" (radio), hidden for playlists.
-  importBtn.hidden = addType === 'playlist';
-  importBtn.textContent = addType === 'radio' ? 'Sync saved' : 'Add all';
+  // "Add all" for every type — albums import your library, playlists add all your library
+  // playlists, radio adds every station saved in Music Assistant.
+  importBtn.hidden = false;
+  importBtn.textContent = 'Add all';
   syncSourceSel(); // hide the album-source dropdown when on Radio
 }
 // Albums vs Playlists is one shared choice across Add and Shelves.
@@ -550,6 +551,36 @@ async function addRadioToShelf(r: RadioStation, card: HTMLElement, btn: HTMLButt
   }
 }
 
+/** "Add all" (playlists) — add every playlist in your provider library to the All Playlists
+    shelf. Skips ones already added. */
+async function addAllPlaylists(): Promise<void> {
+  const all = await client.listLibraryPlaylists().catch((): LibraryPlaylist[] => []);
+  const pending = all.filter((p) => !p.onShelf);
+  if (!pending.length) {
+    showToast('Your playlists are already added');
+    return;
+  }
+  if (!confirm(`Add all ${pending.length} of your library playlists to Crate?`)) return;
+  const orig = importBtn.textContent;
+  importBtn.disabled = true;
+  importBtn.textContent = 'Adding…';
+  try {
+    let added = 0;
+    for (const p of pending) {
+      await client
+        .addPlaylist(p.providerUri)
+        .then(() => added++)
+        .catch(() => {});
+    }
+    showToast(`Added ${added} playlist${added === 1 ? '' : 's'}`);
+    await reloadAdd(true);
+    void loadShelvesIndex();
+  } finally {
+    importBtn.disabled = false;
+    importBtn.textContent = orig;
+  }
+}
+
 /** "Sync saved" — pull every station saved in Music Assistant onto the Radio shelf. */
 async function syncSavedRadios(): Promise<void> {
   const orig = importBtn.textContent;
@@ -605,7 +636,7 @@ addClearBtn.addEventListener('click', () => {
   addSearchInput.focus();
   void reloadAdd(true);
 });
-importBtn.addEventListener('click', () => void (addType === 'radio' ? syncSavedRadios() : importAll()));
+importBtn.addEventListener('click', () => void (addType === 'radio' ? syncSavedRadios() : addType === 'playlist' ? addAllPlaylists() : importAll()));
 addMoreBtn.addEventListener('click', () => void reloadAdd(false));
 
 /* ================= Shelves — index ================= */
@@ -2551,7 +2582,7 @@ function maField(en: MaConfigEntry, values: Record<string, MaConfigValue>, onCha
   return field;
 }
 
-function renderMaCat(body: HTMLElement): void {
+function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
   const showList = (): void => {
     body.innerHTML = '';
     const card = document.createElement('div');
@@ -2581,6 +2612,9 @@ function renderMaCat(body: HTMLElement): void {
     body.appendChild(add);
 
     // Built-in smart playlists — MA auto-generates these; off by default so they don't clutter search.
+    // Hidden during onboarding (we hide them automatically there — no decision to make); the toggle
+    // lives only in Settings for anyone who wants them back later.
+    if (opts?.onboarding) return;
     const plField = document.createElement('div');
     plField.className = 'field field-toggle ma-builtin-pl';
     const plCb = document.createElement('input');
@@ -3045,7 +3079,7 @@ function buildOnboarding(): void {
     ov.remove();
   });
 
-  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obSources, obPlaylists, obSpeakers, obSecure, obDone];
+  const steps: Array<(b: HTMLElement, ctx: ObCtx) => Promise<ObNext>> = [obWelcome, obConnect, obSources, obSpeakers, obSecure, obDone];
   let i = 0;
   let onNext: ObNext;
 
@@ -3203,23 +3237,11 @@ async function obSources(body: HTMLElement): Promise<ObNext> {
   const host = document.createElement('div');
   host.className = 'ob-sources';
   body.appendChild(host);
-  renderMaCat(host);
-  return undefined;
-}
-
-async function obPlaylists(body: HTMLElement): Promise<ObNext> {
-  body.innerHTML =
-    '<h2 class="ob-title">Tidy up search</h2>' +
-    '<p class="ob-lead">Music Assistant auto-generates playlists (Random Album, Infinite Mix, Recently played…). Most people hide these so they don’t clutter Crate search.</p>';
-  const wrap = document.createElement('label');
-  wrap.className = 'ob-check';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = true;
-  wrap.append(cb, document.createTextNode(' Hide the built-in smart playlists (recommended)'));
-  body.append(wrap);
+  renderMaCat(host, { onboarding: true });
+  // Hide MA's auto-generated smart playlists automatically — no need to ask during setup
+  // (the toggle is in Settings → Music Assistant for anyone who wants them later).
   return async () => {
-    await client.setMaBuiltinPlaylists(!cb.checked).catch(() => {}); // checked = hide = disable
+    await client.setMaBuiltinPlaylists(false).catch(() => {});
     return true;
   };
 }
