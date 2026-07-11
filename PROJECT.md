@@ -137,6 +137,10 @@ Everything below is implemented and on `main`.
 - **Playback** — play an album or a track via MA (plays the track uri + appends the album in the
   background), speaker grouping, shuffle/repeat, after-album behavior, and playlists (all-playlists
   view + single-playlist song view + song→album).
+- **Radio** — TuneIn (and other MA radio-provider) stations as a third media kind on a dedicated
+  virtual **Radio** shelf. A station is a `kind='radio'` media row (station logo → spine); it opens
+  to a live-stream view (no track list, no seek) and plays by uri through the normal play path.
+  Admin: search stations, add them, or **Sync saved** to import every station saved in MA.
 - **Admin** — search + add albums/playlists (Apple Music + library), shelves / stacks / ordering /
   per-album spine overrides, player defaults + exposure subset, group presets, MA **sources**
   (incl. the Apple Music MusicKit auth), and all settings. iOS-style bottom tabs (Search / Shelves /
