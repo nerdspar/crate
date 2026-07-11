@@ -1735,7 +1735,7 @@ function renderSystemCat(body: HTMLElement): void {
   up.className = 'sw-update';
   const swStatus = document.createElement('div');
   swStatus.className = 'sw-versions';
-  swStatus.innerHTML = '<span class="hint">Check Crate and Music Assistant against GitHub.</span>';
+  swStatus.innerHTML = '<span class="hint">Checking…</span>';
   const swActions = document.createElement('div');
   swActions.className = 'sys-actions';
   up.append(swStatus, swActions);
@@ -1889,11 +1889,10 @@ function renderSystemCat(body: HTMLElement): void {
         swStatus.innerHTML = '<span class="hint">Check failed.</span>';
       });
   };
-  const checkBtn = document.createElement('button');
-  checkBtn.className = 'ghost';
-  checkBtn.textContent = 'Check for updates';
-  checkBtn.addEventListener('click', doCheck);
-  swActions.appendChild(checkBtn);
+  // Auto-check on open so the current version and how it compares to GitHub are
+  // always visible — no click needed to see whether an update is waiting. doCheck
+  // renders its own "Check again" button and the Update buttons when a check lands.
+  doCheck();
 }
 
 /* ---- Backup: config export / restore (Phase 5) ---- */
