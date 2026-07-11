@@ -1,9 +1,13 @@
 # Crate app — ready to paste into TrueNAS SCALE:
 #   Apps -> Discover Apps -> Custom App -> "Install via YAML"
 #
-# LAN-only: published on port 8080 and NOT placed on the Cloudflare tunnel,
+# LAN-only: published on port 8090 and NOT placed on the Cloudflare tunnel,
 # because Crate has no login yet — anyone who could reach it could control
-# playback. Reach it at http://<truenas-ip>:8080/ (admin) and /wall/ (wall UI).
+# playback. Reach it at http://<truenas-ip>:8090/ (admin) and /wall/ (wall UI).
+#
+# The host port is 8090 (not 8080) because TrueNAS often already uses 8080 — a
+# collision fails the install with "port is already allocated". Change the LEFT
+# number if 8090 is taken too; the right number (the container's port) stays 8080.
 #
 # Points at an EXISTING Music Assistant. Before pasting, replace the placeholders:
 #   MA_HOST            -> your Music Assistant host/IP (default MA port is 8095)
@@ -21,7 +25,7 @@ services:
     container_name: crate
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8090:8080"
     environment:
       MA_URL: "http://MA_HOST:8095"
       MA_TOKEN: "PASTE_MA_TOKEN"

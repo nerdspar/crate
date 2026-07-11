@@ -1,7 +1,7 @@
 # Crate on TrueNAS SCALE (Custom App)
 
 Run the Crate **app** on TrueNAS as a Custom App, so it shows up in the Apps
-list. Crate is served LAN-only (`http://<truenas-ip>:8080/`) and points at an
+list. Crate is served LAN-only (`http://<truenas-ip>:8090/`) and points at an
 existing Music Assistant. The public marketing site is a separate deployment —
 see [`site/DEPLOY.md`](../../site/DEPLOY.md).
 
@@ -59,8 +59,8 @@ You can skip this and leave `MA_TOKEN: ""` — then set it later in Crate's
 
 `crate` appears in the Apps list. When it's **Running**, open:
 
-- Admin: `http://<truenas-ip>:8080/`
-- Wall:  `http://<truenas-ip>:8080/wall/`
+- Admin: `http://<truenas-ip>:8090/`
+- Wall:  `http://<truenas-ip>:8090/wall/`
 
 ---
 
@@ -79,5 +79,6 @@ data is lost. (For a pinned, reproducible deploy, reference a specific tag like
   (step 1) or add a `ghcr.io` pull credential in the install screen.
 - **Crate loads but no music / "can't reach MA":** check `MA_URL` is reachable
   from the NAS (`curl http://MA_HOST:8095` over SSH) and the token is valid.
-- **Port 8080 already in use** on the NAS: change the host side of the port map,
-  e.g. `"8090:8080"`, and browse to `:8090`.
+- **"port is already allocated"** on install: the host port is taken. The YAML
+  already uses `8090`; if that's taken too, change the left number (e.g.
+  `"8091:8080"`) and browse to that port. The right number stays 8080.
