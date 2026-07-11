@@ -44,7 +44,7 @@ import type {
   UpdateStatus,
   UpdateTarget,
 } from '@crate/shared';
-import { MusicAssistantProvider, maSetupState, mintMaToken, setupMaAccount } from '@crate/providers';
+import { MusicAssistantProvider, maSetupState, mintMaToken, parseProviderUri, setupMaAccount } from '@crate/providers';
 import type { ProviderAlbum, ProviderLibraryAlbum, ProviderRadio, ProviderTrackHit } from '@crate/providers';
 import type { AlbumOverride } from '@crate/shared';
 import { buildArtwork, buildSpineScan, processUploadedArt } from './artwork.js';
@@ -418,10 +418,15 @@ export class Service {
     this.hub.broadcast({ type: 'shelves' });
   }
 
-  async search(query: string, source?: string): Promise<SearchAlbum[]> {
-    const all = await this.ma.listMusicProviders().catch(() => []);
-    const sources = source && source !== 'all' ? all.filter((s) => s.instanceId === source) : all;
-    const toHit = (a: ProviderAlbum, source: string): SearchAlbum => {
+  async search(query: string, _source?: string): Promise<SearchAlbum[]> {
+    // One aggregated search (MA spans every provider — per-source scoping is a no-op); each hit
+    // is attributed to its real source domain. The `source` arg is ignored; the client filters.
+    const providers = await this.ma.listMusicProviders().catch((): Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> => []);
+    const byDomain = new Map<string, string>();
+    for (const s of providers) if (s.domain && !byDomain.has(s.domain)) byDomain.set(s.domain, s.name);
+    const nameOf = (d?: string | null): string => (d && byDomain.get(d)) || 'Music';
+    const raw = await this.ma.search(query).catch((): ProviderAlbum[] => []);
+    return raw.map((a) => {
       const row = this.shelvedRow(a.providerUri, a.title, a.artist);
       return {
         providerUri: a.providerUri,
@@ -435,81 +440,76 @@ export class Service {
         version: a.version,
         explicit: a.explicit,
         inLibrary: a.inLibrary,
-        source,
+        source: nameOf(a.provider),
       };
-    };
-    // No known sources → one unscoped search. Otherwise search each streaming
-    // source so results can be grouped/labelled by source (e.g. two Apple accounts).
-    if (sources.length === 0) {
-      return (await this.ma.search(query)).map((a) => toHit(a, 'Music'));
-    }
-    const perSource = await Promise.all(
-      sources.map(async (s) => (await this.ma.search(query, 20, s.instanceId).catch(() => [])).map((a) => toHit(a, s.name))),
-    );
-    return perSource.flat();
+    });
   }
 
-  /** Sonos-style global search: albums, playlists and songs across the connected
-      sources (or one, when `source` is a specific instance id). */
-  async globalSearch(query: string, source?: string, limit = 20): Promise<GlobalSearchResponse> {
-    const sources = await this.ma.listMusicProviders().catch(() => []);
+  /** Sonos-style global search: albums, playlists, songs, and artists in one aggregated pass.
+      MA already searches every connected provider (per-provider scoping is a no-op there), so
+      each hit is attributed to its real source and the UI badges + filters on that. The `source`
+      argument is accepted for back-compat but ignored — the client filters the returned hits. */
+  async globalSearch(query: string, _source?: string, limit = 20): Promise<GlobalSearchResponse> {
+    const providers = await this.ma
+      .listMusicProviders()
+      .catch((): Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> => []);
+    const byDomain = new Map<string, { name: string; iconSvg: string | null }>();
+    for (const s of providers) if (s.domain && !byDomain.has(s.domain)) byDomain.set(s.domain, { name: s.name, iconSvg: s.iconSvg });
+    const byInstance = new Map(providers.map((s) => [s.instanceId, s.name] as const));
+    const used = new Set<string>(); // source names actually present in the results
+    const srcOfDomain = (d?: string | null): string => {
+      const n = (d && byDomain.get(d)?.name) || 'Library';
+      used.add(n);
+      return n;
+    };
+    const srcOfInstance = (iid?: string | null): string => {
+      const n = (iid && byInstance.get(iid)) || 'Library';
+      used.add(n);
+      return n;
+    };
     const shelved = this.db.shelfedUris();
-    const scope = source && source !== 'all' ? source : undefined;
-    const targets = scope ? sources.filter((s) => s.instanceId === scope) : sources;
-    const searchIn = targets.length ? targets : [{ instanceId: '', name: 'Music' }];
-    // Search the catalog(s) AND the saved library in parallel: MA's catalog search
-    // returns catalog-id hits that never carry the library flag, so the "in your
-    // library" tier comes from a dedicated library query instead.
-    const [results, libRaw] = await Promise.all([
-      Promise.all(
-        searchIn.map(async (s) => ({
-          s,
-          r: await this.ma.searchAll(query, limit, s.instanceId || undefined).catch(() => ({ artists: [], albums: [], playlists: [], tracks: [] })),
-        })),
-      ),
-      this.ma.listLibraryAlbums({ search: query, source: scope, limit, offset: 0 }).catch((): ProviderLibraryAlbum[] => []),
+    // One aggregated catalog search + the saved library in parallel (MA's catalog hits never
+    // carry the library flag, so the "in your library" tier comes from a dedicated query).
+    const [r, libRaw] = await Promise.all([
+      this.ma.searchAll(query, limit).catch(() => ({ artists: [], albums: [], playlists: [], tracks: [] })),
+      this.ma.listLibraryAlbums({ search: query, limit, offset: 0 }).catch((): ProviderLibraryAlbum[] => []),
     ]);
     const key = (artist: string, title: string): string => `${artist}|${title}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
     const albums: SearchAlbum[] = [];
     // Library albums first (marked in-library); their keys suppress duplicate catalog hits.
     const libKeys = new Set<string>();
-    const srcName = new Map(sources.map((s) => [s.instanceId, s.name]));
     for (const a of libRaw) {
       libKeys.add(key(a.artist, a.title));
       const row = this.shelvedRow(a.providerUri, a.title, a.artist);
-      albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: true, source: (a.sourceInstanceId ? srcName.get(a.sourceInstanceId) : undefined) ?? 'Library' });
+      albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: true, source: srcOfInstance(a.sourceInstanceId) });
     }
     const playlists: LibraryPlaylist[] = [];
     const songs: SearchSong[] = [];
     const artists: SearchArtist[] = [];
     const artistNames = new Set<string>();
-    // A section can still have more to fetch if any single query came back full (== limit):
-    // the library album query, or any source's per-type page. Raising the limit re-fetches more.
-    const hasMore = { albums: libRaw.length >= limit, playlists: false, songs: false };
-    for (const { r } of results) {
-      if (r.albums.length >= limit) hasMore.albums = true;
-      if (r.playlists.length >= limit) hasMore.playlists = true;
-      if (r.tracks.length >= limit) hasMore.songs = true;
+    for (const a of r.artists) {
+      const nk = a.name.toLowerCase();
+      if (artistNames.has(nk)) continue; // one card per artist
+      artistNames.add(nk);
+      artists.push({ providerUri: a.providerUri, provider: a.provider, name: a.name, artworkUrl: a.artworkUrl, source: srcOfDomain(a.provider) });
     }
-    for (const { s, r } of results) {
-      for (const a of r.artists) {
-        const nk = a.name.toLowerCase();
-        if (artistNames.has(nk)) continue; // one card per artist across sources
-        artistNames.add(nk);
-        artists.push({ providerUri: a.providerUri, provider: a.provider, name: a.name, artworkUrl: a.artworkUrl, source: s.name });
-      }
-      for (const a of r.albums) {
-        if (libKeys.has(key(a.artist, a.title))) continue; // already shown under "in your library"
-        // Match the shelf by album id OR title+artist (not just the exact catalog uri) so a
-        // shelved album added under a different uri/edition is still recognized as on-shelf.
-        const row = this.shelvedRow(a.providerUri, a.title, a.artist);
-        albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: s.name });
-      }
-      for (const p of r.playlists)
-        playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: s.name });
-      for (const t of r.tracks)
-        songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: s.name });
+    for (const a of r.albums) {
+      if (libKeys.has(key(a.artist, a.title))) continue; // already shown under "in your library"
+      // Match the shelf by album id OR title+artist (not just the exact catalog uri) so a
+      // shelved album added under a different uri/edition is still recognized as on-shelf.
+      const row = this.shelvedRow(a.providerUri, a.title, a.artist);
+      albums.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: srcOfDomain(a.provider) });
     }
+    for (const p of r.playlists)
+      playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: srcOfDomain(p.provider) });
+    for (const t of r.tracks)
+      songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: srcOfDomain(parseProviderUri(t.trackUri)?.provider) });
+    // Only surface sources that actually returned something, so the filter never lists a dead
+    // option (e.g. a radio-only provider under an album search). Domain-distinct, with icons.
+    const sources: MusicSourceInfo[] = [...byDomain.entries()]
+      .filter(([, v]) => used.has(v.name))
+      .map(([domain, v]) => ({ instanceId: domain, name: v.name, domain, iconSvg: v.iconSvg }));
+    const hasMore = { albums: libRaw.length >= limit || r.albums.length >= limit, playlists: r.playlists.length >= limit, songs: r.tracks.length >= limit };
     return { artists, albums, playlists, songs, sources, hasMore };
   }
 
@@ -812,20 +812,33 @@ export class Service {
   }
 
   /** Search radio stations across the connected radio sources; marks already-saved ones. */
-  async searchRadio(query: string, source?: string): Promise<RadioSearchResponse> {
-    const sources = await this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []);
-    const scope = source && source !== 'all' ? source : undefined;
+  async searchRadio(query: string, _source?: string): Promise<RadioSearchResponse> {
+    const providers = await this.ma
+      .listMusicProviders()
+      .catch((): Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> => []);
+    // A radio uri embeds the provider instance (e.g. tunein--xxx://…), so attribute by instance,
+    // falling back to domain. MA aggregates across radio providers; the client filters.
+    const byInstance = new Map(providers.map((s) => [s.instanceId, s] as const));
+    const byDomain = new Map(providers.map((s) => [s.domain, s] as const));
     const shelved = this.db.shelfedUris();
-    const raw = query ? await this.ma.searchRadio(query, 30, scope).catch((): ProviderRadio[] => []) : [];
-    const stations: RadioStation[] = raw.map((r) => ({
-      providerUri: r.providerUri,
-      provider: r.provider,
-      name: r.name,
-      description: r.description,
-      artworkUrl: r.artworkUrl,
-      onShelf: shelved.has(r.providerUri),
-      source: sources.find((s) => s.instanceId === r.provider)?.name,
-    }));
+    const used = new Set<string>();
+    const raw = query ? await this.ma.searchRadio(query, 30).catch((): ProviderRadio[] => []) : [];
+    const stations: RadioStation[] = raw.map((r) => {
+      const src = byInstance.get(r.provider) ?? byDomain.get(r.provider);
+      if (src) used.add(src.name);
+      return {
+        providerUri: r.providerUri,
+        provider: r.provider,
+        name: r.name,
+        description: r.description,
+        artworkUrl: r.artworkUrl,
+        onShelf: shelved.has(r.providerUri),
+        source: src?.name,
+      };
+    });
+    const sources: MusicSourceInfo[] = providers
+      .filter((s) => used.has(s.name))
+      .map((s) => ({ instanceId: s.instanceId, name: s.name, domain: s.domain, iconSvg: s.iconSvg }));
     return { stations, sources };
   }
 

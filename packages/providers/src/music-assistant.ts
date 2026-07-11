@@ -121,7 +121,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   // path skip that round-trip, so playback starts sooner.
   private readonly trackCache = new Map<string, { tracks: Track[]; at: number }>();
   // The source list changes rarely; cache it briefly so search/library keystrokes don't each round-trip.
-  private providersCache: { at: number; data: Array<{ instanceId: string; name: string }> } | null = null;
+  private providersCache: { at: number; data: Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> } | null = null;
   private static readonly TRACK_TTL_MS = 5 * 60_000;
 
   constructor(opts: MaClientOptions) {
@@ -507,14 +507,28 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   /** Connected streaming music sources (e.g. Apple Music accounts) — for searching
       each and labelling results by source. */
-  async listMusicProviders(): Promise<Array<{ instanceId: string; name: string }>> {
+  async listMusicProviders(): Promise<Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }>> {
     const now = Date.now();
     if (this.providersCache && now - this.providersCache.at < 30_000) return this.providersCache.data;
-    const raw = arr(await this.client.command('providers', {}));
-    const data = raw
+    // Providers (which streaming sources are connected) + manifests (per-domain SVG icons).
+    const [raw, manRaw] = await Promise.all([
+      this.client.command('providers', {}),
+      this.client.command('providers/manifests', {}).catch((): unknown[] => []),
+    ]);
+    const iconByDomain = new Map<string, string>();
+    for (const m of arr(manRaw).map(rec)) {
+      const d = str(m['domain']);
+      const icon = str(m['icon_svg']);
+      if (d && icon) iconByDomain.set(d, icon);
+    }
+    const data = arr(raw)
       .map(rec)
       .filter((p) => p['type'] === 'music' && p['is_streaming_provider'] === true && p['available'] !== false)
-      .map((p) => ({ instanceId: str(p['instance_id']) ?? '', name: str(p['name']) ?? 'Music' }))
+      .map((p) => {
+        const instanceId = str(p['instance_id']) ?? '';
+        const domain = str(p['domain']) ?? instanceId.split('--')[0] ?? '';
+        return { instanceId, name: str(p['name']) ?? 'Music', domain, iconSvg: iconByDomain.get(domain) ?? null };
+      })
       .filter((p) => p.instanceId);
     this.providersCache = { at: now, data };
     return data;

@@ -2907,7 +2907,9 @@ window.addEventListener('pointerup', (e) => {
 const findResults = document.getElementById('find-results') as HTMLElement;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
-let searchSource = 'all'; // selected global-search source (instance id or 'all')
+let searchSource = 'all'; // client-side source filter: a source name, or 'all'
+let searchMultiSource = false; // do the current results span >1 source? (drives badges + filter)
+const searchSourceIcon = new Map<string, string | null>(); // source name → inline SVG icon
 let globalResults: GlobalSearchResponse | null = null;
 let artistView: SearchArtist | null = null; // non-null = the artist detail is showing
 let artistSeq = 0; // cancels stale artist-detail fetches
@@ -3069,7 +3071,7 @@ async function runGlobalSearch(): Promise<void> {
   const seq = ++searchSeq;
   addRecent(q); // remember it for the recent-searches list
   try {
-    const res = await client.globalSearch(q, searchSource, searchLimit);
+    const res = await client.globalSearch(q, undefined, searchLimit);
     if (seq !== searchSeq) return;
     globalResults = res;
     // Did this (larger) fetch return more than the previous one? If so, keep offering more.
@@ -3097,10 +3099,20 @@ function renderGlobal(loading: boolean): void {
   findResults.innerHTML = '';
   const g = globalResults;
 
-  const bar = document.createElement('div');
-  bar.className = 'find-srcbar';
-  bar.appendChild(sourceDropdown(g?.sources ?? []));
-  findResults.appendChild(bar);
+  // Source badges + filter only matter when the results span more than one source. Cache each
+  // source's icon by name, and drop any active filter that this result set doesn't contain.
+  searchSourceIcon.clear();
+  for (const s of g?.sources ?? []) searchSourceIcon.set(s.name, s.iconSvg ?? null);
+  searchMultiSource = (g?.sources?.length ?? 0) > 1;
+  if (!searchMultiSource || (searchSource !== 'all' && !searchSourceIcon.has(searchSource))) searchSource = 'all';
+  const srcOk = (s?: string): boolean => searchSource === 'all' || s === searchSource;
+
+  if (searchMultiSource) {
+    const bar = document.createElement('div');
+    bar.className = 'find-srcbar';
+    bar.appendChild(sourceDropdown(g?.sources ?? []));
+    findResults.appendChild(bar);
+  }
 
   if (!loading) prefetchArtistSongs(g?.artists ?? []); // warm the slow song lists in the background
 
@@ -3116,15 +3128,16 @@ function renderGlobal(loading: boolean): void {
   const remoteNew = remoteAlbums.filter(
     (a) => !localIds.has(albumIdFromUri(a.providerUri)) && !localKeys.has(albumKey(a.artist, a.title)),
   );
-  const libAlbums = remoteNew.filter((a) => a.inLibrary);
-  const catalogAlbums = remoteNew.filter((a) => !a.inLibrary);
-  const playlists = g?.playlists ?? [];
-  const songs = g?.songs ?? [];
+  // Apply the source filter to the streaming results (on-shelf matches are yours regardless).
+  const libAlbums = remoteNew.filter((a) => a.inLibrary && srcOk(a.source));
+  const catalogAlbums = remoteNew.filter((a) => !a.inLibrary && srcOk(a.source));
+  const playlists = (g?.playlists ?? []).filter((p) => srcOk(p.source));
+  const songs = (g?.songs ?? []).filter((s) => srcOk(s.source));
   // More to load = the server's per-section hasMore (a source page came back full). Fall back to
   // our own raw growth check only when the server didn't send hasMore (older build). Both are
   // computed from the RAW result count, so they aren't fooled by on-shelf dedup shrinking the list.
   const more = g?.hasMore ?? searchGrew;
-  cats.appendChild(artistsColumn(g?.artists ?? [], loading)); // narrow leading column
+  cats.appendChild(artistsColumn((g?.artists ?? []).filter((a) => srcOk(a.source)), loading)); // narrow leading column
   cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, more.albums));
   cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', more.playlists));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', more.songs));
@@ -3326,12 +3339,12 @@ function catColumn(
   return col;
 }
 
-/** Source dropdown at the top of the results (All + each connected streaming source). */
+/** Source dropdown atop the results — filters the already-fetched hits by source (All + each
+    source present). Only shown when a search spans >1 source. */
 function sourceDropdown(sources: GlobalSearchResponse['sources']): HTMLElement {
-  const cur = sources.find((s) => s.instanceId === searchSource);
   const btn = document.createElement('button');
   btn.className = 'find-src-btn';
-  btn.textContent = `Source: ${cur?.name ?? 'All'} ▾`;
+  btn.textContent = `Source: ${searchSource === 'all' ? 'All' : searchSource} ▾`;
   btn.onclick = (e) => {
     e.stopPropagation();
     if (activeAddMenu) {
@@ -3340,22 +3353,21 @@ function sourceDropdown(sources: GlobalSearchResponse['sources']): HTMLElement {
     }
     openAddMenu(btn, [
       { label: 'All sources', on: searchSource === 'all', fn: () => pickSource('all') },
-      ...sources.map((s) => ({ label: s.name, on: s.instanceId === searchSource, fn: () => pickSource(s.instanceId) })),
+      ...sources.map((s) => ({ label: s.name, on: s.name === searchSource, fn: () => pickSource(s.name) })),
     ]);
   };
   return btn;
 }
-function pickSource(id: string): void {
-  searchSource = id;
-  resetSearchPaging(); // switching source is a fresh search
-  void runGlobalSearch();
+function pickSource(name: string): void {
+  searchSource = name;
+  renderGlobal(false); // client-side filter — the results are already fetched, no re-query
 }
 
 /** A song result — tap the card to open its album with the track cued; the ▶ button
     plays the song straight away (search song cards are the one place a tap-to-play
     lives; inside album/playlist track lists, tapping only selects — see the top Play). */
 function songResultCard(s: SearchSong): HTMLElement {
-  const card = cardShell(s.title, s.artist + (s.album ? ` · ${s.album}` : ''), s.artworkUrl, '');
+  const card = cardShell(s.title, s.artist + (s.album ? ` · ${s.album}` : ''), s.artworkUrl, '', s.source);
   if (s.explicit) card.querySelector('.find-card-meta .t')?.insertAdjacentHTML('beforeend', ' <span class="ex-badge" title="Explicit">E</span>');
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap');
@@ -3678,15 +3690,23 @@ function openAddMenu(anchor: HTMLElement, options: Array<{ label: string; on?: b
   setTimeout(() => document.addEventListener('pointerdown', out, true), 0);
 }
 
-function cardShell(title: string, artist: string, artUrl: string | null, action: string): HTMLElement {
+function cardShell(title: string, artist: string, artUrl: string | null, action: string, source?: string): HTMLElement {
   const card = document.createElement('div');
   card.className = 'find-card';
   const art = artUrl ? ` style="background-image:url('${artUrl}')"` : '';
   card.innerHTML =
     `<div class="find-card-art"${art}></div>` +
-    `<div class="find-card-meta"><span class="t">${escapeHtml(title)}</span><span class="a">${escapeHtml(artist)}</span></div>` +
+    `<div class="find-card-meta"><span class="t">${escapeHtml(title)}</span><span class="a">${escapeHtml(artist)}</span>${srcBadge(source)}</div>` +
     `<button class="find-card-add">${action}</button>`;
   return card;
+}
+
+/** A small "from <source>" badge (icon + name) on a result — shown only when a search spans
+    more than one source, so single-source setups stay clean. */
+function srcBadge(source?: string): string {
+  if (!searchMultiSource || !source) return '';
+  const icon = searchSourceIcon.get(source);
+  return `<span class="find-card-src">${icon ?? ''}<span>${escapeHtml(source)}</span></span>`;
 }
 
 /** Switch focus to the shelf album by id and open its spine (from the Find bar). */
@@ -3910,7 +3930,7 @@ async function revealAddedAlbumById(shelfId: string, albumId: string): Promise<v
     overlay; on-shelf albums get Open + ▾ (with an "Open on shelf" button in the
     overlay too), off-shelf albums get Add + ▾. */
 function albumResultCard(al: SearchAlbum): HTMLElement {
-  const card = cardShell(al.title, al.artist, al.artworkUrl, '');
+  const card = cardShell(al.title, al.artist, al.artworkUrl, '', al.source);
   // Tell identical-looking versions apart: edition tag + explicit badge.
   const t = card.querySelector('.find-card-meta .t');
   if (t) {
@@ -4207,7 +4227,7 @@ async function openPlaylistPicker(): Promise<void> {
 }
 
 function playlistCard(pl: LibraryPlaylist): HTMLElement {
-  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, '');
+  const card = cardShell(pl.name, pl.owner ?? 'Playlist', pl.artworkUrl, '', pl.source);
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap'); // tap → play-now overlay (like albums/songs)
   card.addEventListener('click', () => void openPlaylistOverlay(pl));

@@ -231,10 +231,14 @@ export interface SearchArtist {
   source: string;
 }
 
-/** A connected streaming music source (for the search source dropdown). */
+/** A connected streaming music source (for the search source dropdown + result badges). */
 export interface MusicSourceInfo {
   instanceId: string;
   name: string;
+  /** Provider domain (e.g. "apple_music") — the granularity results are attributed at. */
+  domain?: string;
+  /** Inline SVG for the source's icon (from MA's provider manifest), or null. */
+  iconSvg?: string | null;
 }
 
 /** An album from the user's provider library (Apple Music, etc.), plus whether it's
