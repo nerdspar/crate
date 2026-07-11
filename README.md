@@ -4,7 +4,7 @@ A wall-mounted touchscreen music shelf. Your streaming collection rendered as
 physical album spines on a stretched bar display — tap a spine, the case flips
 open, hit play, and it starts on your speakers. Open-source, commodity hardware.
 
-See [`CRATE_BUILD_PLAN.md`](./CRATE_BUILD_PLAN.md) for the full design.
+See [`PROJECT.md`](./PROJECT.md) for the architecture, design, and current state.
 
 > [!NOTE]
 > **AI-assisted project.** Crate was built largely with the help of AI coding assistants
