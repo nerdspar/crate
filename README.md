@@ -37,7 +37,7 @@ See [`PROJECT.md`](./PROJECT.md) for the architecture, design, and current state
 
 Phase 0 proved that node-sonos-http-api **cannot** reliably start arbitrary Apple
 Music albums on a real Sonos household (it hard-codes account metadata that S2
-firmware won't let us reconstruct — see [`docs/playback.md`](./docs/playback.md)).
+firmware won't let us reconstruct — see [`PROJECT.md`](./PROJECT.md)).
 Crate therefore drives playback through **Music Assistant**, which streams Apple
 Music to Sonos with the operator's real credentials and exposes search, metadata,
 artwork, playback, and live state over one WebSocket.
@@ -54,7 +54,6 @@ packages/
   providers/ MusicSource/PlayerTarget interfaces + Music Assistant adapter
 hardware/    STLs, wiring, BOM (Phase 5+)
 deploy/      systemd units, kiosk setup, install.sh (Phase 5)
-docs/        playback.md and friends
 scripts/     phase0 risk-spike CLIs
 ```
 

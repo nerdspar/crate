@@ -7,8 +7,8 @@ Assistant** (which drives Sonos and other players).
 This is the single up-to-date reference for the project — architecture, how playback works, the
 spine-rendering spec, what's built, and what's deferred. It replaces the original planning trio
 (the old build plan, architecture, and spine-rendering docs), which predated the Music Assistant
-pivot. Install steps live in [`INSTALL.md`](./INSTALL.md); Phase‑0 playback findings in
-[`docs/playback.md`](./docs/playback.md); appliance/deploy tooling in [`deploy/`](./deploy).
+pivot. Install steps live in [`INSTALL.md`](./INSTALL.md); appliance/deploy tooling in
+[`deploy/`](./deploy).
 
 ---
 
@@ -72,7 +72,7 @@ AirPlay). MA handles source auth, the library, search, and playback; Crate is th
 thin control/curation layer on top.
 
 > Historical note: the original design used `node-sonos-http-api` with a direct Apple
-> Music/iTunes integration (see git history + `docs/playback.md`). The project pivoted to Music
+> Music/iTunes integration (see git history). The project pivoted to Music
 > Assistant, which is why the old build plan is obsolete.
 
 - **Topology:** MA can be **external** (point Crate at an existing MA) or **co-hosted** (the Pi
@@ -80,7 +80,9 @@ thin control/curation layer on top.
   account and mint its own long-lived token so the user never opens MA's UI — the one exception is
   **Apple Music**, whose interactive MusicKit sign-in Crate drives via a browser popup + a
   session-id correlated long-poll, then saves the source automatically.
-- **Playback nuances** (flow mode, the Apple/Sonos "not encoded correctly" quirk): `docs/playback.md`.
+- **Playback nuances:** Crate uses MA *flow mode* — it plays the track uri directly and appends
+  the rest of the album in the background (no gap). The Apple/Sonos "not encoded correctly" error
+  is an Apple/Sonos bug that flow mode works around (Sonos then shows "No Content", but Crate is fine).
 - The provider recreates + rewires its MA connection at runtime, so onboarding/settings can swap
   the MA URL/token without a restart.
 

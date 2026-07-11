@@ -5,7 +5,7 @@
  * token auth, plus auto-reconnect with backoff and a connect-listener hook so
  * the server can resync players/state after MA restarts or network blips.
  *
- * Protocol (see docs/playback.md):
+ * Protocol:
  *   - connect → server sends a ServerInfoMessage
  *   - first command must be `auth` with { token }
  *   - commands: { message_id, command, args } → { message_id, result | error_code }

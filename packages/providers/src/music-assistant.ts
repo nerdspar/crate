@@ -3,7 +3,7 @@
  *
  * MA collapses the source/target split: it supplies Apple Music search,
  * metadata, and artwork, and it plays to Sonos (and everything else) with
- * correct per-account authorization. See docs/playback.md for why Crate uses
+ * correct per-account authorization. See PROJECT.md for why Crate uses
  * MA instead of node-sonos-http-api + iTunes.
  */
 
