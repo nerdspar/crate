@@ -226,10 +226,10 @@ const THICKNESS_RATIO: Record<SpineThickness, number> = { thin: 0.05, medium: 0.
 function spineBaseW(): number {
   return Math.round(Math.max(26, Math.min(coverW() * THICKNESS_RATIO[settings.spineThickness], 92)));
 }
-/** A 40-minute album sits at the base thickness; longer/shorter runtimes flex
-    the width around it (SPINE_RENDERING §4). Clamped so an EP is still grabbable
-    and a boxed set never dominates the shelf. */
-const WIDTH_REF_SEC = 2400;
+/** Two widths only, like physical cases: a single spine, or a double-wide one for
+    releases too long to fit on a single disc (a 2-disc / double album). A CD tops out
+    around 80 min, so anything past that gets the double case. */
+const DOUBLE_WIDE_SEC = 4800; // 80 minutes
 const SLIVER_W = 0; // search non-matches are hidden (.sliver → display:none); width 0 keeps settledLeft exact
 /** Effective spine width (px) for one album, honoring the width mode and the
     live search filter. Deterministic → layout math (settledLeft) stays exact. */
@@ -237,8 +237,7 @@ function spineWidthPx(a: ShelfItem): number {
   if (!matchesFilter(a)) return SLIVER_W;
   const base = spineBaseW();
   if (settings.spineWidthMode !== 'duration' || !a.durationSec) return base;
-  const mult = Math.max(0.68, Math.min(a.durationSec / WIDTH_REF_SEC, 1.7));
-  return Math.round(Math.max(20, Math.min(base * mult, 120)));
+  return a.durationSec > DOUBLE_WIDE_SEC ? base * 2 : base; // double-wide past 80 min, else regular
 }
 
 /** Ink-match test (inkMode 'match'): color the title with the album's accent,
@@ -1473,7 +1472,7 @@ function renderChoices(): void {
     'width-choices',
     [
       ['uniform', 'Uniform', 'Every CD the same width'],
-      ['duration', 'By length', 'Longer albums render fatter'],
+      ['duration', 'By length', 'Double-wide past 80 min (a 2-disc set)'],
     ],
     (k) => settings.spineWidthMode === k,
     (k) => {
@@ -2619,7 +2618,7 @@ function roomCell(r: Player): HTMLElement {
   const isAdd = !armed && pendingGroup;
   row.innerHTML =
     `<div class="cc-room-top">` +
-    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}${selected ? ' <span class="cc-room-sel">selected</span>' : ''}</span>` +
+    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(r.name)}</span>` +
     `<button class="cc-room-join${isAdd ? ' is-add' : ''}">${armed ? 'Cancel' : pendingGroup ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${roomVol(r.id)}">`;
@@ -2652,7 +2651,7 @@ function groupCell(leader: string, members: Player[]): HTMLElement {
   cell.innerHTML =
     `<div class="cc-room-top">` +
     `<button class="cc-group-toggle" aria-label="Show rooms">${expanded ? '▴' : '▾'}</button>` +
-    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}${selected ? ' <span class="cc-room-sel">selected</span>' : ''}</span>` +
+    `<span class="cc-room-name">${playing ? TRACK_EQ + ' ' : ''}${escapeHtml(leaderName)} <span class="cc-room-tag">leader</span> +${members.length - 1}</span>` +
     `<button class="cc-room-join${canAdd ? ' is-add' : ''}">${groupArmed ? 'Cancel' : canAdd ? 'Add' : 'Group'}</button>` +
     `</div>` +
     `<input type="range" min="0" max="100" value="${avg}">` +

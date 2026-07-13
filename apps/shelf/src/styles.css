@@ -825,14 +825,15 @@ body.find-open #cc-grip { pointer-events: none; }
 /* Focused room (its playback drives the now-playing hero). */
 .cc-room.focused > .cc-room-top .cc-room-name,
 .cc-group-member.focused .cc-room-name { color: var(--brass); }
-.cc-room-tag { font-size: 1.3vh; color: var(--brass); margin-left: 0.8vw; letter-spacing: 0.12em; text-transform: uppercase; }
-/* The selected room/group — where the Play button will send music (a filled pill). */
-.cc-room-sel {
-  font-size: 1.2vh; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  color: #131114; background: var(--brass); border-radius: 999px;
-  padding: 0.35vh 0.9vw; margin-left: 0.9vw; vertical-align: middle;
+/* inline-block gives the leader sub-tag its own decoration context, so the selected
+   name's underline doesn't run through it. */
+.cc-room-tag { display: inline-block; font-size: 1.3vh; color: var(--brass); margin-left: 0.8vw; letter-spacing: 0.12em; text-transform: uppercase; }
+/* The selected room/group — where the Play button will send music. Marked by a bold,
+   underlined name rather than a separate tag. */
+.cc-room.selected > .cc-room-top > .cc-room-name {
+  color: var(--ink); font-weight: 700;
+  text-decoration: underline; text-underline-offset: 0.5vh; text-decoration-thickness: 0.2vh;
 }
-.cc-room.selected > .cc-room-top > .cc-room-name { color: var(--ink); }
 .cc-room-join {
   flex-shrink: 0; background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
