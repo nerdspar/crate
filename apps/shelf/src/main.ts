@@ -1310,7 +1310,7 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
     .then(() => applyPlayModes(activePlayerId))
     .catch((e) => {
       console.error('play failed', e);
-      showToast('Playback failed');
+      showPlayError(e);
     });
 }
 
@@ -1404,6 +1404,14 @@ function showToast(msg: string): void {
   toast.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+/** Toast a playback error with the real reason when it's a stream failure — e.g. Music Assistant
+    returns "Failed to stream audio" when a source (notably Spotify) can't stream to this speaker,
+    which otherwise looked like a mysterious "Playback failed". */
+function showPlayError(e: unknown): void {
+  const msg = String((e as Error)?.message ?? e);
+  showToast(/failed to stream|stream audio/i.test(msg) ? "Couldn't stream — this source can't play to that speaker" : 'Playback failed');
 }
 
 /* ---------- Settings ---------- */
@@ -3583,7 +3591,7 @@ async function playEpisode(i: number, ep: PodcastEpisode): Promise<void> {
     showToast(`Playing ${ep.title}`);
   } catch (e) {
     console.error('episode play failed', e);
-    showToast('Playback failed');
+    showPlayError(e);
   }
 }
 
@@ -3615,10 +3623,13 @@ function playCard(i: number): Promise<void> {
     a chapter offset → jump there (the server seeks after playback starts). */
 async function playAudiobook(i: number, position?: number): Promise<void> {
   const item = items[i]!;
-  await client
-    .play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), ...(position !== undefined ? { position } : {}) })
-    .catch(() => {});
-  showToast(position === undefined ? 'Resuming…' : position <= 1 ? 'Starting over…' : 'Jumping to chapter…');
+  try {
+    await client.play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), ...(position !== undefined ? { position } : {}) });
+    showToast(position === undefined ? 'Resuming…' : position <= 1 ? 'Starting over…' : 'Jumping to chapter…');
+  } catch (e) {
+    console.error('audiobook play failed', e);
+    showPlayError(e);
+  }
 }
 
 async function playSong(trackUri: string): Promise<void> {
