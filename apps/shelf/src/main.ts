@@ -3532,7 +3532,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   };
   set('.am-title', 'Loading…');
   set('.am-artist', '');
-  set('.am-eyebrow', 'Apple Music');
+  set('.am-eyebrow', ''); // set to the real source once the detail loads (Apple Music, Spotify, …)
   (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = '';
   (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
@@ -3550,6 +3550,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   modalAlbumUri = d.providerUri;
   modalCue = d.cueIndex;
   (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = d.artworkUrl ? `url('${d.artworkUrl}')` : '';
+  set('.am-eyebrow', d.source || 'Music');
   set('.am-title', d.title);
   set('.am-artist', d.artist);
   renderModalTracks(d.tracks, d.cueIndex);
@@ -3646,9 +3647,14 @@ async function playModal(trackIndex?: number): Promise<void> {
     // which otherwise kept modalSelectionChanged() true and flipped the button back to Play
     // (leaving no way to pause). Mirrors songCue.delete in the card's play().
     modalCue = -1;
+    // Buffer like the card: show the connecting spinner (not the EQ) until the room really plays
+    // what we asked for. No shelf spine here, so gate on the uri only.
+    playPendingIdx = -1;
+    playPendingUntil = performance.now() + 8000;
+    playPendingUri = modalAlbumUri;
     now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
     applyNow();
-    renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's EQ now
+    renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's spinner now
   }
   showToast(`Sent to ${roomName(activePlayerId)}…`);
   client
@@ -5059,7 +5065,9 @@ function maybeAutoOpenExternal(): void {
     just-played album shows a spinner instead of the EQ, so a slow queue-load reads as
     "connecting" rather than a dead/instant EQ. Capped by the play latch. */
 function playBuffering(): boolean {
-  if (playPendingIdx < 0 || userPaused || performance.now() >= playPendingUntil) return false;
+  // Buffer either an on-shelf spine (playPendingIdx) or an off-shelf play-now overlay
+  // (playPendingUri only, no spine) — both show the connecting spinner until audio starts.
+  if ((playPendingIdx < 0 && !playPendingUri) || userPaused || performance.now() >= playPendingUntil) return false;
   // Playback frames carry albumUri/trackUri (not the Crate albumId), so confirm the target
   // room is really playing what we asked for by matching the uri — clears the spinner/frozen
   // seek the moment audio starts, instead of riding the full latch.

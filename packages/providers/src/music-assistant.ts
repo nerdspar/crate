@@ -364,9 +364,13 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     const title = str(item['name']);
     if (!uri || !title) return null;
     const explicit = rec(item['metadata'])['explicit'];
+    // A library item's own `provider` is just "library"; the real streaming source is in its
+    // provider_mappings — prefer that so source attribution/badges work for library albums too.
+    const map = rec(arr(item['provider_mappings'])[0]);
+    const source = str(map['provider_instance']) ?? str(map['provider_domain']);
     return {
       providerUri: uri,
-      provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
+      provider: source ?? str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
       title,
       artist: firstArtistName(item),
       year: num(item['year']) ?? null,

@@ -310,7 +310,7 @@ function renderAdd(): void {
   // Browsing (no query): just your library, one flat grid.
   if (!searching) {
     const cards =
-      addType === 'album' ? libAlbums.map(albumCard) : addType === 'playlist' ? bySrc(libPlaylists).map(playlistCard) : libRadios.map(radioCard);
+      addType === 'album' ? bySrc(libAlbums).map(albumCard) : addType === 'playlist' ? bySrc(libPlaylists).map(playlistCard) : libRadios.map(radioCard);
     if (!cards.length) {
       const hint = addType === 'radio' ? 'No saved stations yet — search above, or Sync saved.' : `No ${kind} in your library yet.`;
       addListEl.innerHTML = `<div class="empty">${hint}</div>`;
@@ -325,20 +325,22 @@ function renderAdd(): void {
   // Searching: On your shelf (already added, anywhere) → In your library (owned) → From source.
   addMoreBtn.hidden = true;
   if (addType === 'album') {
-    const libKeys = new Set(libAlbums.map((a) => taKey(a.title, a.artist)));
+    const la = bySrc(libAlbums);
+    const ca = bySrc(catAlbums);
+    const libKeys = new Set(la.map((a) => taKey(a.title, a.artist)));
     // One row per shelved album — many catalog editions can resolve to the same one.
     const seenId = new Set<string>();
     const onShelf = [
-      ...libAlbums.filter((a) => a.onShelf),
-      ...catAlbums.filter((a) => a.onShelf && !libKeys.has(taKey(a.title, a.artist))),
+      ...la.filter((a) => a.onShelf),
+      ...ca.filter((a) => a.onShelf && !libKeys.has(taKey(a.title, a.artist))),
     ].filter((a) => {
       const id = 'albumId' in a ? a.albumId : null;
       if (id && seenId.has(id)) return false;
       if (id) seenId.add(id);
       return true;
     });
-    const owned = libAlbums.filter((a) => !a.onShelf);
-    const catalog = catAlbums.filter((a) => !a.onShelf && !libKeys.has(taKey(a.title, a.artist)));
+    const owned = la.filter((a) => !a.onShelf);
+    const catalog = ca.filter((a) => !a.onShelf && !libKeys.has(taKey(a.title, a.artist)));
     if (!onShelf.length && !owned.length && !catalog.length) {
       addListEl.innerHTML = `<div class="empty">No matches.</div>`;
       return;

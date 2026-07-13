@@ -154,6 +154,8 @@ export interface ProviderAlbumDetail {
   cueIndex: number;
   /** True if this album is already in the library (→ offer "Open on shelf"). */
   onShelf: boolean;
+  /** Display name of the source this album is from (e.g. "Apple Music", "Spotify"). */
+  source: string;
 }
 
 export type TransportCmd = 'play' | 'pause' | 'next' | 'previous' | 'seek';

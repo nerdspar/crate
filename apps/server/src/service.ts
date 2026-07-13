@@ -386,7 +386,8 @@ export class Service {
     ]);
     if (!album) return null;
     const onShelf = this.db.isOnShelf(albumIdFromUri(albumUri));
-    return { providerUri: albumUri, title: album.title, artist: album.artist, artworkUrl: album.artworkUrl, tracks, cueIndex, onShelf };
+    const source = (await this.sourceNamer())(album.provider ?? parseProviderUri(albumUri)?.provider);
+    return { providerUri: albumUri, title: album.title, artist: album.artist, artworkUrl: album.artworkUrl, tracks, cueIndex, onShelf, source };
   }
 
   /** A playlist's tracks (for the play-now overlay). */
@@ -519,12 +520,10 @@ export class Service {
 
   /** An artist's albums, marked with shelf/library status like search hits. */
   async artistAlbums(providerUri: string): Promise<SearchAlbum[]> {
-    const [sources, raw] = await Promise.all([
-      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+    const [nameOf, raw] = await Promise.all([
+      this.sourceNamer(),
       this.ma.getArtistAlbums(providerUri).catch((): ProviderAlbum[] => []),
     ]);
-    const srcName = new Map(sources.map((s) => [s.instanceId, s.name]));
-    const primary = sources[0]?.name ?? 'Music';
     // Collapse the provider's many editions of the same album to one card.
     const seen = new Set<string>();
     const out: SearchAlbum[] = [];
@@ -533,7 +532,7 @@ export class Service {
       if (seen.has(k)) continue;
       seen.add(k);
       const row = this.shelvedRow(a.providerUri, a.title, a.artist);
-      out.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: srcName.get(a.provider) ?? primary });
+      out.push({ providerUri: a.providerUri, provider: a.provider, title: a.title, artist: a.artist, year: a.year, artworkUrl: this.cachedCoverFromRow(row) ?? a.artworkUrl, onShelf: !!row, albumId: row?.id ?? null, version: a.version, explicit: a.explicit, inLibrary: a.inLibrary, source: nameOf(a.provider) });
     }
     // Newest first — a familiar artist-page ordering.
     out.sort((x, y) => (y.year ?? 0) - (x.year ?? 0));
