@@ -1457,6 +1457,14 @@ async function loadSettingsPanel(): Promise<void> {
     const [players, s] = [await client.getPlayers(), await client.getSettings()];
     settings = s;
     settingsPlayers = players.players;
+    // Start search filtered to the configured default source (map its name → the connected instance).
+    if (s.defaultSource && s.defaultSource !== 'all') {
+      const inst = sources.find((x) => x.name === s.defaultSource)?.instanceId;
+      if (inst && curSource === 'all') {
+        curSource = inst;
+        syncSourceSel();
+      }
+    }
   } catch {
     /* keep whatever we had */
   }
@@ -2663,6 +2671,23 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
         .catch((e) => { plCb.checked = !plCb.checked; maErr(e); })
         .finally(() => (plCb.disabled = false));
     });
+
+    // Default search source — what search filters to by default (wall + admin); 'all' shows every source.
+    const dsField = document.createElement('div');
+    dsField.className = 'field';
+    dsField.innerHTML = '<label>Default search source <span class="hint">(what search starts filtered to, on the wall and here)</span></label>';
+    const dsSel = document.createElement('select');
+    dsSel.add(new Option('All sources', 'all'));
+    dsField.appendChild(dsSel);
+    body.appendChild(dsField);
+    void Promise.all([client.getSettings(), client.getSources()])
+      .then(([st, srcs]) => {
+        const seen = new Set<string>();
+        for (const s of srcs) if (s.name && !seen.has(s.name)) { seen.add(s.name); dsSel.add(new Option(s.name, s.name)); }
+        dsSel.value = st.defaultSource || 'all';
+      })
+      .catch(() => {});
+    dsSel.addEventListener('change', () => { void client.putSettings({ defaultSource: dsSel.value }).catch(maErr); showToast('Saved'); });
   };
 
   const showPicker = async (): Promise<void> => {

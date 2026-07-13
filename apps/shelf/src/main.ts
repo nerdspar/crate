@@ -5548,6 +5548,7 @@ async function boot(): Promise<void> {
   updateRadioTab();
   players = playersRes.players;
   settings = settingsRes;
+  searchSource = settings.defaultSource || 'all'; // start search filtered to the configured default
   computeRooms();
   openMode = settings.openMode;
   activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;

@@ -267,6 +267,8 @@ export interface Settings {
   yearEmphasis: YearEmphasis;
   sortBy: SortBy;
   defaultPlayerId: string | null;
+  /** Default search-source filter (a source display name, or 'all'). Applies to the wall + admin. */
+  defaultSource: string;
   afterPlay: AfterPlay;
   /** What to do when an album's last track finishes (stop / repeat / next on shelf). */
   afterAlbum: AfterAlbum;
@@ -332,6 +334,7 @@ export const DEFAULT_SETTINGS: Settings = {
   yearEmphasis: 'thin',
   sortBy: 'artist',
   defaultPlayerId: null,
+  defaultSource: 'all',
   afterPlay: 'linger',
   afterAlbum: 'next',
   afterPlayLingerSec: 8,
