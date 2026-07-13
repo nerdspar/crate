@@ -269,6 +269,9 @@ export interface Settings {
   defaultPlayerId: string | null;
   /** Default search-source filter (a source display name, or 'all'). Applies to the wall + admin. */
   defaultSource: string;
+  /** Custom display label per music-source instance id, e.g. { "apple_music--ab12": "Apple Music — Scott" }.
+      Lets two accounts of the same provider be told apart in results, badges and the source filter. */
+  sourceLabels: Record<string, string>;
   afterPlay: AfterPlay;
   /** What to do when an album's last track finishes (stop / repeat / next on shelf). */
   afterAlbum: AfterAlbum;
@@ -335,6 +338,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sortBy: 'artist',
   defaultPlayerId: null,
   defaultSource: 'all',
+  sourceLabels: {},
   afterPlay: 'linger',
   afterAlbum: 'next',
   afterPlayLingerSec: 8,

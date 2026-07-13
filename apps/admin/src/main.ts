@@ -2517,12 +2517,35 @@ function drawMaSources(list: HTMLElement, sources: MaSource[], reload: () => voi
     const row = document.createElement('div');
     row.className = 'svc-row ma-src-row';
     const ok = s.enabled && !s.lastError;
+    const label = settings?.sourceLabels?.[s.instanceId];
     row.innerHTML =
       `<span class="svc-dot ${ok ? 'up' : 'down'}"></span>` +
-      `<span class="svc-name">${esc(s.name)}${s.domain === 'builtin' ? '<span class="ma-tag">default</span>' : ''}</span>` +
+      `<span class="svc-name">${esc(label || s.name)}${s.domain === 'builtin' ? '<span class="ma-tag">default</span>' : ''}</span>` +
       `<span class="svc-detail">${esc(s.lastError ?? s.domain)}</span>`;
     const acts = document.createElement('span');
     acts.className = 'ma-row-actions';
+    // Rename = set a custom label (stored in Crate), so two accounts of the same service are
+    // distinguishable in results + the filter. Not offered for the built-in aggregate provider.
+    if (!s.builtin) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'ma-iconbtn';
+      editBtn.title = 'Label this source';
+      editBtn.textContent = '✎';
+      editBtn.addEventListener('click', () => {
+        const cur = settings?.sourceLabels?.[s.instanceId] ?? '';
+        const next = prompt(`Label for this source (blank to reset).\nTell two accounts apart, e.g. “${s.name} — Scott”.`, cur);
+        if (next === null) return;
+        const labels: Record<string, string> = { ...(settings?.sourceLabels ?? {}) };
+        const trimmed = next.trim();
+        if (trimmed) labels[s.instanceId] = trimmed;
+        else delete labels[s.instanceId];
+        void client
+          .putSettings({ sourceLabels: labels })
+          .then(() => { if (settings) settings.sourceLabels = labels; showToast('Saved'); reload(); })
+          .catch(maErr);
+      });
+      acts.appendChild(editBtn);
+    }
     const reloadBtn = document.createElement('button');
     reloadBtn.className = 'ma-iconbtn';
     reloadBtn.title = 'Reload';

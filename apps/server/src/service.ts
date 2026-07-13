@@ -451,24 +451,29 @@ export class Service {
       each hit is attributed to its real source and the UI badges + filters on that. The `source`
       argument is accepted for back-compat but ignored — the client filters the returned hits. */
   async globalSearch(query: string, _source?: string, limit = 20): Promise<GlobalSearchResponse> {
-    const providers = await this.ma
-      .listMusicProviders()
-      .catch((): Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> => []);
-    const byDomain = new Map<string, { name: string; iconSvg: string | null }>();
-    for (const s of providers) if (s.domain && !byDomain.has(s.domain)) byDomain.set(s.domain, { name: s.name, iconSvg: s.iconSvg });
-    const byInstance = new Map(providers.map((s) => [s.instanceId, s.name] as const));
-    const used = new Set<string>(); // source names actually present in the results
+    const providers = await this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []);
+    const labels = this.db.getSettings().sourceLabels ?? {};
+    const labeled = (s: { instanceId: string; name: string }): string => labels[s.instanceId] ?? s.name;
+    const perDomain = new Map<string, number>();
+    for (const s of providers) if (s.domain) perDomain.set(s.domain, (perDomain.get(s.domain) ?? 0) + 1);
+    // Catalog (domain-level) hits: a single-instance domain shows that instance's label; a
+    // multi-account domain keeps its neutral base name (results aren't specific to an account).
+    const byDomain = new Map<string, string>();
+    for (const s of providers) if (s.domain && !byDomain.has(s.domain)) byDomain.set(s.domain, perDomain.get(s.domain) === 1 ? labeled(s) : s.name);
+    const byInstance = new Map(providers.map((s) => [s.instanceId, labeled(s)] as const));
+    const usedDomains = new Set<string>(); // provider domains actually present in the results
+    const domainOf = (p?: string | null): string | null => (p ? (p.includes('--') ? (p.split('--')[0] ?? null) : p) : null);
     // The provider on a hit may be a domain ("apple_music") or an instance ("apple_music--xxx"),
     // depending on the media type — resolve either (and an instance's derived domain).
     const srcOfDomain = (p?: string | null): string => {
-      const n = (p && (byInstance.get(p) ?? byDomain.get(p)?.name ?? byDomain.get(p.split('--')[0] ?? '')?.name)) || 'Library';
-      used.add(n);
-      return n;
+      const d = domainOf(p);
+      if (d) usedDomains.add(d);
+      return (p && (byInstance.get(p) ?? byDomain.get(p) ?? byDomain.get(d ?? ''))) || 'Library';
     };
     const srcOfInstance = (iid?: string | null): string => {
-      const n = (iid && byInstance.get(iid)) || 'Library';
-      used.add(n);
-      return n;
+      const d = domainOf(iid);
+      if (d) usedDomains.add(d);
+      return (iid && byInstance.get(iid)) || 'Library';
     };
     const shelved = this.db.shelfedUris();
     // One aggregated catalog search + the saved library in parallel (MA's catalog hits never
@@ -507,11 +512,12 @@ export class Service {
       playlists.push({ providerUri: p.providerUri, provider: p.provider, name: p.name, owner: p.owner, artworkUrl: p.artworkUrl, onShelf: shelved.has(p.providerUri), source: srcOfDomain(p.provider) });
     for (const t of r.tracks)
       songs.push({ trackUri: t.trackUri, title: t.title, artist: t.artist, album: t.album, artworkUrl: t.artworkUrl, explicit: t.explicit, source: srcOfDomain(parseProviderUri(t.trackUri)?.provider) });
-    // Only surface sources that actually returned something, so the filter never lists a dead
-    // option (e.g. a radio-only provider under an album search). Domain-distinct, with icons.
-    const sources: MusicSourceInfo[] = [...byDomain.entries()]
-      .filter(([, v]) => used.has(v.name))
-      .map(([domain, v]) => ({ instanceId: domain, name: v.name, domain, iconSvg: v.iconSvg }));
+    // Only surface sources whose provider actually returned something, so the filter never lists
+    // a dead option (e.g. a radio-only provider under an album search). One entry per instance
+    // (labeled), so two accounts of the same provider each get their own filter chip.
+    const sources: MusicSourceInfo[] = providers
+      .filter((s) => s.domain != null && usedDomains.has(s.domain))
+      .map((s) => ({ instanceId: s.instanceId, name: labeled(s), domain: s.domain, iconSvg: s.iconSvg }));
     const hasMore = { albums: libRaw.length >= limit || r.albums.length >= limit, playlists: r.playlists.length >= limit, songs: r.tracks.length >= limit };
     return { artists, albums, playlists, songs, sources, hasMore };
   }
@@ -540,7 +546,7 @@ export class Service {
   /** An artist's top songs (slow on the first fetch per artist; the provider caches). */
   async artistTopSongs(providerUri: string, artistName?: string): Promise<SearchSong[]> {
     const [sources, tracks] = await Promise.all([
-      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+      this.labeledProviders(),
       this.ma.getArtistTopTracks(providerUri, artistName).catch((): ProviderTrackHit[] => []),
     ]);
     const primary = sources[0]?.name ?? 'Music';
@@ -603,9 +609,30 @@ export class Service {
       depending on the media type — resolve either. */
   private async sourceNamer(): Promise<(provider?: string | null) => string> {
     const provs = await this.ma.listMusicProviders().catch(() => []);
-    const byDomain = new Map(provs.map((s) => [s.domain, s.name] as const));
-    const byInstance = new Map(provs.map((s) => [s.instanceId, s.name] as const));
+    const labels = this.db.getSettings().sourceLabels ?? {};
+    const labelOf = (s: { instanceId: string; name: string }): string => labels[s.instanceId] ?? s.name;
+    const byInstance = new Map(provs.map((s) => [s.instanceId, labelOf(s)] as const));
+    // Domain-level (catalog) hits can't be pinned to one account. A domain with a single
+    // instance resolves to that instance's (custom) label; a domain with several keeps the
+    // neutral provider name, since catalog results aren't specific to either account.
+    const perDomain = new Map<string, number>();
+    for (const s of provs) perDomain.set(s.domain, (perDomain.get(s.domain) ?? 0) + 1);
+    const byDomain = new Map<string, string>();
+    for (const s of provs) if (!byDomain.has(s.domain)) byDomain.set(s.domain, perDomain.get(s.domain) === 1 ? labelOf(s) : s.name);
     return (p) => (p ? (byInstance.get(p) ?? byDomain.get(p) ?? byDomain.get(p.split('--')[0] ?? '') ?? 'Music') : 'Music');
+  }
+
+  /** Custom per-instance labels for the connected music sources (instance id → label). */
+  private labels(): Record<string, string> {
+    return this.db.getSettings().sourceLabels ?? {};
+  }
+
+  /** Connected music providers with any custom per-instance label applied to `name` — the
+      granularity the source filter + result badges use (two accounts show as two entries). */
+  private async labeledProviders(): Promise<MusicSourceInfo[]> {
+    const provs = await this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []);
+    const labels = this.labels();
+    return provs.map((p) => ({ ...p, name: labels[p.instanceId] ?? p.name }));
   }
 
   async listLibraryPlaylists(): Promise<LibraryPlaylist[]> {
@@ -639,9 +666,10 @@ export class Service {
 
   // --- Library import (albums) --------------------------------------------
 
-  /** Connected streaming music sources (Apple Music accounts, later Spotify, …). */
+  /** Connected streaming music sources (Apple Music accounts, later Spotify, …), each with
+      its custom label applied so two accounts of one provider are distinguishable. */
   async listSources(): Promise<MusicSourceInfo[]> {
-    return this.ma.listMusicProviders().catch(() => []);
+    return this.labeledProviders();
   }
 
   /** The album Crate holds *on a shelf* for this provider album — matched by its own uri, or
@@ -680,7 +708,7 @@ export class Service {
     const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
     const offset = Math.max(opts.offset ?? 0, 0);
     const [sources, raw] = await Promise.all([
-      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+      this.labeledProviders(),
       this.ma.listLibraryAlbums({ source: opts.source, search: opts.search, favorite: opts.favorite, limit, offset }),
     ]);
     const nameById = new Map(sources.map((s) => [s.instanceId, s.name]));
@@ -828,9 +856,7 @@ export class Service {
 
   /** Search radio stations across the connected radio sources; marks already-saved ones. */
   async searchRadio(query: string, _source?: string): Promise<RadioSearchResponse> {
-    const providers = await this.ma
-      .listMusicProviders()
-      .catch((): Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> => []);
+    const providers = await this.labeledProviders();
     // A radio uri embeds the provider instance (e.g. tunein--xxx://…), so attribute by instance,
     // falling back to domain. MA aggregates across radio providers; the client filters.
     const byInstance = new Map(providers.map((s) => [s.instanceId, s] as const));
