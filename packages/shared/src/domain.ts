@@ -269,7 +269,7 @@ export interface Settings {
   defaultPlayerId: string | null;
   /** Default search-source filter (a source display name, or 'all'). Applies to the wall + admin. */
   defaultSource: string;
-  /** Custom display label per music-source instance id, e.g. { "apple_music--ab12": "Apple Music — Scott" }.
+  /** Custom display label per music-source instance id, e.g. { "apple_music--ab12": "Apple Music — Alex" }.
       Lets two accounts of the same provider be told apart in results, badges and the source filter. */
   sourceLabels: Record<string, string>;
   afterPlay: AfterPlay;

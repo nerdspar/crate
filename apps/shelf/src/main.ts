@@ -352,7 +352,9 @@ function buildShelf(): void {
     // Ink size/weight scale the generated label — a per-album override wins over the global.
     const inkSize = a.overrideInkSize ?? settings.inkSize;
     const inkWeight = a.overrideInkWeight ?? settings.inkWeight;
-    const sizeMul = inkSize === 'small' ? 0.8 : inkSize === 'large' ? 1.25 : 1;
+    // Same three terms, shifted up a notch: the old "small" is gone and there's a bigger max,
+    // so Small/Medium/Large now map to 1.0 / 1.25 / 1.5.
+    const sizeMul = inkSize === 'small' ? 1 : inkSize === 'large' ? 1.5 : 1.25;
     const fontSize = Math.min(baseW * (font.includes('Newsreader') ? 0.66 : 0.6), 19) * sizeMul;
     // Ink weight shifts the whole label across the bundled weight range; the title always
     // sits a step heavier than the artist for hierarchy. These weights are applied to the

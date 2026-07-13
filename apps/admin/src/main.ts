@@ -2533,7 +2533,7 @@ function drawMaSources(list: HTMLElement, sources: MaSource[], reload: () => voi
       editBtn.textContent = '✎';
       editBtn.addEventListener('click', () => {
         const cur = settings?.sourceLabels?.[s.instanceId] ?? '';
-        const next = prompt(`Label for this source (blank to reset).\nTell two accounts apart, e.g. “${s.name} — Scott”.`, cur);
+        const next = prompt(`Label for this source (blank to reset).\nTell two accounts apart, e.g. “${s.name} — Alex”.`, cur);
         if (next === null) return;
         const labels: Record<string, string> = { ...(settings?.sourceLabels ?? {}) };
         const trimmed = next.trim();
