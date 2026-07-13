@@ -1591,6 +1591,7 @@ interface SettingsCat {
 }
 const SETTINGS_CATS: SettingsCat[] = [
   { id: 'players', name: 'Players', render: renderPlayersCat },
+  { id: 'ma', name: 'Audio Sources', render: renderMaCat },
   {
     id: 'spines',
     name: 'Spines',
@@ -1609,7 +1610,6 @@ const SETTINGS_CATS: SettingsCat[] = [
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
-  { id: 'ma', name: 'Audio Sources', render: renderMaCat },
   { id: 'backup', name: 'Backup', render: renderBackupCat },
   { id: 'security', name: 'Security', render: renderSecurityCat },
   { id: 'system', name: 'System', render: renderSystemCat },
