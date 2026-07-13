@@ -26,6 +26,7 @@ import type {
   PlayerState,
   PlayersResponse,
   ProviderAlbumDetail,
+  AudiobookDetail,
   ExtraMediaKind,
   MediaBrowseItem,
   MediaSearchResponse,
@@ -884,6 +885,9 @@ export class Service {
         onShelf: shelved.has(r.providerUri),
         source: src?.name,
         kind,
+        durationSec: r.durationSec ?? null,
+        resumeMs: r.resumeMs ?? null,
+        fullyPlayed: r.fullyPlayed ?? false,
       };
     });
     const sources: MusicSourceInfo[] = providers
@@ -903,6 +907,9 @@ export class Service {
       artworkUrl: r.artworkUrl,
       onShelf: shelved.has(r.providerUri),
       kind,
+      durationSec: r.durationSec ?? null,
+      resumeMs: r.resumeMs ?? null,
+      fullyPlayed: r.fullyPlayed ?? false,
     }));
   }
 
@@ -923,6 +930,66 @@ export class Service {
   async podcastEpisodes(providerUri: string): Promise<PodcastEpisodesResponse> {
     const episodes = await this.ma.listPodcastEpisodes(providerUri).catch((): ProviderEpisode[] => []);
     return { episodes };
+  }
+
+  /** An audiobook's progress + chapter list, for its reader view. */
+  async audiobookDetail(providerUri: string): Promise<AudiobookDetail> {
+    const item = await this.ma.getMedia(providerUri).catch(() => null);
+    return {
+      durationSec: item?.durationSec ?? null,
+      resumeMs: item?.resumeMs ?? null,
+      fullyPlayed: item?.fullyPlayed ?? false,
+      chapters: (item?.chapters ?? []).map((c) => ({ title: c.title, startSec: c.startSec })),
+    };
+  }
+
+  /** In-progress episodes/audiobooks of one kind, for a "Continue listening" strip. Scans the
+      saved library (resume state is inline there, so it reflects progress made on any device —
+      unlike MA's local play-log). Bounded for cost: a handful of podcasts × their episodes. */
+  async continueListening(kind: ExtraMediaKind, limit = 8): Promise<MediaBrowseItem[]> {
+    const shelved = this.db.shelfedUris();
+    const out: MediaBrowseItem[] = [];
+    if (kind === 'podcast') {
+      const podcasts = await this.ma.listLibraryMedia('podcast').catch((): ProviderMediaItem[] => []);
+      for (const p of podcasts.slice(0, 10)) {
+        const eps = await this.ma.listPodcastEpisodes(p.providerUri, 300).catch((): ProviderEpisode[] => []);
+        for (const e of eps) {
+          if (!e.resumeMs || e.fullyPlayed) continue;
+          out.push({
+            providerUri: e.trackUri,
+            provider: p.provider,
+            name: e.title,
+            description: p.name, // the podcast it's from
+            artworkUrl: p.artworkUrl,
+            onShelf: shelved.has(e.trackUri),
+            kind: 'podcast',
+            durationSec: e.durationSec,
+            resumeMs: e.resumeMs,
+            fullyPlayed: false,
+          });
+        }
+      }
+    } else if (kind === 'audiobook') {
+      const books = await this.ma.listLibraryMedia('audiobook').catch((): ProviderMediaItem[] => []);
+      for (const b of books) {
+        if (!b.resumeMs || b.fullyPlayed) continue;
+        out.push({
+          providerUri: b.providerUri,
+          provider: b.provider,
+          name: b.name,
+          description: b.description,
+          artworkUrl: b.artworkUrl,
+          onShelf: shelved.has(b.providerUri),
+          kind: 'audiobook',
+          durationSec: b.durationSec ?? null,
+          resumeMs: b.resumeMs,
+          fullyPlayed: false,
+        });
+      }
+    }
+    // Most-progressed first (closest to finishing), capped.
+    out.sort((a, b) => (b.resumeMs ?? 0) - (a.resumeMs ?? 0));
+    return out.slice(0, limit);
   }
 
   private async processArtwork(id: string, url: string, opts: { scan?: boolean } = {}): Promise<void> {
@@ -1011,23 +1078,27 @@ export class Service {
     return next;
   }
 
-  async play(albumId: string, trackIndex?: number, playerId?: string, providerUri?: string, trackUris?: string[]): Promise<void> {
+  async play(albumId: string, trackIndex?: number, playerId?: string, providerUri?: string, trackUris?: string[], position?: number): Promise<void> {
     const player = playerId ?? this.defaultPlayerId();
     if (!player) throw new Error('no player available');
     // An explicit track list (a playlist shelf played from a song) — play it in order.
     if (trackUris && trackUris.length) {
       await this.ma.playTracks(player, trackUris);
-      return;
-    }
-    // Off-shelf album (e.g. a song tapped in a playlist's song view) — play by uri.
-    if (providerUri) {
+    } else if (providerUri) {
+      // Off-shelf item (a song's album, a podcast episode/audiobook) — play by uri.
       await this.ma.play(player, providerUri, trackIndex !== undefined ? { trackIndex } : undefined);
-      return;
+    } else {
+      const row = this.db.getAlbum(albumId);
+      if (!row) throw new Error(`unknown album: ${albumId}`);
+      await this.ma.play(player, row.provider_uri, trackIndex !== undefined ? { trackIndex } : undefined);
+      this.db.incrementPlayCount(albumId);
     }
-    const row = this.db.getAlbum(albumId);
-    if (!row) throw new Error(`unknown album: ${albumId}`);
-    await this.ma.play(player, row.provider_uri, trackIndex !== undefined ? { trackIndex } : undefined);
-    this.db.incrementPlayCount(albumId);
+    // Start-over (position 1) or jump to a chapter offset — seek once the queue has loaded.
+    // Omitting position lets MA auto-resume a spoken-word item from its saved spot.
+    if (position !== undefined) {
+      await new Promise((r) => setTimeout(r, 400));
+      await this.ma.transport(player, 'seek', Math.max(1, Math.floor(position))).catch(() => {});
+    }
   }
 
   transport(playerId: string, cmd: TransportCmd, position?: number): Promise<void> {

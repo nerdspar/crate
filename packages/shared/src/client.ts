@@ -15,6 +15,7 @@ import type {
   PlayRequest,
   PlayersResponse,
   ProviderAlbumDetail,
+  AudiobookDetail,
   MediaBrowseItem,
   MediaSearchResponse,
   MediaSyncResult,
@@ -220,6 +221,14 @@ export class CrateClient {
   /** A saved podcast's episodes. */
   podcastEpisodes(providerUri: string): Promise<PodcastEpisodesResponse> {
     return this.req(`/api/media/podcast/episodes?uri=${encodeURIComponent(providerUri)}`);
+  }
+  /** An audiobook's progress + chapters. */
+  audiobookDetail(providerUri: string): Promise<AudiobookDetail> {
+    return this.req(`/api/media/audiobook/detail?uri=${encodeURIComponent(providerUri)}`);
+  }
+  /** In-progress episodes/audiobooks of one kind, for "Continue listening". */
+  continueListening(kind: ExtraMediaKind): Promise<MediaBrowseItem[]> {
+    return this.req(`/api/media/continue?kind=${kind}`);
   }
 
   removeFromShelf(albumId: string): Promise<{ ok: true }> {

@@ -507,6 +507,38 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 @keyframes np-spin { to { transform: rotate(360deg); } }
 .track .dur { margin-left: auto; font-size: 1.7vh; }
 
+/* ── Podcast episodes & audiobook chapters ──────────────────────────────────
+   Episodes/chapters play on a single tap (spoken word, unlike album songs),
+   so the row shows resume progress and a ✓ when finished. */
+.track.ep { position: relative; padding-bottom: 1.4vh; }
+/* Thin resume-progress fill pinned to the row's bottom edge. */
+.ep-fill {
+  position: absolute; left: 0.4vh; bottom: 0.5vh; height: 0.3vh;
+  background: var(--brass); border-radius: 0.15vh; opacity: 0.8;
+  max-width: calc(100% - 0.8vh);
+}
+/* A fully-played episode reads as done: muted text, brass ✓ in the number slot. */
+.track.ep.done { color: var(--ink-dim); opacity: 0.62; }
+.track.ep.done .n { color: var(--brass); opacity: 1; }
+.track.ep.done .dur { color: var(--brass); }
+
+/* Audiobook header: overall status line + a "Start over" action. */
+.ab-head {
+  display: flex; align-items: center; gap: 1.4vh;
+  padding: 0.6vh 0.4vh 1.2vh;
+  border-bottom: 1px solid rgba(236,231,221,0.12);
+  margin-bottom: 0.4vh;
+}
+.ab-status { font-size: 2vh; color: var(--ink); font-weight: 600; }
+.ab-over {
+  margin-left: auto; font: inherit; font-size: 1.6vh;
+  color: var(--brass); background: transparent;
+  border: 1px solid var(--brass); border-radius: 1.2vh;
+  padding: 0.5vh 1.4vh; cursor: pointer; touch-action: manipulation;
+  opacity: 0.85;
+}
+.ab-over:active { opacity: 1; background: rgba(236,231,221,0.1); }
+
 .spine-label {
   writing-mode: vertical-rl;
   white-space: nowrap;
@@ -1024,6 +1056,44 @@ body.find-open #cc-grip { pointer-events: none; }
 .find-shelf-ok { color: var(--brass); border-color: var(--brass); }
 .find-shelf-cancel { color: var(--ink-dim); }
 
+/* "Continue listening" strip (Podcasts/Audiobooks tabs): a horizontal row of
+   resume cards above the shelf chips. Hidden when there's nothing in progress. */
+#find-continue { display: flex; flex-direction: column; gap: 0.8vh; }
+#find-continue[hidden] { display: none; }
+#find-continue .find-subhead { margin: 0; }
+.find-continue-row {
+  display: flex; gap: 1.2vw; overflow-x: auto; scrollbar-width: none;
+  padding-bottom: 0.4vh; scroll-snap-type: x proximity;
+}
+.find-continue-row::-webkit-scrollbar { display: none; }
+.find-continue-card {
+  flex: 0 0 auto; width: 26vh; scroll-snap-align: start;
+  display: grid; grid-template-columns: auto 1fr; grid-auto-rows: min-content;
+  column-gap: 1vh; row-gap: 0.4vh; align-items: center;
+  padding: 1vh; background: rgba(236,231,221,0.05); border: 1px solid rgba(236,231,221,0.1);
+  border-radius: 1vh; text-align: left; cursor: pointer; color: var(--ink);
+  touch-action: manipulation;
+}
+.find-continue-card:active { background: rgba(236,231,221,0.11); }
+.fc-art {
+  grid-row: 1 / 3; width: 6vh; height: 6vh; border-radius: 0.6vh;
+  background: rgba(236,231,221,0.08) center/cover no-repeat; flex-shrink: 0;
+}
+.fc-title {
+  font-size: 1.7vh; font-weight: 600; line-height: 1.2;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fc-sub {
+  grid-column: 2; font-size: 1.4vh; color: var(--ink-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fc-bar {
+  grid-column: 1 / 3; height: 0.4vh; border-radius: 0.2vh;
+  background: rgba(236,231,221,0.15); overflow: hidden; margin-top: 0.4vh;
+}
+.fc-bar-fill { display: block; height: 100%; background: var(--brass); }
+.fc-left { grid-column: 1 / 3; font-size: 1.3vh; color: var(--brass); }
+
 /* "Add to shelf" list inside the card ⋯ menu. */
 .panel-pop-label { font-size: 1.4vh; letter-spacing: 0.2em; text-transform: uppercase; color: var(--brass); font-weight: 600; padding: 0.4vh 2vh; }
 .panel-add-shelves { display: flex; flex-direction: column; }
@@ -1065,6 +1135,7 @@ body.find-open #cc-grip { pointer-events: none; }
 /* Search mode: the sheet fills the screen and the result columns grow to fill it (≈5 album cards
    visible), each scrolling within its own column instead of capping at 40vh. */
 #find.searching #find-bar { height: 100vh; }
+#find.searching #find-continue { display: none; } /* search view is results-only */
 #find.searching #find-results { flex: 1 1 auto; min-height: 0; }
 #find.searching .find-cats { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
 #find.searching .find-cat-list { max-height: none; flex: 1 1 auto; }

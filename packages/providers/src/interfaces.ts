@@ -63,9 +63,24 @@ export interface ProviderMediaItem {
   /** Second line — station tagline, podcast publisher, or audiobook author(s); null if none. */
   description: string | null;
   artworkUrl: string | null;
+  /** Runtime in seconds (audiobooks/episodes); null for radio. */
+  durationSec?: number | null;
+  /** Playback progress into the item, ms; null/0 if unstarted (spoken-word kinds). */
+  resumeMs?: number | null;
+  /** True once finished (MA's `fully_played`). */
+  fullyPlayed?: boolean;
+  /** Audiobook chapter markers, in order; absent for other kinds. */
+  chapters?: ProviderChapter[];
 }
 /** @deprecated alias — radio is now one `ProviderMediaItem` kind. */
 export type ProviderRadio = ProviderMediaItem;
+
+/** One audiobook chapter — a labelled seek offset (MA `metadata.chapters`). */
+export interface ProviderChapter {
+  title: string;
+  /** Chapter start offset, in seconds. */
+  startSec: number;
+}
 
 /** One podcast episode (a playable child of a podcast container). */
 export interface ProviderEpisode {
@@ -73,6 +88,10 @@ export interface ProviderEpisode {
   title: string;
   durationSec: number | null;
   subtitle: string | null;
+  /** Playback progress into the episode, ms; null if unstarted. */
+  resumeMs: number | null;
+  /** True once finished. */
+  fullyPlayed: boolean;
 }
 
 export interface ProviderPlayer {

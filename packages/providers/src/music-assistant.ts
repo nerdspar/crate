@@ -28,6 +28,7 @@ import type {
   PlayerTarget,
   ProviderAlbum,
   ProviderArtist,
+  ProviderChapter,
   ProviderEpisode,
   ProviderLibraryAlbum,
   ProviderMediaItem,
@@ -748,6 +749,15 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     if (!uri || !name) return null;
     const md = rec(item['metadata']);
     const authors = arr(item['authors']).map(str).filter((a): a is string => !!a);
+    // Audiobook chapters (MA `metadata.chapters`): { position, name, start, end } with start in seconds.
+    const chapters = arr(md['chapters'])
+      .map((c): ProviderChapter | null => {
+        const ch = rec(c);
+        const title = str(ch['name']);
+        const start = num(ch['start']);
+        return title && start != null ? { title, startSec: start } : null;
+      })
+      .filter((c): c is ProviderChapter => c !== null);
     return {
       providerUri: uri,
       provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
@@ -755,6 +765,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       // Second line: station tagline / podcast publisher / audiobook author(s).
       description: str(md['description']) ?? str(item['publisher']) ?? (authors.length ? authors.join(', ') : null),
       artworkUrl: this.artworkUrl(item),
+      durationSec: num(item['duration']) ?? null,
+      resumeMs: num(item['resume_position_ms']) ?? null,
+      fullyPlayed: item['fully_played'] === true,
+      ...(chapters.length ? { chapters } : {}),
     };
   }
 
@@ -806,7 +820,14 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         if (!uri || !title) return null;
         const md = rec(ep['metadata']);
         const dur = num(ep['duration']);
-        return { trackUri: uri, title, durationSec: dur ?? null, subtitle: str(md['description']) ?? null };
+        return {
+          trackUri: uri,
+          title,
+          durationSec: dur ?? null,
+          subtitle: str(md['description']) ?? null,
+          resumeMs: num(ep['resume_position_ms']) ?? null,
+          fullyPlayed: ep['fully_played'] === true,
+        };
       })
       .filter((e): e is ProviderEpisode => e !== null);
   }

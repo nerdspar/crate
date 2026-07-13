@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type MediaBrowseItem, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 // Weights span light→heavy so the ink-weight setting has real range to move across.
 import '@fontsource/archivo-narrow/400.css';
@@ -922,12 +922,50 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
     wrap.innerHTML = `<div class="track radio-live"><span class="n">◉</span><span class="tt">Live radio stream</span></div>`;
     return;
   }
-  // An audiobook plays as one resumable item — the card's Play button starts it.
+  // An audiobook plays as one resumable item — show progress + chapters; the card's Play button
+  // resumes, "Start over" restarts, and tapping a chapter jumps to it.
   if (item.kind === 'audiobook') {
-    wrap.innerHTML = `<div class="track radio-live"><span class="n">▶</span><span class="tt">Audiobook — press Play to start</span></div>`;
+    wrap.innerHTML = `<div class="track"><span class="tt">Loading…</span></div>`;
+    const uri = item.providerUri;
+    const detail = uri ? await client.audiobookDetail(uri).catch(() => null) : null;
+    if (openIdx !== i) return;
+    wrap.innerHTML = '';
+    const dur = detail?.durationSec ?? 0;
+    const resumeSec = detail?.resumeMs != null ? detail.resumeMs / 1000 : 0;
+    const inProgress = !!detail && !detail.fullyPlayed && resumeSec > 0 && dur > 0;
+    const hrs = (s: number): string => (s >= 3600 ? `${(s / 3600).toFixed(1)}h` : `${Math.max(1, Math.round(s / 60))}m`);
+    const head = document.createElement('div');
+    head.className = 'ab-head';
+    const status = detail?.fullyPlayed ? 'Finished' : inProgress ? `${hrs(dur - resumeSec)} left of ${hrs(dur)}` : dur ? hrs(dur) : 'Audiobook';
+    head.innerHTML = `<span class="ab-status">${escapeHtml(status)}</span>`;
+    if (inProgress) {
+      const over = document.createElement('button');
+      over.className = 'ab-over';
+      over.textContent = 'Start over';
+      over.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void playAudiobook(i, 1);
+      });
+      head.appendChild(over);
+    }
+    wrap.appendChild(head);
+    const chapters = detail?.chapters ?? [];
+    chapters.forEach((ch, ci) => {
+      const next = chapters[ci + 1]?.startSec ?? dur;
+      const isCur = inProgress && resumeSec >= ch.startSec && resumeSec < next;
+      const len = next > ch.startSec ? fmtDur(next - ch.startSec) : '';
+      const row = document.createElement('div');
+      row.className = 'track ch' + (isCur ? ' now' : '');
+      row.innerHTML = `<span class="n">${isCur ? TRACK_EQ : ci + 1}</span><span class="tt">${escapeHtml(ch.title)}</span><span class="dur">${len}</span>`;
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void playAudiobook(i, Math.floor(ch.startSec));
+      });
+      wrap.appendChild(row);
+    });
     return;
   }
-  // A podcast is a container of episodes — list them; double-tap an episode to play it.
+  // A podcast is a container of episodes — list them with progress; double-tap to play (resumes).
   if (item.kind === 'podcast') {
     wrap.innerHTML = `<div class="track"><span class="tt">Loading episodes…</span></div>`;
     const uri = item.providerUri;
@@ -939,11 +977,26 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
     }
     wrap.innerHTML = '';
     episodes.forEach((ep, ti) => {
+      const isNow = playingIdx === i && !!ep.trackUri && now.trackUri === ep.trackUri;
+      const resumeSec = ep.resumeMs != null ? ep.resumeMs / 1000 : 0;
+      const inProgress = !ep.fullyPlayed && resumeSec > 0 && !!ep.durationSec;
+      const pct = inProgress ? Math.min(100, (resumeSec / (ep.durationSec ?? 1)) * 100) : 0;
+      const right = ep.fullyPlayed
+        ? 'Played'
+        : inProgress
+          ? `${Math.max(1, Math.round(((ep.durationSec ?? 0) - resumeSec) / 60))} min left`
+          : ep.durationSec
+            ? fmtDur(ep.durationSec)
+            : '';
       const row = document.createElement('div');
-      row.className = 'track';
-      const dur = ep.durationSec ? fmtDur(ep.durationSec) : '';
-      row.innerHTML = `<span class="n">${ti + 1}</span><span class="tt">${escapeHtml(ep.title)}</span><span class="dur">${dur}</span>`;
-      row.addEventListener('dblclick', (e) => {
+      row.className = 'track ep' + (ep.fullyPlayed ? ' done' : '') + (isNow ? ' now' : '');
+      if (ep.trackUri) row.dataset.uri = ep.trackUri;
+      row.innerHTML =
+        `<span class="n">${ep.fullyPlayed ? '✓' : isNow ? TRACK_EQ : ti + 1}</span>` +
+        `<span class="tt">${escapeHtml(ep.title)}</span>` +
+        `<span class="dur">${right}</span>` +
+        (inProgress ? `<div class="ep-fill" style="width:${pct}%"></div>` : '');
+      row.addEventListener('click', (e) => {
         e.stopPropagation();
         void playEpisode(i, ep);
       });
@@ -2884,6 +2937,7 @@ function openFind(): void {
   document.body.classList.add('find-open'); // hide the control-center pull tab while the sheet is up
   renderCCSort();
   renderShelfList();
+  void renderContinueStrip(); // refresh in-progress items if reopened on a spoken-word tab
   // No auto-focus: the shelf list is the primary content; tapping the search
   // field is what pops the on-screen keyboard.
 }
@@ -3456,14 +3510,23 @@ function songResultCard(s: SearchSong): HTMLElement {
   return card;
 }
 
-/** Play a searched song now: resolve its album + track index, play from that track. */
-/** Play one podcast episode by its uri on the current play target. */
+/** Play one podcast episode by its uri on the current play target (MA auto-resumes). */
 async function playEpisode(i: number, ep: PodcastEpisode): Promise<void> {
   const item = items[i]!;
   await client
     .play({ albumId: item.albumId, trackUris: [ep.trackUri], ...(activePlayerId ? { playerId: activePlayerId } : {}) })
     .catch(() => {});
   showToast(`Playing ${ep.title}`);
+}
+
+/** Play the open audiobook. No position → MA resumes from the saved spot; position 1 → start over;
+    a chapter offset → jump there (the server seeks after playback starts). */
+async function playAudiobook(i: number, position?: number): Promise<void> {
+  const item = items[i]!;
+  await client
+    .play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), ...(position !== undefined ? { position } : {}) })
+    .catch(() => {});
+  showToast(position === undefined ? 'Resuming…' : position <= 1 ? 'Starting over…' : 'Jumping to chapter…');
 }
 
 async function playSong(trackUri: string): Promise<void> {
@@ -4135,6 +4198,7 @@ function clearSearch(): void {
    Playlists tabs + a list of shelves you tap to switch the wall.
    ===================================================================== */
 const findShelfList = document.getElementById('find-shelf-list') as HTMLElement;
+const findContinue = document.getElementById('find-continue') as HTMLElement;
 
 document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
@@ -4145,8 +4209,60 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     clearSearch(); // search behaves differently per tab; reset it
     document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', t === tab));
     renderShelfList();
+    void renderContinueStrip(); // spoken-word tabs get an in-progress "Continue listening" row
   });
 });
+
+/** "Continue listening": a strip of in-progress episodes/audiobooks above the shelf chips,
+    shown only on the Podcasts/Audiobooks tabs. Tapping a card resumes where you left off.
+    The token guards against a slow fetch landing after the user has switched tabs. */
+let continueToken = 0;
+async function renderContinueStrip(): Promise<void> {
+  const kind = shelfTab;
+  findContinue.hidden = true;
+  findContinue.innerHTML = '';
+  if (kind !== 'podcast' && kind !== 'audiobook') return;
+  const token = ++continueToken;
+  const list = await client.continueListening(kind).catch((): MediaBrowseItem[] => []);
+  if (token !== continueToken || shelfTab !== kind || !list.length) return;
+  const head = document.createElement('div');
+  head.className = 'find-subhead';
+  head.textContent = 'Continue listening';
+  findContinue.appendChild(head);
+  const row = document.createElement('div');
+  row.className = 'find-continue-row';
+  list.forEach((it) => row.appendChild(continueCard(it, kind)));
+  findContinue.appendChild(row);
+  findContinue.hidden = false;
+}
+
+function continueCard(it: MediaBrowseItem, kind: ExtraMediaKind): HTMLElement {
+  const card = document.createElement('button');
+  card.className = 'find-continue-card';
+  const resumeSec = it.resumeMs != null ? it.resumeMs / 1000 : 0;
+  const pct = it.durationSec ? Math.min(100, (resumeSec / it.durationSec) * 100) : 0;
+  const left = it.durationSec ? `${Math.max(1, Math.round((it.durationSec - resumeSec) / 60))} min left` : '';
+  const art = it.artworkUrl ? ` style="background-image:url('${it.artworkUrl}')"` : '';
+  card.innerHTML =
+    `<span class="fc-art"${art}></span>` +
+    `<span class="fc-title">${escapeHtml(it.name)}</span>` +
+    (it.description ? `<span class="fc-sub">${escapeHtml(it.description)}</span>` : '') +
+    `<span class="fc-bar"><span class="fc-bar-fill" style="width:${pct}%"></span></span>` +
+    (left ? `<span class="fc-left">${left}</span>` : '');
+  card.onclick = () => void resumeContinue(it, kind);
+  return card;
+}
+
+/** Resume a continue-listening card: play its uri (MA auto-resumes from the saved spot). */
+async function resumeContinue(it: MediaBrowseItem, kind: ExtraMediaKind): Promise<void> {
+  const player = activePlayerId ? { playerId: activePlayerId } : {};
+  const body =
+    kind === 'podcast'
+      ? { albumId: it.providerUri, trackUris: [it.providerUri], ...player }
+      : { albumId: it.providerUri, providerUri: it.providerUri, ...player };
+  await client.play(body).catch(() => {});
+  showToast(`Resuming ${it.name}`);
+}
 
 function renderShelfList(): void {
   findShelfList.innerHTML = '';

@@ -165,6 +165,9 @@ export interface PlayRequest {
       a playlist shelf → the playlist continues in the shelf's curated order). When
       set, albumId/providerUri are ignored. */
   trackUris?: string[];
+  /** Seek here (seconds) right after playback starts — used to start an audiobook/episode
+      over (position 1) or jump to a chapter. Omit to let MA auto-resume from its saved spot. */
+  position?: number;
 }
 
 /** Detail for an off-shelf provider album (song→album card; not ingested). */
@@ -355,6 +358,12 @@ export interface MediaBrowseItem {
   /** Streaming source display name (e.g. "Spotify"); optional. */
   source?: string;
   kind?: ExtraMediaKind;
+  /** Runtime in seconds (audiobooks); null for radio. */
+  durationSec?: number | null;
+  /** Playback progress into the item, ms; null/0 if unstarted (spoken-word kinds). */
+  resumeMs?: number | null;
+  /** True once finished. */
+  fullyPlayed?: boolean;
 }
 /** @deprecated alias kept for the radio call sites. */
 export type RadioStation = MediaBrowseItem;
@@ -387,9 +396,28 @@ export interface PodcastEpisode {
   durationSec: number | null;
   /** Human date/subtitle line, or null. */
   subtitle: string | null;
+  /** Playback progress into the episode, ms; null if unstarted. */
+  resumeMs: number | null;
+  /** True once finished. */
+  fullyPlayed: boolean;
 }
 export interface PodcastEpisodesResponse {
   episodes: PodcastEpisode[];
+}
+
+/** One audiobook chapter — a labelled seek offset. */
+export interface AudiobookChapter {
+  title: string;
+  /** Chapter start offset, in seconds. */
+  startSec: number;
+}
+/** Audiobook detail fetched when its spine opens — progress + chapters for the reader view. */
+export interface AudiobookDetail {
+  durationSec: number | null;
+  /** Playback progress into the book, ms; null/0 if unstarted. */
+  resumeMs: number | null;
+  fullyPlayed: boolean;
+  chapters: AudiobookChapter[];
 }
 
 export interface PlayersResponse {

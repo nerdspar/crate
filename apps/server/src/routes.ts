@@ -166,7 +166,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
 
   app.post('/api/play', async (req) => {
     const b = req.body as PlayRequest;
-    await service.play(b.albumId, b.trackIndex, b.playerId, b.providerUri, b.trackUris);
+    await service.play(b.albumId, b.trackIndex, b.playerId, b.providerUri, b.trackUris, b.position);
     return { ok: true };
   });
 
@@ -314,6 +314,13 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   });
   // A saved podcast's episodes (for its track-list view).
   app.get('/api/media/podcast/episodes', (req) => service.podcastEpisodes((req.query as { uri?: string }).uri ?? ''));
+  // An audiobook's progress + chapter list (for its reader view).
+  app.get('/api/media/audiobook/detail', (req) => service.audiobookDetail((req.query as { uri?: string }).uri ?? ''));
+  // In-progress items of a kind, for the "Continue listening" strip.
+  app.get('/api/media/continue', (req, reply) => {
+    const kind = asKind(reply, (req.query as { kind?: string }).kind ?? '');
+    return kind ? service.continueListening(kind) : undefined;
+  });
 
   // Per-album overrides: upload custom spine/cover, or set label font/color/spacing.
   app.post('/api/albums/:id/art/:kind', async (req, reply) => {
