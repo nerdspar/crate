@@ -1416,7 +1416,7 @@ const SETTING_DESC: Partial<Record<keyof Settings, string>> = {
   // Spines
   spineMode: 'How each spine looks: “Real when available” uses the album’s own cover art; “Generated” always draws a typographic spine.',
   spineThickness: 'How chunky each jewel case appears — Thin, Medium, or Thick.',
-  spineWidthMode: 'Spine widths: “Uniform” makes them equal; “By length” scales width to the album’s run time, so longer albums are wider.',
+  spineWidthMode: 'Spine widths: “Uniform” makes them equal; “By length” draws a double-wide spine for albums over 80 minutes (a 2-disc set), like a fatter case on the shelf.',
   spineTextDir: 'Direction the vertical spine text reads — top-to-bottom or bottom-to-top.',
   inkMode: 'Spine text color: “Contrast” picks light or dark for legibility; “Match accent” tints it with the album’s dominant color.',
   inkSize: 'Size of the spine text — Small, Medium, or Large.',
@@ -1520,10 +1520,15 @@ function toggleField(key: keyof Settings, label: string): HTMLElement {
   cb.type = 'checkbox';
   cb.checked = !!settings![key];
   cb.addEventListener('change', () => void saveSetting(key, cb.checked as Settings[typeof key]));
-  const lab = document.createElement('label');
-  lab.appendChild(cb);
-  lab.append(' ' + label);
-  tf.appendChild(lab);
+  // iOS-style row: label on the left, switch on the right.
+  const row = document.createElement('label');
+  row.className = 'switch-row';
+  const span = document.createElement('span');
+  span.className = 'switch-label';
+  span.textContent = label;
+  row.appendChild(span);
+  row.appendChild(cb);
+  tf.appendChild(row);
   appendDesc(tf, key);
   return tf;
 }
@@ -1604,7 +1609,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   { id: 'display', name: 'Display & Brightness', render: renderDisplayCat },
   { id: 'idle', name: 'Idle', render: renderIdleCat },
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
-  { id: 'ma', name: 'Music Assistant', render: renderMaCat },
+  { id: 'ma', name: 'Audio Sources', render: renderMaCat },
   { id: 'backup', name: 'Backup', render: renderBackupCat },
   { id: 'security', name: 'Security', render: renderSecurityCat },
   { id: 'system', name: 'System', render: renderSystemCat },
@@ -1797,6 +1802,7 @@ function renderIdleCat(body: HTMLElement): void {
   const redraw = (): void => {
     body.innerHTML = '';
     renderIdleCat(body);
+    cardifySettings(body, 'idle');
   };
   // A field whose value gates others: re-render the category when it changes so the
   // dependent rows appear/disappear right away (the value is saved first, synchronously).
@@ -2895,12 +2901,56 @@ function openSettingsCat(cat: SettingsCat): void {
   settingsCatName.textContent = cat.name;
   settingsCatBody.innerHTML = '';
   cat.render(settingsCatBody);
+  cardifySettings(settingsCatBody, cat.id);
 }
 /** Re-render the open settings category in place (after a live players/settings update). */
 function refreshOpenSettingsCat(): void {
   if (settingsDetailEl.hidden || !currentSettingsCat || !settings) return;
   settingsCatBody.innerHTML = '';
   currentSettingsCat.render(settingsCatBody);
+  cardifySettings(settingsCatBody, currentSettingsCat.id);
+}
+
+/** Turn a freshly-rendered settings sub-page into FlightScnr-style collapsible cards:
+    each `.set-subhead` section becomes a card with a tap-to-collapse header; any intro
+    content before the first section stays above the cards, and single-section pages are
+    left flat. Open/closed state is remembered per section. Always called on a raw body. */
+function cardifySettings(body: HTMLElement, catId: string): void {
+  const kids = Array.from(body.childNodes);
+  const isSub = (n: Node): boolean => n instanceof HTMLElement && n.classList.contains('set-subhead');
+  if (!kids.some(isSub)) return; // nothing to group — leave the page flat (just spacing)
+  body.innerHTML = '';
+  let i = 0;
+  // Intro: anything before the first section header sits above the cards.
+  while (i < kids.length && !isSub(kids[i]!)) body.appendChild(kids[i++]!);
+  while (i < kids.length) {
+    const head = kids[i++] as HTMLElement;
+    const title = head.textContent ?? '';
+    const card = document.createElement('div');
+    card.className = 'set-card';
+    const memKey = `crate.setcard.${catId}.${title}`;
+    if (localStorage.getItem(memKey) !== '0') card.classList.add('open');
+    const headBtn = document.createElement('button');
+    headBtn.type = 'button';
+    headBtn.className = 'set-card-head';
+    headBtn.innerHTML = `<span class="set-card-title">${esc(title)}</span><span class="set-card-chev" aria-hidden="true">›</span>`;
+    headBtn.addEventListener('click', () => {
+      const open = card.classList.toggle('open');
+      localStorage.setItem(memKey, open ? '1' : '0');
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'set-card-wrap';
+    const inner = document.createElement('div');
+    inner.className = 'set-card-body'; // the collapsing box — must stay padding-free so 0fr fully closes
+    const pad = document.createElement('div');
+    pad.className = 'set-card-pad'; // padding lives here, inside the clip
+    while (i < kids.length && !isSub(kids[i]!)) pad.appendChild(kids[i++]!);
+    inner.appendChild(pad);
+    wrap.appendChild(inner);
+    card.appendChild(headBtn);
+    card.appendChild(wrap);
+    body.appendChild(card);
+  }
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

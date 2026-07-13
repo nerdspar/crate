@@ -215,9 +215,23 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
   color: var(--ink); font: inherit; padding: 0.55rem 0.7rem; outline: none;
 }
 .settings-grid select:focus, .settings-grid input[type='number']:focus { border-color: var(--brass); }
-.field-toggle { flex-direction: row; align-items: center; flex-wrap: wrap; }
-.field-toggle label { cursor: pointer; color: var(--ink); }
-.field-toggle input[type='checkbox'] { width: 1.1rem; height: 1.1rem; }
+/* Boolean settings render as an iOS-style row: label left, pill switch right. */
+.field-toggle { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 0.9rem; cursor: pointer; color: var(--ink); }
+.switch-row .switch-label { font-size: 0.95rem; line-height: 1.3; }
+.field-toggle input[type='checkbox'] {
+  appearance: none; -webkit-appearance: none; flex: none; margin: 0;
+  width: 2.7rem; height: 1.6rem; border-radius: 999px; background: var(--line);
+  position: relative; cursor: pointer; transition: background 0.18s ease;
+}
+.field-toggle input[type='checkbox']::after {
+  content: ''; position: absolute; top: 0.16rem; left: 0.16rem; width: 1.28rem; height: 1.28rem;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s ease;
+}
+.field-toggle input[type='checkbox']:checked { background: var(--brass); }
+.field-toggle input[type='checkbox']:checked::after { transform: translateX(1.1rem); }
+.field-toggle input[type='checkbox']:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 /* Per-setting explainer: a muted footnote under the control (and a title= tooltip). */
 .field-desc { color: var(--ink-dim); font-size: 0.78rem; line-height: 1.4; margin: 0.05rem 0 0; opacity: 0.85; }
 .field-toggle .field-desc { flex-basis: 100%; margin-top: 0.2rem; }
@@ -242,6 +256,32 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
   text-transform: uppercase; margin: 1.6rem 0 0.2rem;
 }
 .set-subhead:first-child { margin-top: 0.4rem; }
+
+/* Collapsible section cards inside a settings sub-page (FlightScnr-style). Each
+   `.set-subhead` becomes a card header; the grid-rows trick animates the collapse
+   smoothly regardless of content height. */
+.set-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  margin-top: 0.75rem; overflow: hidden;
+}
+#settings-cat-body > .set-card:first-of-type { margin-top: 0.9rem; }
+.set-card-head {
+  display: flex; align-items: center; gap: 0.6rem; width: 100%; text-align: left;
+  background: transparent; border: none; color: var(--ink); cursor: pointer;
+  padding: 0.95rem 1.05rem; font: inherit;
+}
+.set-card-head:active { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.set-card-title { flex: 1; font-weight: 700; font-size: 1.02rem; letter-spacing: 0.01em; }
+.set-card-chev { color: var(--ink-dim); font-size: 1.4rem; line-height: 1; transition: transform 0.22s ease; }
+.set-card.open .set-card-chev { transform: rotate(90deg); }
+.set-card-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
+.set-card.open .set-card-wrap { grid-template-rows: 1fr; }
+.set-card-wrap > .set-card-body { overflow: hidden; min-height: 0; }
+.set-card-pad { padding: 0.1rem 1.05rem 1.05rem; }
+/* Section headers already sit in the card head, so drop the in-body subhead spacing. */
+.set-card-pad .set-subhead { display: none; }
+.set-card-pad .settings-grid { margin-top: 0.2rem; }
+.set-card-pad > .field:first-child, .set-card-pad > .hint:first-child { margin-top: 0.2rem; }
 .sys-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 0.6rem; }
 .sys-actions .ghost.danger { border-color: color-mix(in srgb, var(--accent, #c83a3a) 55%, var(--line)); color: var(--accent, #c83a3a); }
 /* Software update block: per-app version readout + action row + optional SSH note. */
