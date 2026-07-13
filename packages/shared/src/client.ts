@@ -365,6 +365,10 @@ export class CrateClient {
   ): Promise<MaConfigEntry[]> {
     return this.post('/api/admin/ma/sources/entries', { domain, ...opts });
   }
+  /** Poll for the authorize URL MA emits after an interactive-auth action is started. */
+  getMaAuthUrl(sessionId: string): Promise<{ url: string | null }> {
+    return this.req(`/api/admin/ma/auth-url?session=${encodeURIComponent(sessionId)}`);
+  }
   /** Add (no instanceId) or update a source. */
   saveMaSource(domain: string, values: Record<string, MaConfigValue>, instanceId?: string): Promise<MaSource> {
     return this.post('/api/admin/ma/sources', { domain, values, ...(instanceId ? { instanceId } : {}) });

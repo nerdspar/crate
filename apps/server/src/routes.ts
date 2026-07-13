@@ -397,6 +397,8 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     const b = req.body as { domain: string; instanceId?: string; action?: string; values?: Record<string, MaConfigValue> };
     return maCall(reply, () => service.maSourceEntries(b.domain, { instanceId: b.instanceId, action: b.action, values: b.values }));
   });
+  // Poll for the authorize URL MA emits after an OAuth/MusicKit auth action is started.
+  app.get('/api/admin/ma/auth-url', (req) => service.maAuthUrl(((req.query as { session?: string }).session ?? '')));
   app.post('/api/admin/ma/sources', (req, reply) => {
     const b = req.body as { domain: string; values?: Record<string, MaConfigValue>; instanceId?: string };
     return maCall(reply, () => service.maSaveSource(b.domain, b.values ?? {}, b.instanceId));

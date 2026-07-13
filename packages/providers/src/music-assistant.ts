@@ -123,10 +123,28 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   // The source list changes rarely; cache it briefly so search/library keystrokes don't each round-trip.
   private providersCache: { at: number; data: Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null; features: string[] }> } | null = null;
   private static readonly TRACK_TTL_MS = 5 * 60_000;
+  // Interactive-auth (OAuth / MusicKit) authorize URLs, keyed by the session id we pass when
+  // advancing a provider's auth action. MA emits an `auth_session` event with the real URL to open
+  // (Spotify's accounts.spotify.com/authorize, Apple Music's MusicKit page, …); the admin polls for it.
+  private readonly authUrls = new Map<string, { url: string; at: number }>();
 
   constructor(opts: MaClientOptions) {
     this.client = new MaClient(opts);
     this.maBaseUrl = opts.url.replace(/\/+$/, '');
+    this.client.onEvent((e) => {
+      if (e.event === 'auth_session' && typeof e.object_id === 'string' && typeof e.data === 'string') {
+        this.authUrls.set(e.object_id, { url: e.data, at: Date.now() });
+      }
+    });
+  }
+
+  /** The authorize URL MA emitted for an in-progress auth flow (once), or null if not yet seen /
+      expired (2 min). Consumed on read so it isn't reused. */
+  takeAuthUrl(sessionId: string): string | null {
+    const hit = this.authUrls.get(sessionId);
+    if (!hit) return null;
+    this.authUrls.delete(sessionId);
+    return Date.now() - hit.at < 120_000 ? hit.url : null;
   }
 
   start(): Promise<MaServerInfo> {

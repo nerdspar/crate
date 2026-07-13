@@ -2730,11 +2730,11 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
       return dv != null && dv !== false && dv !== '';
     };
 
-    // Interactive auth actions (Apple Music's MusicKit flow, Spotify/other OAuth): generate a session
-    // id, open MA's per-provider auth page (served at /<domain>_auth/<session>/, rewriting a co-hosted
-    // MA's localhost to this browser's host so it's reachable), then advance get_entries with that
-    // session id — MA blocks until the sign-in finishes and returns the credentials, at which point we
-    // save the source. A missing session id is what makes MA reject the flow with `999: 'session_id'`.
+    // Interactive auth actions (Apple Music's MusicKit flow, Spotify/other OAuth): advance the action
+    // with a fresh session id (its absence is what makes MA reject the flow with `999: 'session_id'`).
+    // That call blocks server-side until sign-in finishes; meanwhile MA emits an `auth_session` event
+    // with the REAL authorize URL (accounts.spotify.com/authorize, MA's MusicKit page, …), which Crate
+    // captures — we poll for it, open the popup, then save the source once the flow returns credentials.
     // Non-auth actions (e.g. "Clear authentication") just re-fetch the form.
     const advanceAction = (en: MaConfigEntry): void => {
       const isAuth = !!en.action && /auth/i.test(en.action) && !/clear/i.test(en.action);
@@ -2742,16 +2742,36 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
         void showForm(manifest, { action: en.action ?? undefined, values });
         return;
       }
+      // Open the popup window SYNCHRONOUSLY here in the click gesture (blank for now) so browsers
+      // don't block it — we can't open it later from the async poll below without tripping popup
+      // blockers. It gets pointed at the real authorize URL once MA emits it.
+      const popup = window.open('', '_blank');
       void (async () => {
-        const conn = await client.getMaConnection().catch(() => null);
-        if (!conn?.url) return showToast('Music Assistant URL unknown');
         const sessionId = `crate-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-        const base = conn.url.replace(/\/+$/, '').replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)/, `$1${location.hostname}`);
-        window.open(`${base}/${manifest.domain}_auth/${sessionId}/index.html`, '_blank', 'noopener');
-        formEl.innerHTML = `<p class="hint">Waiting for the ${esc(manifest.name)} sign-in in the new tab — finish it there, keep this tab open, and Crate adds the source automatically.</p>`;
+        formEl.innerHTML = `<p class="hint">Opening the ${esc(manifest.name)} sign-in…</p>`;
+        const resultP = client.getMaSourceEntries(manifest.domain, { action: en.action ?? undefined, values: { ...values, session_id: sessionId } });
+        resultP.catch(() => {}); // handled below — don't let it reject unhandled while we poll
+        // Poll for the authorize URL MA emitted for this session, then point the popup at it.
+        let opened = false;
+        for (let i = 0; i < 40 && !opened; i++) {
+          const { url } = await client.getMaAuthUrl(sessionId).catch((): { url: string | null } => ({ url: null }));
+          if (url) {
+            const open = url.replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)/, `$1${location.hostname}`); // co-hosted MA may say localhost
+            if (popup && !popup.closed) popup.location.href = open;
+            else window.open(open, '_blank', 'noopener');
+            opened = true;
+            formEl.innerHTML = `<p class="hint">Waiting for the ${esc(manifest.name)} sign-in in the new tab — finish it there, keep this tab open, and Crate adds the source automatically.</p>`;
+          } else {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+        if (!opened) {
+          if (popup && !popup.closed) popup.close();
+          formEl.innerHTML = `<p class="hint">Couldn’t get the ${esc(manifest.name)} sign-in link. Reopen the form to try again.</p>`;
+        }
         let result: MaConfigEntry[];
         try {
-          result = await client.getMaSourceEntries(manifest.domain, { action: en.action ?? undefined, values: { ...values, session_id: sessionId } });
+          result = await resultP;
         } catch (e) {
           formEl.innerHTML = `<p class="hint">${esc(manifest.name)} sign-in didn’t complete (${esc(e instanceof Error ? e.message : 'error')}). Reopen the form to try again.</p>`;
           return;

@@ -1159,6 +1159,12 @@ export class Service {
     return this.ma.getSourceConfigEntries(domain, opts);
   }
 
+  /** The authorize URL MA emitted for an in-progress interactive-auth flow (the admin polls this
+      after starting an OAuth/MusicKit action, then opens the popup). */
+  maAuthUrl(sessionId: string): { url: string | null } {
+    return { url: this.ma.takeAuthUrl(sessionId) };
+  }
+
   /** Add (no instanceId) or update a source. */
   maSaveSource(domain: string, values: Record<string, MaConfigValue>, instanceId?: string): Promise<MaSource> {
     return this.ma.saveSource(domain, values, instanceId);
