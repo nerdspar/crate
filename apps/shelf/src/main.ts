@@ -3121,11 +3121,13 @@ function renderGlobal(loading: boolean): void {
   const g = globalResults;
 
   // Source badges + filter only matter when the results span more than one source. Cache each
-  // source's icon by name, and drop any active filter that this result set doesn't contain.
+  // source's icon by name, and drop an active filter this result set doesn't contain (else it'd
+  // hide everything). Only clobber against *loaded* results — never the empty loading scaffold,
+  // which has no sources yet and would otherwise wipe the boot default on the first keystroke.
   searchSourceIcon.clear();
   for (const s of g?.sources ?? []) searchSourceIcon.set(s.name, s.iconSvg ?? null);
   searchMultiSource = (g?.sources?.length ?? 0) > 1;
-  if (!searchMultiSource || (searchSource !== 'all' && !searchSourceIcon.has(searchSource))) searchSource = 'all';
+  if (!loading && g && searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
   const srcOk = (s?: string): boolean => searchSource === 'all' || s === searchSource;
 
   if (searchMultiSource) {
