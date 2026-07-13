@@ -423,11 +423,9 @@ export class Service {
 
   async search(query: string, _source?: string): Promise<SearchAlbum[]> {
     // One aggregated search (MA spans every provider — per-source scoping is a no-op); each hit
-    // is attributed to its real source domain. The `source` arg is ignored; the client filters.
-    const providers = await this.ma.listMusicProviders().catch((): Array<{ instanceId: string; name: string; domain: string; iconSvg: string | null }> => []);
-    const byDomain = new Map<string, string>();
-    for (const s of providers) if (s.domain && !byDomain.has(s.domain)) byDomain.set(s.domain, s.name);
-    const nameOf = (d?: string | null): string => (d && byDomain.get(d)) || 'Music';
+    // is attributed to its real source. The `source` arg is ignored; the client filters. A hit's
+    // `provider` can be a domain OR an instance id, so use the shared resolver (not domain-only).
+    const nameOf = await this.sourceNamer();
     const raw = await this.ma.search(query).catch((): ProviderAlbum[] => []);
     return raw.map((a) => {
       const row = this.shelvedRow(a.providerUri, a.title, a.artist);

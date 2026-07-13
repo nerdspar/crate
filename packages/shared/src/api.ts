@@ -244,6 +244,9 @@ export interface MusicSourceInfo {
   domain?: string;
   /** Inline SVG for the source's icon (from MA's provider manifest), or null. */
   iconSvg?: string | null;
+  /** MA `supported_features` (e.g. "library_albums", "library_radios") — used to decide which
+      sources belong in an album/playlist vs radio source picker. */
+  features?: string[];
 }
 
 /** An album from the user's provider library (Apple Music, etc.), plus whether it's

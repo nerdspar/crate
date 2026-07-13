@@ -151,6 +151,10 @@ let playPendingUntil = 0;
 /** The album provider uri we just asked to play — used to confirm the target room is
     really playing THIS album (playback frames carry albumUri, not the Crate albumId). */
 let playPendingUri: string | null = null;
+/** The album NAME we just asked to play — a fallback confirmation for when MA reports a
+    different uri than we sent (catalog → library normalization), so the spinner still clears
+    when audio starts rather than riding the full latch. */
+let playPendingAlbum: string | null = null;
 /** Album-view shuffle intent: a live control that resets to off each time a *different*
     album opens. When the open album is the one playing it reflects/drives the live queue;
     otherwise it's the pre-play choice applied on the next Play. (Repeat is not a per-album
@@ -1092,6 +1096,7 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
     showToast(`Sent to ${roomName(activePlayerId)}…`);
     afterAlbumWatch = null; // the playlist queue continues on its own
     playPendingUri = item.albumUri; // the tapped track's uri confirms the room started
+    playPendingAlbum = null; // a playlist song reports its track's album, not a name we know here
     client
       .play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), trackUris: uris })
       .catch((e) => {
@@ -1151,6 +1156,7 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
   // Watch for this album ending so we can roll on to the next spine (afterAlbum='next').
   afterAlbumWatch = { albumId: item.albumId, playerId: activePlayerId };
   playPendingUri = providerUri ?? item.providerUri ?? null; // to confirm the room really started
+  playPendingAlbum = item.title; // name fallback when MA reports a normalized uri
   client
     .play({
       albumId: item.albumId,
@@ -2922,6 +2928,7 @@ const findResults = document.getElementById('find-results') as HTMLElement;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
 let searchSource = 'all'; // client-side source filter: a source name, or 'all'
+let searchSourceUserSet = false; // did the user pick a source this session? (don't clobber with the default)
 let searchMultiSource = false; // do the current results span >1 source? (drives badges + filter)
 const searchSourceIcon = new Map<string, string | null>(); // source name → inline SVG icon
 let globalResults: GlobalSearchResponse | null = null;
@@ -3374,6 +3381,7 @@ function sourceDropdown(sources: GlobalSearchResponse['sources']): HTMLElement {
 }
 function pickSource(name: string): void {
   searchSource = name;
+  searchSourceUserSet = true; // an explicit pick — settings changes won't override it
   renderGlobal(false); // client-side filter — the results are already fetched, no re-query
 }
 
@@ -3652,6 +3660,7 @@ async function playModal(trackIndex?: number): Promise<void> {
     playPendingIdx = -1;
     playPendingUntil = performance.now() + 8000;
     playPendingUri = modalAlbumUri;
+    playPendingAlbum = (albumModal.querySelector('.am-title') as HTMLElement)?.textContent || null; // name fallback
     now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
     applyNow();
     renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's spinner now
@@ -5066,19 +5075,20 @@ function maybeAutoOpenExternal(): void {
     "connecting" rather than a dead/instant EQ. Capped by the play latch. */
 function playBuffering(): boolean {
   // Buffer either an on-shelf spine (playPendingIdx) or an off-shelf play-now overlay
-  // (playPendingUri only, no spine) — both show the connecting spinner until audio starts.
-  if ((playPendingIdx < 0 && !playPendingUri) || userPaused || performance.now() >= playPendingUntil) return false;
-  // Playback frames carry albumUri/trackUri (not the Crate albumId), so confirm the target
-  // room is really playing what we asked for by matching the uri — clears the spinner/frozen
-  // seek the moment audio starts, instead of riding the full latch.
-  const confirmed =
-    !!playPendingUri &&
-    lastStates.some(
-      (s) =>
-        s.state === 'playing' &&
-        (!now.playerId || s.playerId === now.playerId) &&
-        (s.nowPlaying?.albumUri === playPendingUri || s.nowPlaying?.trackUri === playPendingUri),
-    );
+  // (playPendingUri/Album only, no spine) — both show the connecting spinner until audio starts.
+  if ((playPendingIdx < 0 && !playPendingUri && !playPendingAlbum) || userPaused || performance.now() >= playPendingUntil) return false;
+  // Confirm the target room is really playing what we asked for so the spinner/frozen seek clears
+  // the moment audio starts instead of riding the full latch. Playback frames carry albumUri/
+  // trackUri (not the Crate albumId); match those, and fall back to the album NAME because MA may
+  // report a different uri than we sent (e.g. a catalog album normalized to a library uri).
+  const album = playPendingAlbum?.toLowerCase();
+  const confirmed = lastStates.some(
+    (s) =>
+      s.state === 'playing' &&
+      (!now.playerId || s.playerId === now.playerId) &&
+      ((!!playPendingUri && (s.nowPlaying?.albumUri === playPendingUri || s.nowPlaying?.trackUri === playPendingUri)) ||
+        (!!album && s.nowPlaying?.album?.toLowerCase() === album)),
+  );
   return !confirmed;
 }
 
@@ -5331,6 +5341,8 @@ function applySettings(s: Settings): void {
   const prev = settings;
   settings = s;
   openMode = s.openMode;
+  // Follow the admin default search source until the user picks one on the wall.
+  if (!searchSourceUserSet) searchSource = s.defaultSource || 'all';
   // Follow the admin default speaker until the user picks a room on the wall.
   if (s.defaultPlayerId && s.defaultPlayerId !== prev.defaultPlayerId && !userPickedPlayer) {
     activePlayerId = s.defaultPlayerId;

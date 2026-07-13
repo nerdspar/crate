@@ -188,18 +188,26 @@ document
   .forEach((b) => b.addEventListener('click', () => setContentType(b.dataset['type'] as AddType)));
 
 function syncSourceSel(): void {
-  if (addType === 'radio' || sources.length <= 1) {
-    // Radio searches all radio providers; the album-source dropdown doesn't apply.
+  const picks = albumSources();
+  if (addType === 'radio' || picks.length <= 1) {
+    // Radio searches all radio providers; the album-source dropdown doesn't apply. And with a single
+    // album source there's nothing to switch between.
     sourceSel.hidden = true;
     return;
   }
-  if (sourceSel.options.length !== sources.length + 1) {
+  if (sourceSel.options.length !== picks.length + 1) {
     sourceSel.innerHTML = '';
     sourceSel.add(new Option('All sources', 'all'));
-    for (const s of sources) sourceSel.add(new Option(s.name, s.instanceId));
+    // Only album/playlist-capable sources belong in this picker — a radio-only source (TuneIn) has
+    // no albums/playlists, so filtering to it would always show nothing.
+    for (const s of albumSources()) sourceSel.add(new Option(s.name, s.instanceId));
   }
   sourceSel.value = curSource;
   sourceSel.hidden = false;
+}
+/** Sources that actually serve albums/playlists (not radio-only), for the search source picker. */
+function albumSources(): MusicSourceInfo[] {
+  return sources.filter((s) => !s.features || s.features.some((f) => f === 'library_albums' || f === 'library_playlists'));
 }
 async function loadSources(): Promise<void> {
   try {
@@ -217,7 +225,8 @@ sourceSel.addEventListener('change', () => {
 /** Header for the catalog section — one source (dropdown-scoped) or the single source's name. */
 function catalogLabel(): string {
   if (curSource !== 'all') return `From ${sources.find((s) => s.instanceId === curSource)?.name ?? 'source'}`;
-  return sources.length === 1 ? `From ${sources[0]!.name}` : 'From Apple Music';
+  const pl = albumSources();
+  return pl.length === 1 ? `From ${pl[0]!.name}` : 'From your sources';
 }
 
 /** Load the current type into #add-list: your library on top, catalog results below when
