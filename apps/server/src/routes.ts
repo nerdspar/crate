@@ -355,6 +355,8 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return service.runUpdate(target);
   });
   app.get('/api/system/update/progress', () => service.updateProgress());
+  app.get('/api/system/update/auto', () => service.getAutoUpdateConfig());
+  app.put('/api/system/update/auto', (req) => service.setAutoUpdateConfig((req.body ?? {}) as Parameters<typeof service.setAutoUpdateConfig>[0]));
 
   // --- Music Assistant management (Phase 5) ---
   // Status reads cached connection info (safe even when MA is down). The others talk to MA,

@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type RadioStation, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
+import { CrateClient, isSpeaker, type AutoUpdateConfig, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type RadioStation, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -2108,6 +2108,66 @@ function renderSystemCat(body: HTMLElement): void {
   // always visible — no click needed to see whether an update is waiting. doCheck
   // renders its own "Check again" button and the Update buttons when a check lands.
   doCheck();
+
+  // Automatic updates — scheduled check + optional hands-off install (appliance only; Crate).
+  const auHead = document.createElement('div');
+  auHead.className = 'set-subhead';
+  auHead.textContent = 'Automatic updates';
+  body.appendChild(auHead);
+  const auHint = document.createElement('p');
+  auHint.className = 'hint';
+  auHint.textContent = 'Check for new Crate versions on a schedule, at a quiet hour (an install restarts the wall). Runs on the wall appliance.';
+  body.appendChild(auHint);
+  const au = document.createElement('div');
+  au.className = 'sw-update';
+  body.appendChild(au);
+  const hourLabel = (h: number): string =>
+    h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`;
+  const auSelect = (opts: Array<[string, string]>, val: string, onChange: (v: string) => void): HTMLSelectElement => {
+    const s = document.createElement('select');
+    for (const [v, l] of opts) s.add(new Option(l, v));
+    s.value = val;
+    s.addEventListener('change', () => onChange(s.value));
+    return s;
+  };
+  const renderAuto = (c: AutoUpdateConfig): void => {
+    au.innerHTML = '';
+    const save = (patch: Partial<Pick<AutoUpdateConfig, 'mode' | 'frequency' | 'hour'>>): void =>
+      void client.setAutoUpdate(patch).then(renderAuto).catch(() => showToast('Failed'));
+    const field = (label: string, control: HTMLElement): HTMLElement => {
+      const f = document.createElement('div');
+      f.className = 'field';
+      f.innerHTML = `<label>${label}</label>`;
+      f.appendChild(control);
+      return f;
+    };
+    au.appendChild(
+      field(
+        'When an update is available',
+        auSelect([['off', 'Off'], ['notify', 'Notify me only'], ['install', 'Install automatically']], c.mode, (v) =>
+          save({ mode: v as AutoUpdateConfig['mode'] }),
+        ),
+      ),
+    );
+    if (c.mode !== 'off') {
+      au.appendChild(
+        field('Check', auSelect([['daily', 'Daily'], ['weekly', 'Weekly']], c.frequency, (v) => save({ frequency: v as AutoUpdateConfig['frequency'] }))),
+      );
+      const hours = Array.from({ length: 24 }, (_, h) => [String(h), hourLabel(h)] as [string, string]);
+      au.appendChild(field('At', auSelect(hours, String(c.hour), (v) => save({ hour: Number(v) }))));
+      const st = document.createElement('p');
+      st.className = 'field-desc';
+      st.textContent = `Last checked ${relTime(c.lastCheckAt)} · next ${relTime(c.nextRunAt)}${c.lastStatus ? ` · ${c.lastStatus}` : ''}`;
+      au.appendChild(st);
+      if (c.pending) {
+        const pend = document.createElement('p');
+        pend.className = 'sw-latest has-update';
+        pend.textContent = 'An update is waiting — use “Update Crate” above to install it now.';
+        au.appendChild(pend);
+      }
+    }
+  };
+  void client.getAutoUpdate().then(renderAuto).catch(() => (au.innerHTML = '<p class="hint">Unavailable.</p>'));
 }
 
 /* ---- Backup: config export / restore (Phase 5) ---- */

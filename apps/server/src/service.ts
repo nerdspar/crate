@@ -40,6 +40,8 @@ import type {
   ShelfResponse,
   SystemStatus,
   TransportCmd,
+  AutoUpdateConfig,
+  AutoUpdateFrequency,
   UpdateProgress,
   UpdateStatus,
   UpdateTarget,
@@ -1472,6 +1474,88 @@ export class Service {
     if (target === 'ma' && !this.cfg.managesMa) return { ok: false, started: false };
     const started = spawnUpdate(target);
     return { ok: started, started };
+  }
+
+  // --- Scheduled auto-update (mirrors the GitHub auto-backup scheduler) --------------------
+  // Config lives under dotted `update.*` keys, so it's kept out of typed Settings and out of
+  // config backups (a schedule shouldn't restore onto a different box).
+
+  private clampHour(h: unknown): number {
+    const n = Math.floor(Number(h));
+    return Number.isFinite(n) ? Math.max(0, Math.min(23, n)) : 3;
+  }
+
+  /** Next wall-clock run at `hour` on the chosen cadence, strictly after the last check (or now
+      if never run) — so enabling at 5pm with hour=3 waits until the next 3am, not immediately. */
+  private autoUpdateNextRun(lastCheckAt: string | null, frequency: AutoUpdateFrequency, hour: number): Date {
+    const base = lastCheckAt ? new Date(lastCheckAt) : new Date();
+    const stepDays = frequency === 'weekly' ? 7 : 1;
+    const d = new Date(base);
+    d.setHours(hour, 0, 0, 0);
+    while (d.getTime() <= base.getTime()) d.setDate(d.getDate() + stepDays);
+    return d;
+  }
+
+  getAutoUpdateConfig(): AutoUpdateConfig {
+    const cfg = this.db.getRaw<{ mode?: AutoUpdateConfig['mode']; frequency?: AutoUpdateFrequency; hour?: number }>('update.auto', {});
+    const mode = cfg.mode ?? 'off';
+    const frequency = cfg.frequency ?? 'daily';
+    const hour = this.clampHour(cfg.hour ?? 3);
+    const lastCheckAt = this.db.getRaw<string | null>('update.lastCheckAt', null);
+    return {
+      mode,
+      frequency,
+      hour,
+      lastCheckAt,
+      nextRunAt: mode === 'off' ? null : this.autoUpdateNextRun(lastCheckAt, frequency, hour).toISOString(),
+      lastStatus: this.db.getRaw<string | null>('update.lastStatus', null),
+      pending: this.db.getRaw<boolean>('update.pending', false),
+    };
+  }
+
+  setAutoUpdateConfig(input: Partial<Pick<AutoUpdateConfig, 'mode' | 'frequency' | 'hour'>>): AutoUpdateConfig {
+    const prev = this.db.getRaw<{ mode?: AutoUpdateConfig['mode']; frequency?: AutoUpdateFrequency; hour?: number }>('update.auto', {});
+    this.db.setRaw('update.auto', {
+      mode: input.mode ?? prev.mode ?? 'off',
+      frequency: input.frequency ?? prev.frequency ?? 'daily',
+      hour: this.clampHour(input.hour ?? prev.hour ?? 3),
+    });
+    return this.getAutoUpdateConfig();
+  }
+
+  /** Called by the 60s scheduler: if auto-update is due, check GitHub and (in install mode)
+      launch the updater. Appliance-only; Crate only (MA stays manual). */
+  private autoUpdateRunning = false;
+  async maybeAutoUpdate(): Promise<void> {
+    if (this.autoUpdateRunning || !this.cfg.appliance) return;
+    const cfg = this.db.getRaw<{ mode?: AutoUpdateConfig['mode']; frequency?: AutoUpdateFrequency; hour?: number }>('update.auto', {});
+    const mode = cfg.mode ?? 'off';
+    if (mode === 'off') return;
+    const lastCheckAt = this.db.getRaw<string | null>('update.lastCheckAt', null);
+    const next = this.autoUpdateNextRun(lastCheckAt, cfg.frequency ?? 'daily', this.clampHour(cfg.hour ?? 3));
+    if (Date.now() < next.getTime()) return; // not due yet
+    this.autoUpdateRunning = true;
+    try {
+      this.db.setRaw('update.lastCheckAt', new Date().toISOString()); // advance the schedule up front
+      const status = await this.checkUpdate();
+      if (status.error || !status.updateAvailable) {
+        this.db.setRaw('update.lastStatus', status.error ? `Check failed: ${status.error}` : 'Up to date');
+        this.db.setRaw('update.pending', false);
+        return;
+      }
+      if (mode === 'install') {
+        const started = spawnUpdate('crate');
+        this.db.setRaw('update.lastStatus', started ? 'Installing update…' : 'Update available (install failed to start)');
+        this.db.setRaw('update.pending', !started);
+      } else {
+        this.db.setRaw('update.lastStatus', `Update available (GitHub ${status.latest ?? '?'})`);
+        this.db.setRaw('update.pending', true);
+      }
+    } catch {
+      /* transient — try again next window */
+    } finally {
+      this.autoUpdateRunning = false;
+    }
   }
 }
 

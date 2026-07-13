@@ -3,6 +3,7 @@
 import type {
   AddToShelfRequest,
   AlbumDetail,
+  AutoUpdateConfig,
   CreateShelfRequest,
   GlobalSearchResponse,
   GroupRequest,
@@ -298,6 +299,14 @@ export class CrateClient {
   /** Live progress of an in-flight update (unit state + journal tail). */
   updateProgress(): Promise<UpdateProgress> {
     return this.req('/api/system/update/progress');
+  }
+
+  /** Scheduled auto-update config (mode/frequency/hour + last/next run). */
+  getAutoUpdate(): Promise<AutoUpdateConfig> {
+    return this.req('/api/system/update/auto');
+  }
+  setAutoUpdate(cfg: Partial<Pick<AutoUpdateConfig, 'mode' | 'frequency' | 'hour'>>): Promise<AutoUpdateConfig> {
+    return this.req('/api/system/update/auto', { method: 'PUT', body: JSON.stringify(cfg) });
   }
 
   // --- Music Assistant management (Phase 5) ---

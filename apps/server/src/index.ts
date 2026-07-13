@@ -60,8 +60,12 @@ registerRoutes(app, service, auth);
 
 await service.init();
 
-// Automatic GitHub backups: check each minute whether one is due (no-op unless enabled).
-setInterval(() => void service.maybeAutoBackup().catch(() => {}), 60_000).unref();
+// Automatic GitHub backups + scheduled auto-update: check each minute whether either is due
+// (no-op unless enabled; auto-update also no-ops off the appliance).
+setInterval(() => {
+  void service.maybeAutoBackup().catch(() => {});
+  void service.maybeAutoUpdate().catch(() => {});
+}, 60_000).unref();
 
 // Graceful shutdown: `systemctl stop/restart` and the in-app restart send SIGTERM. Close the
 // HTTP server + WebSocket hub, then the DB (checkpoints the WAL) before exiting.

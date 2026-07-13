@@ -125,6 +125,28 @@ export interface UpdateProgress {
   log: string[];
 }
 
+/** Unattended-update behavior: 'off' never checks; 'notify' checks + flags a waiting update
+    in the admin; 'install' downloads, applies and restarts on its own. Crate only (MA stays
+    manual). */
+export type AutoUpdateMode = 'off' | 'notify' | 'install';
+export type AutoUpdateFrequency = 'daily' | 'weekly';
+
+/** Scheduled auto-update config (mirrors the GitHub auto-backup config). Runs at `hour` (0–23,
+    device-local) on the chosen cadence — a quiet hour, since an install restarts the wall. */
+export interface AutoUpdateConfig {
+  mode: AutoUpdateMode;
+  frequency: AutoUpdateFrequency;
+  hour: number;
+  /** ISO time of the last scheduled check, or null. */
+  lastCheckAt: string | null;
+  /** ISO time the next scheduled check is due, or null when off. */
+  nextRunAt: string | null;
+  /** One-line result of the last check (e.g. "Up to date", "Installing update…"). */
+  lastStatus: string | null;
+  /** Notify-mode: an update was found and is waiting for a manual install. */
+  pending: boolean;
+}
+
 export interface BrightnessRequest {
   /** 0–100. */
   level: number;
