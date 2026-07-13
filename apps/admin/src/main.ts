@@ -2803,6 +2803,61 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
       })
       .catch(() => {});
     dsSel.addEventListener('change', () => { void client.putSettings({ defaultSource: dsSel.value }).catch(maErr); showToast('Saved'); });
+
+    // Shown tabs — hide/show the Radio, Podcasts and Audiobooks tabs (wall + admin). A tab still
+    // only appears when a source that can serve it is connected.
+    const tabsHead = document.createElement('div');
+    tabsHead.className = 'set-subhead';
+    tabsHead.textContent = 'Shown tabs';
+    body.appendChild(tabsHead);
+    const tabsHint = document.createElement('p');
+    tabsHint.className = 'hint';
+    tabsHint.textContent = 'Show or hide the Radio, Podcasts and Audiobooks tabs. A tab only appears when a connected source serves it.';
+    body.appendChild(tabsHint);
+    // Container appended synchronously so cardify() wraps it into the section card; the toggles
+    // fill it once settings + sources load.
+    const tabsWrap = document.createElement('div');
+    body.appendChild(tabsWrap);
+    void Promise.all([client.getSettings(), client.getSources()])
+      .then(([st, srcs]) => {
+        const capable = (f: string): boolean => srcs.some((s) => (s.features ?? []).includes(f));
+        const state: SourceKinds = {
+          radio: st.mediaTabs?.radio !== false,
+          podcast: st.mediaTabs?.podcast !== false,
+          audiobook: st.mediaTabs?.audiobook !== false,
+        };
+        for (const m of EXTRA_MEDIA) {
+          const has = capable(m.feature);
+          const tf = document.createElement('div');
+          tf.className = 'field field-toggle';
+          if (!has) tf.style.opacity = '0.55';
+          const row = document.createElement('label');
+          row.className = 'switch-row';
+          const span = document.createElement('span');
+          span.className = 'switch-label';
+          span.textContent = m.name + (has ? '' : ' — no source connected');
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = state[m.kind];
+          cb.addEventListener('change', () => {
+            state[m.kind] = cb.checked;
+            const next: SourceKinds = { ...state };
+            void client
+              .putSettings({ mediaTabs: next })
+              .then(() => {
+                if (settings) settings.mediaTabs = next;
+                sourceKinds = { radio: capable('library_radios'), podcast: capable('library_podcasts'), audiobook: capable('library_audiobooks') };
+                updateMediaSegments();
+                showToast('Saved');
+              })
+              .catch(maErr);
+          });
+          row.append(span, cb);
+          tf.appendChild(row);
+          tabsWrap.appendChild(tf);
+        }
+      })
+      .catch(() => {});
   };
 
   const showPicker = async (): Promise<void> => {

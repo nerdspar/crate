@@ -5425,6 +5425,8 @@ function applySettings(s: Settings): void {
     if (!albumModal.hidden) renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
     if (ccIsOpen()) renderCCRooms();
   }
+  // A tab hidden/shown in the admin ("Shown tabs") → re-evaluate the extra-media tabs live.
+  if (JSON.stringify(s.mediaTabs) !== JSON.stringify(prev.mediaTabs)) updateMediaTabs();
   applyTextDir();
   applyYearGutter();
   applyYearEmphasis();
