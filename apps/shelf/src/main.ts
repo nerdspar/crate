@@ -4467,7 +4467,12 @@ ccBrightness.addEventListener('input', () => {
   }
 });
 ccBrightness.addEventListener('change', () => {
-  void client.setBrightness(+ccBrightness.value).then(applySystemStatus).catch(() => {});
+  const v = +ccBrightness.value;
+  // A brightness the user sets by hand is their new "normal" — and it's intentional, so it
+  // clears any idle-dim flag (never treat a deliberate low level as a dim to auto-restore).
+  localStorage.setItem(NORMAL_BRIGHTNESS_KEY, String(v));
+  localStorage.removeItem(IDLE_DIMMED_KEY);
+  void client.setBrightness(v).then(applySystemStatus).catch(() => {});
 });
 
 // Idle dim brightness slider (Idle & sleep tab). Preview the dim veil live while
@@ -5423,6 +5428,7 @@ function markActive(): void {
     checkSchedule(); // wake immediately, don't wait for the 30s tick
   }
   if (isIdle || screenIsOff) exitIdle();
+  else restoreFromIdleDim(); // stuck dim after a reload-while-idle: any tap lifts it back
   restartIdleWatch();
 }
 window.addEventListener('pointerdown', markActive, { passive: true });
@@ -5438,8 +5444,30 @@ let screenIsOff = false;
 let idleActionTimer: ReturnType<typeof setTimeout> | null = null;
 let screenOffTimer: ReturnType<typeof setTimeout> | null = null;
 let attractTimer: ReturnType<typeof setInterval> | null = null;
-let preIdleBrightness: number | null = null;
 let attractIdx = -1;
+
+/* Idle dimming — restoring the brightness after a dim has to survive a reload (a stuck-dim
+   wall that boots dimmed, with isIdle=false, must still lift on the first tap). So the
+   "normal" level and an "idle-dimmed" flag live in localStorage, not just memory. */
+const NORMAL_BRIGHTNESS_KEY = 'crate.normalBrightness';
+const IDLE_DIMMED_KEY = 'crate.idleDimmed';
+function normalBrightness(): number {
+  const v = Number(localStorage.getItem(NORMAL_BRIGHTNESS_KEY));
+  return Number.isFinite(v) && v >= 8 ? v : 100;
+}
+/** Enter idle-dim: remember the level we're dimming *from* as the restore target, and flag it. */
+function markIdleDimmed(fromLevel: number): void {
+  if (fromLevel >= 8) localStorage.setItem(NORMAL_BRIGHTNESS_KEY, String(fromLevel));
+  localStorage.setItem(IDLE_DIMMED_KEY, '1');
+}
+/** Lift an idle-dim back to the user's normal brightness. Only acts when the flag is set, so a
+    brightness the user *chose* to be low is never overridden. Clears the flag either way. */
+function restoreFromIdleDim(): void {
+  if (localStorage.getItem(IDLE_DIMMED_KEY) !== '1') return;
+  localStorage.removeItem(IDLE_DIMMED_KEY);
+  if (scheduledAsleep) return; // during scheduled sleep the screen is meant to stay dark
+  void client.setBrightness(normalBrightness()).then(applySystemStatus).catch(() => {});
+}
 
 // Two idle stages off the same inactivity clock: show idle content at idleAfterMin, then
 // (optionally) turn the screen off at screenOffAfterMin. Both reset on any interaction.
@@ -5462,7 +5490,8 @@ async function enterIdle(): Promise<void> {
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
   }
   if (settings.idleDim) {
-    preIdleBrightness = system?.brightness ?? 100;
+    const cur = system?.brightness ?? 100;
+    if (cur > settings.idleDimPercent) markIdleDimmed(cur); // remember the level to come back to
     void client.setBrightness(settings.idleDimPercent).then(applySystemStatus).catch(() => {});
   }
   if (screenIsOff) return; // screen already off (a short screen-off timer) — nothing to show
@@ -5493,10 +5522,7 @@ function exitIdle(): void {
   screenIsOff = false;
   stopAttract();
   if (wasOff) void client.setDisplaySleep(false).catch(() => {});
-  if (preIdleBrightness != null) {
-    void client.setBrightness(preIdleBrightness).then(applySystemStatus).catch(() => {});
-    preIdleBrightness = null;
-  }
+  restoreFromIdleDim();
 }
 
 /** Open an album showing just its cover (no expanded details) — for idle display. */
