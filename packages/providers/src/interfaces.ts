@@ -62,6 +62,9 @@ export interface ProviderMediaItem {
   name: string;
   /** Second line — station tagline, podcast publisher, or audiobook author(s); null if none. */
   description: string | null;
+  /** Full description/blurb (audiobook synopsis, podcast about); absent when it would just
+      repeat the second line. Shown behind an expander on the card. */
+  about?: string | null;
   artworkUrl: string | null;
   /** Runtime in seconds (audiobooks/episodes); null for radio. */
   durationSec?: number | null;
@@ -88,6 +91,8 @@ export interface ProviderEpisode {
   title: string;
   durationSec: number | null;
   subtitle: string | null;
+  /** Episode release date (ISO), or null. */
+  releaseDate: string | null;
   /** Playback progress into the episode, ms; null if unstarted. */
   resumeMs: number | null;
   /** True once finished. */

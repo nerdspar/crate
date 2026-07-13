@@ -459,7 +459,7 @@ function buildShelf(): void {
     el.querySelector('.cover-play')!.addEventListener('pointerdown', stop);
     el.querySelector('.cover-play')!.addEventListener('click', (e) => {
       stop(e);
-      void play(i);
+      void playCard(i);
     });
     el.querySelector('.cover-menu')!.addEventListener('pointerdown', stop);
     el.querySelector('.cover-menu')!.addEventListener('click', (e) => {
@@ -914,6 +914,41 @@ function attachRoomLongPress(b: HTMLElement, id: string, el: HTMLElement): void 
   }, true);
 }
 
+/** Episodes of the currently-open podcast, keyed by shelf-item id — so the card's Play
+    button can play the resume/newest episode without a container play (which MA rejects). */
+const podcastEpisodeCache = new Map<string, PodcastEpisode[]>();
+
+/** A dim description block (podcast/audiobook synopsis) clamped to a few lines, with a
+    "More"/"Less" toggle when the text overflows. */
+function aboutBlock(text: string): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'md-about';
+  const p = document.createElement('div');
+  p.className = 'md-about-text';
+  p.textContent = text;
+  wrap.appendChild(p);
+  if (text.length > 160) {
+    const btn = document.createElement('button');
+    btn.className = 'md-about-toggle';
+    btn.textContent = 'More';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      btn.textContent = wrap.classList.toggle('open') ? 'Less' : 'More';
+    });
+    wrap.appendChild(btn);
+  } else {
+    wrap.classList.add('open'); // short blurb: show in full, no toggle
+  }
+  return wrap;
+}
+
+/** Format an episode's ISO release date compactly (e.g. "May 5, 2023"); '' if missing/invalid. */
+function fmtEpDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 async function renderTracks(el: HTMLElement, i: number): Promise<void> {
   const item = items[i]!;
   const wrap = el.querySelector('.tracks') as HTMLElement;
@@ -949,6 +984,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       head.appendChild(over);
     }
     wrap.appendChild(head);
+    if (detail?.about) wrap.appendChild(aboutBlock(detail.about));
     const chapters = detail?.chapters ?? [];
     chapters.forEach((ch, ci) => {
       const next = chapters[ci + 1]?.startSec ?? dur;
@@ -965,17 +1001,22 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
     });
     return;
   }
-  // A podcast is a container of episodes — list them with progress; double-tap to play (resumes).
+  // A podcast is a container of episodes — list them with progress; tap to play (resumes).
   if (item.kind === 'podcast') {
     wrap.innerHTML = `<div class="track"><span class="tt">Loading episodes…</span></div>`;
     const uri = item.providerUri;
-    const episodes = uri ? (await client.podcastEpisodes(uri).catch(() => ({ episodes: [] as PodcastEpisode[] }))).episodes : [];
+    const resp = uri
+      ? await client.podcastEpisodes(uri).catch(() => ({ episodes: [] as PodcastEpisode[], about: null }))
+      : { episodes: [] as PodcastEpisode[], about: null };
     if (openIdx !== i) return;
+    const episodes = resp.episodes;
+    podcastEpisodeCache.set(item.albumId, episodes); // for the card Play button
     if (!episodes.length) {
       wrap.innerHTML = `<div class="track"><span class="tt">No episodes.</span></div>`;
       return;
     }
     wrap.innerHTML = '';
+    if (resp.about) wrap.appendChild(aboutBlock(resp.about));
     episodes.forEach((ep, ti) => {
       const isNow = playingIdx === i && !!ep.trackUri && now.trackUri === ep.trackUri;
       const resumeSec = ep.resumeMs != null ? ep.resumeMs / 1000 : 0;
@@ -988,12 +1029,13 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
           : ep.durationSec
             ? fmtDur(ep.durationSec)
             : '';
+      const date = fmtEpDate(ep.releaseDate);
       const row = document.createElement('div');
       row.className = 'track ep' + (ep.fullyPlayed ? ' done' : '') + (isNow ? ' now' : '');
       if (ep.trackUri) row.dataset.uri = ep.trackUri;
       row.innerHTML =
         `<span class="n">${ep.fullyPlayed ? '✓' : isNow ? TRACK_EQ : ti + 1}</span>` +
-        `<span class="tt">${escapeHtml(ep.title)}</span>` +
+        `<span class="tt">${escapeHtml(ep.title)}${date ? `<span class="ep-date">${date}</span>` : ''}</span>` +
         `<span class="dur">${right}</span>` +
         (inProgress ? `<div class="ep-fill" style="width:${pct}%"></div>` : '');
       row.addEventListener('click', (e) => {
@@ -1131,7 +1173,7 @@ async function onPlayButton(i: number): Promise<void> {
     await client.transport({ playerId, cmd: pausing ? 'pause' : 'play' }).catch(() => {});
     return;
   }
-  await play(i);
+  await playCard(i);
 }
 
 /** On Play, if a still-grouped speaker was picked individually, pull it out of its
@@ -3510,13 +3552,63 @@ function songResultCard(s: SearchSong): HTMLElement {
   return card;
 }
 
-/** Play one podcast episode by its uri on the current play target (MA auto-resumes). */
+/** Play one podcast episode by its uri on the current play target (MA auto-resumes). Sets an
+    optimistic now-state so the row highlights immediately, and reports a real failure honestly. */
 async function playEpisode(i: number, ep: PodcastEpisode): Promise<void> {
   const item = items[i]!;
-  await client
-    .play({ albumId: item.albumId, trackUris: [ep.trackUri], ...(activePlayerId ? { playerId: activePlayerId } : {}) })
-    .catch(() => {});
-  showToast(`Playing ${ep.title}`);
+  // Optimistic now-state (mirrors the playlist-song path) so the episode highlights + the
+  // nowbar reflects it before the WS poll lands.
+  playPendingIdx = i;
+  playPendingUntil = performance.now() + 8000;
+  if (activePlayerId) focusedPlayerId = activePlayerId;
+  userPaused = false;
+  pauseGuardUntil = 0;
+  resumeGuardUntil = performance.now() + 8000;
+  selfPlayUntil = performance.now() + 8000;
+  now = {
+    playerId: activePlayerId,
+    albumId: item.albumId,
+    trackIndex: 0,
+    trackUri: ep.trackUri,
+    elapsed: ep.resumeMs != null ? ep.resumeMs / 1000 : 0,
+    duration: ep.durationSec ?? 0,
+    state: 'playing',
+    at: performance.now(),
+  };
+  applyNow();
+  if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
+  playPendingUri = ep.trackUri;
+  try {
+    await client.play({ albumId: item.albumId, trackUris: [ep.trackUri], ...(activePlayerId ? { playerId: activePlayerId } : {}) });
+    showToast(`Playing ${ep.title}`);
+  } catch (e) {
+    console.error('episode play failed', e);
+    showToast('Playback failed');
+  }
+}
+
+/** The card Play button on a podcast plays an EPISODE, not the container (a podcast container
+    isn't directly playable → play_media rejects it). Prefer the in-progress episode, else the
+    first unfinished one, else the newest. */
+async function playPodcastPreferred(i: number): Promise<void> {
+  const item = items[i]!;
+  let eps = podcastEpisodeCache.get(item.albumId);
+  if (!eps?.length && item.providerUri) {
+    eps = (await client.podcastEpisodes(item.providerUri).catch(() => ({ episodes: [] as PodcastEpisode[] }))).episodes;
+  }
+  const pick =
+    eps?.find((e) => e.resumeMs && !e.fullyPlayed) ?? eps?.find((e) => !e.fullyPlayed) ?? eps?.[0];
+  if (!pick) {
+    showToast('No episodes to play');
+    return;
+  }
+  await playEpisode(i, pick);
+}
+
+/** Dispatch the card's Play/cover-play: a podcast plays an episode; everything else (albums,
+    playlists, audiobooks, radio) plays through the normal album path. */
+function playCard(i: number): Promise<void> {
+  return items[i]?.kind === 'podcast' ? playPodcastPreferred(i) : play(i);
 }
 
 /** Play the open audiobook. No position → MA resumes from the saved spot; position 1 → start over;

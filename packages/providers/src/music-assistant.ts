@@ -758,12 +758,19 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         return title && start != null ? { title, startSec: start } : null;
       })
       .filter((c): c is ProviderChapter => c !== null);
+    // Short second line (spine + card): audiobook author(s) → podcast/label publisher →
+    // radio tagline. The full blurb goes in `about` (shown behind an expander on the card),
+    // NOT here — using the whole description as the second line made spines read strangely.
+    const publisher = str(item['publisher']);
+    const secondLine = (authors.length ? authors.join(', ') : null) ?? publisher ?? str(md['description']) ?? null;
+    const about = str(md['description']) ?? null;
     return {
       providerUri: uri,
       provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
       name,
-      // Second line: station tagline / podcast publisher / audiobook author(s).
-      description: str(md['description']) ?? str(item['publisher']) ?? (authors.length ? authors.join(', ') : null),
+      description: secondLine,
+      // Full description/blurb — only when it isn't already the second line (radio taglines).
+      ...(about && about !== secondLine ? { about } : {}),
       artworkUrl: this.artworkUrl(item),
       durationSec: num(item['duration']) ?? null,
       resumeMs: num(item['resume_position_ms']) ?? null,
@@ -789,9 +796,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       .filter((r): r is ProviderMediaItem => r !== null);
   }
 
-  /** The user's saved items of one kind from the MA library. */
+  /** The user's saved items of one kind from the MA library. NB: omit the `favorite` filter —
+      MA reads `favorite:false` as "non-favorites ONLY", which hid any favorited library item. */
   async listLibraryMedia(kind: ExtraMediaKind, limit = 200): Promise<ProviderMediaItem[]> {
-    const raw = await this.client.command(MusicAssistantProvider.MEDIA_MA[kind].library, { limit, favorite: false });
+    const raw = await this.client.command(MusicAssistantProvider.MEDIA_MA[kind].library, { limit });
     const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);
     return items.map((r) => this.toProviderMedia(rec(r))).filter((r): r is ProviderMediaItem => r !== null);
   }
@@ -825,6 +833,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
           title,
           durationSec: dur ?? null,
           subtitle: str(md['description']) ?? null,
+          releaseDate: str(md['release_date']) ?? null,
           resumeMs: num(ep['resume_position_ms']) ?? null,
           fullyPlayed: ep['fully_played'] === true,
         };

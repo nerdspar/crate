@@ -171,7 +171,7 @@ function updateAddToolbar(): void {
   const extra = EXTRA_MEDIA.find((m) => m.kind === addType);
   addSearchInput.placeholder = extra
     ? `Search ${extra.name.toLowerCase()} — by name…`
-    : `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
+    : `Search your library & sources — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
   // "Add all" for every type — albums import your library, playlists add all your library
   // playlists, and an extra kind adds every item of it saved in Music Assistant.
   importBtn.hidden = false;
@@ -277,9 +277,27 @@ async function reloadAdd(reset: boolean): Promise<void> {
       if (token !== addToken) return;
     } else {
       // An extra media kind (radio/podcast/audiobook): saved items on top, catalog search below.
+      // "Your library" here = what you've added to the Crate shelf (the source of truth for
+      // "added"), unioned with any MA-library items you haven't added yet. Adding writes to the
+      // Crate shelf, not MA's library, so relying on listLibraryMedia alone hid just-added items.
       const kind = addType as ExtraMediaKind;
-      let lib = await client.listLibraryMedia(kind);
+      const shelfId = EXTRA_MEDIA.find((m) => m.kind === kind)?.shelfId;
+      const [maLib, shelf] = await Promise.all([
+        client.listLibraryMedia(kind),
+        shelfId ? client.getShelf(shelfId).catch(() => ({ items: [] as ShelfItem[] })) : Promise.resolve({ items: [] as ShelfItem[] }),
+      ]);
       if (token !== addToken) return;
+      const added: MediaBrowseItem[] = shelf.items.map((it) => ({
+        providerUri: it.providerUri ?? it.albumId,
+        provider: '',
+        name: it.title,
+        description: it.artist || null,
+        artworkUrl: it.artworkUrl,
+        onShelf: true,
+        kind,
+      }));
+      const addedNames = new Set(added.map((a) => a.name.toLowerCase()));
+      let lib = [...added, ...maLib.filter((r) => !addedNames.has(r.name.toLowerCase()))];
       if (q) {
         const ql = q.toLowerCase();
         lib = lib.filter((r) => r.name.toLowerCase().includes(ql) || (r.description ?? '').toLowerCase().includes(ql));

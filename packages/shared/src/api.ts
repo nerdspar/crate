@@ -396,6 +396,8 @@ export interface PodcastEpisode {
   durationSec: number | null;
   /** Human date/subtitle line, or null. */
   subtitle: string | null;
+  /** Episode release date (ISO), or null. */
+  releaseDate: string | null;
   /** Playback progress into the episode, ms; null if unstarted. */
   resumeMs: number | null;
   /** True once finished. */
@@ -403,6 +405,8 @@ export interface PodcastEpisode {
 }
 export interface PodcastEpisodesResponse {
   episodes: PodcastEpisode[];
+  /** The podcast's full description/blurb, or null. Shown behind a "More" expander. */
+  about?: string | null;
 }
 
 /** One audiobook chapter — a labelled seek offset. */
@@ -418,6 +422,8 @@ export interface AudiobookDetail {
   resumeMs: number | null;
   fullyPlayed: boolean;
   chapters: AudiobookChapter[];
+  /** The book's full synopsis, or null. Shown behind a "More" expander. */
+  about?: string | null;
 }
 
 export interface PlayersResponse {

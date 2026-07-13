@@ -539,6 +539,23 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 }
 .ab-over:active { opacity: 1; background: rgba(236,231,221,0.1); }
 
+/* Episode release date — a dim subtitle under the episode title. */
+.track.ep .ep-date { display: block; font-size: 1.35vh; color: var(--ink-dim); margin-top: 0.35vh; }
+
+/* Collapsible synopsis (podcast/audiobook "about"): clamped to a few lines with a More/Less
+   toggle. The whole block sits above the episode/chapter list. */
+.md-about { padding: 0.6vh 0.4vh 1vh; border-bottom: 1px solid rgba(236,231,221,0.08); margin-bottom: 0.4vh; }
+.md-about-text {
+  font-size: 1.7vh; line-height: 1.5; color: var(--ink-dim); white-space: pre-line;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.md-about.open .md-about-text { -webkit-line-clamp: unset; overflow: visible; }
+.md-about-toggle {
+  margin-top: 0.5vh; font: inherit; font-size: 1.5vh; font-weight: 600;
+  color: var(--brass); background: transparent; border: none; padding: 0.3vh 0; cursor: pointer;
+  touch-action: manipulation;
+}
+
 .spine-label {
   writing-mode: vertical-rl;
   white-space: nowrap;

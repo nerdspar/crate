@@ -124,6 +124,7 @@ export class Service {
     this.ma.onConnect(() => {
       void this.refreshPlayers();
       void this.pushState();
+      void this.refreshExtraMediaMetadata(); // once: fix spine second lines on already-shelved items
     });
     // Reflect speaker renames / added / removed within ~1s (not just on reconnect).
     this.ma.onPlayersChanged(() => void this.refreshPlayers());
@@ -864,6 +865,31 @@ export class Service {
     this.hub.broadcast({ type: 'shelf' });
   }
 
+  /** Runs once after MA connects: re-resolve already-shelved podcasts/audiobooks so their spine
+      second line reflects the current mapping (author/publisher), not an old full-description
+      ingest. Touches only title/artist — no artwork re-processing — and broadcasts if anything
+      changed. Best-effort per item. */
+  private metaRefreshed = false;
+  private async refreshExtraMediaMetadata(): Promise<void> {
+    if (this.metaRefreshed) return;
+    this.metaRefreshed = true;
+    let changed = false;
+    for (const kind of ['podcast', 'audiobook'] as ExtraMediaKind[]) {
+      for (const shelfRow of this.db.listShelf(kind)) {
+        const row = this.db.getAlbum(shelfRow.id);
+        if (!row) continue;
+        const media = await this.ma.getMedia(row.provider_uri).catch(() => null);
+        if (!media) continue;
+        const artist =
+          media.description && media.description !== media.name ? media.description : kind === 'podcast' ? 'Podcast' : 'Audiobook';
+        if (row.artist === artist && row.title === media.name) continue;
+        this.db.upsertAlbum({ ...row, title: media.name, artist });
+        changed = true;
+      }
+    }
+    if (changed) this.hub.broadcast({ type: 'shelf' });
+  }
+
   /** Search one media kind across the connected sources; marks already-saved ones + attributes
       each hit to its source (the client filters + badges on that). */
   async searchMedia(kind: ExtraMediaKind, query: string, _source?: string): Promise<MediaSearchResponse> {
@@ -928,8 +954,11 @@ export class Service {
 
   /** A saved podcast's episodes, for its track-list detail view. */
   async podcastEpisodes(providerUri: string): Promise<PodcastEpisodesResponse> {
-    const episodes = await this.ma.listPodcastEpisodes(providerUri).catch((): ProviderEpisode[] => []);
-    return { episodes };
+    const [episodes, item] = await Promise.all([
+      this.ma.listPodcastEpisodes(providerUri).catch((): ProviderEpisode[] => []),
+      this.ma.getMedia(providerUri).catch(() => null),
+    ]);
+    return { episodes, about: item?.about ?? null };
   }
 
   /** An audiobook's progress + chapter list, for its reader view. */
@@ -940,6 +969,7 @@ export class Service {
       resumeMs: item?.resumeMs ?? null,
       fullyPlayed: item?.fullyPlayed ?? false,
       chapters: (item?.chapters ?? []).map((c) => ({ title: c.title, startSec: c.startSec })),
+      about: item?.about ?? null,
     };
   }
 
