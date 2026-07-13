@@ -2817,28 +2817,29 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
     // Container appended synchronously so cardify() wraps it into the section card; the toggles
     // fill it once settings + sources load.
     const tabsWrap = document.createElement('div');
+    tabsWrap.className = 'media-tabs';
     body.appendChild(tabsWrap);
     void Promise.all([client.getSettings(), client.getSources()])
       .then(([st, srcs]) => {
-        const capable = (f: string): boolean => srcs.some((s) => (s.features ?? []).includes(f));
         const state: SourceKinds = {
           radio: st.mediaTabs?.radio !== false,
           podcast: st.mediaTabs?.podcast !== false,
           audiobook: st.mediaTabs?.audiobook !== false,
         };
         for (const m of EXTRA_MEDIA) {
-          const has = capable(m.feature);
+          const names = [...new Set(srcs.filter((s) => (s.features ?? []).includes(m.feature)).map((s) => s.name))];
+          const has = names.length > 0;
           const tf = document.createElement('div');
-          tf.className = 'field field-toggle';
-          if (!has) tf.style.opacity = '0.55';
+          tf.className = 'field field-toggle media-tab' + (has ? '' : ' media-tab-off');
           const row = document.createElement('label');
           row.className = 'switch-row';
           const span = document.createElement('span');
           span.className = 'switch-label';
-          span.textContent = m.name + (has ? '' : ' — no source connected');
+          span.textContent = m.name;
           const cb = document.createElement('input');
           cb.type = 'checkbox';
-          cb.checked = state[m.kind];
+          cb.checked = has && state[m.kind];
+          cb.disabled = !has; // can't enable a tab when no connected source serves it
           cb.addEventListener('change', () => {
             state[m.kind] = cb.checked;
             const next: SourceKinds = { ...state };
@@ -2846,14 +2847,19 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
               .putSettings({ mediaTabs: next })
               .then(() => {
                 if (settings) settings.mediaTabs = next;
-                sourceKinds = { radio: capable('library_radios'), podcast: capable('library_podcasts'), audiobook: capable('library_audiobooks') };
+                const cap = (f: string): boolean => srcs.some((s) => (s.features ?? []).includes(f));
+                sourceKinds = { radio: cap('library_radios'), podcast: cap('library_podcasts'), audiobook: cap('library_audiobooks') };
                 updateMediaSegments();
                 showToast('Saved');
               })
               .catch(maErr);
           });
           row.append(span, cb);
-          tf.appendChild(row);
+          // The connected sources that serve this kind — or a prompt to add one.
+          const note = document.createElement('p');
+          note.className = 'field-desc' + (has ? '' : ' media-tab-note');
+          note.textContent = has ? names.join(', ') : 'No compatible source — add one under Sources to enable this tab.';
+          tf.append(row, note);
           tabsWrap.appendChild(tf);
         }
       })
