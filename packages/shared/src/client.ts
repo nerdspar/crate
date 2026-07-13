@@ -15,9 +15,10 @@ import type {
   PlayRequest,
   PlayersResponse,
   ProviderAlbumDetail,
-  RadioSearchResponse,
-  RadioStation,
-  RadioSyncResult,
+  MediaBrowseItem,
+  MediaSearchResponse,
+  MediaSyncResult,
+  PodcastEpisodesResponse,
   RepeatRequest,
   SearchAlbum,
   SearchSong,
@@ -32,7 +33,7 @@ import type {
   UpdateTarget,
   VolumeRequest,
 } from './api.js';
-import type { Settings, Shelf, Track } from './domain.js';
+import type { ExtraMediaKind, Settings, Shelf, Track } from './domain.js';
 import type { MaConfigEntry, MaConfigValue, MaConnection, MaProviderManifest, MaSource, MaStatus } from './ma.js';
 import type { BackupImportResult, BackupInterval, BackupRunResult, CrateBackup, GithubBackupConfig } from './backup.js';
 
@@ -197,24 +198,28 @@ export class CrateClient {
     return this.post('/api/playlists/prewarm', { providerUri });
   }
 
-  // --- Radio (stations from TuneIn etc. via MA) ---
-  /** Search radio stations across the connected radio sources. */
-  searchRadio(query: string, source?: string): Promise<RadioSearchResponse> {
+  // --- Extra media: radio / podcasts / audiobooks (via MA) ---
+  /** Search one media kind across the connected sources. */
+  searchMedia(kind: ExtraMediaKind, query: string, source?: string): Promise<MediaSearchResponse> {
     const q = new URLSearchParams({ q: query });
     if (source && source !== 'all') q.set('source', source);
-    return this.req(`/api/radio/search?${q.toString()}`);
+    return this.req(`/api/media/${kind}/search?${q.toString()}`);
   }
-  /** The stations already saved in MA's library (e.g. your custom TuneIn stations). */
-  listLibraryRadios(): Promise<RadioStation[]> {
-    return this.req('/api/radio/library');
+  /** A source's items of one kind already saved in the MA library. */
+  listLibraryMedia(kind: ExtraMediaKind): Promise<MediaBrowseItem[]> {
+    return this.req(`/api/media/${kind}/library`);
   }
-  /** Save one station to Crate's Radio shelf. */
-  addRadio(providerUri: string): Promise<{ ok: true }> {
-    return this.post('/api/radio', { providerUri });
+  /** Save one item of a kind to its Crate shelf. */
+  addMedia(kind: ExtraMediaKind, providerUri: string): Promise<{ ok: true }> {
+    return this.post(`/api/media/${kind}`, { providerUri });
   }
-  /** Pull MA's saved library radios onto the Radio shelf; returns how many were added. */
-  syncRadios(): Promise<RadioSyncResult> {
-    return this.post('/api/radio/sync', {});
+  /** Pull a kind's saved MA-library items onto its shelf; returns how many were added. */
+  syncMedia(kind: ExtraMediaKind): Promise<MediaSyncResult> {
+    return this.post(`/api/media/${kind}/sync`, {});
+  }
+  /** A saved podcast's episodes. */
+  podcastEpisodes(providerUri: string): Promise<PodcastEpisodesResponse> {
+    return this.req(`/api/media/podcast/episodes?uri=${encodeURIComponent(providerUri)}`);
   }
 
   removeFromShelf(albumId: string): Promise<{ ok: true }> {

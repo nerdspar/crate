@@ -1,6 +1,26 @@
 /** Core domain types shared across the device service, shelf, and admin. */
 
-export type MediaKind = 'album' | 'playlist' | 'radio';
+export type MediaKind = 'album' | 'playlist' | 'radio' | 'podcast' | 'audiobook';
+
+/** The media kinds beyond albums/playlists that live on their own virtual shelf + tab, each
+    powered by a Music Assistant source feature. Radio is a live stream; a podcast is a
+    container of episodes; an audiobook is a single resumable item. */
+export type ExtraMediaKind = 'radio' | 'podcast' | 'audiobook';
+export interface MediaKindInfo {
+  kind: ExtraMediaKind;
+  /** MA `supported_features` flag a source must advertise to serve this kind. */
+  feature: string;
+  /** Virtual shelf id (also the tab's data-kind) + its display name. */
+  shelfId: string;
+  name: string;
+}
+export const EXTRA_MEDIA: readonly MediaKindInfo[] = [
+  { kind: 'radio', feature: 'library_radios', shelfId: 'radio', name: 'Radio' },
+  { kind: 'podcast', feature: 'library_podcasts', shelfId: 'podcasts', name: 'Podcasts' },
+  { kind: 'audiobook', feature: 'library_audiobooks', shelfId: 'audiobooks', name: 'Audiobooks' },
+];
+/** Whether the connected sources can serve each extra media kind (drives tab visibility). */
+export type SourceKinds = Record<ExtraMediaKind, boolean>;
 
 /** Extracted artwork palette (§4). Colors are `#rrggbb`. */
 export interface Palette {
@@ -163,7 +183,7 @@ export interface Stack {
 /** A shelf holds albums, playlists, or radio stations (never mixed). "All" is the
     virtual shelf of every album (id 'all'); "Radio" (id 'radio') is the virtual
     shelf of every saved station. */
-export type ShelfKind = 'album' | 'playlist' | 'radio';
+export type ShelfKind = 'album' | 'playlist' | 'radio' | 'podcast' | 'audiobook';
 export interface Shelf {
   id: string;
   name: string;
@@ -272,6 +292,9 @@ export interface Settings {
   /** Custom display label per music-source instance id, e.g. { "apple_music--ab12": "Apple Music — Alex" }.
       Lets two accounts of the same provider be told apart in results, badges and the source filter. */
   sourceLabels: Record<string, string>;
+  /** Per-extra-media-kind tab visibility (default all on). A tab shows only when a capable source
+      is connected AND the user hasn't hidden it here. */
+  mediaTabs: SourceKinds;
   afterPlay: AfterPlay;
   /** What to do when an album's last track finishes (stop / repeat / next on shelf). */
   afterAlbum: AfterAlbum;
@@ -339,6 +362,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultPlayerId: null,
   defaultSource: 'all',
   sourceLabels: {},
+  mediaTabs: { radio: true, podcast: true, audiobook: true },
   afterPlay: 'linger',
   afterAlbum: 'next',
   afterPlayLingerSec: 8,

@@ -53,15 +53,26 @@ export interface ProviderArtist {
   artworkUrl: string | null;
 }
 
-/** A radio station (e.g. from TuneIn) — a live stream, no tracks. */
-export interface ProviderRadio {
-  /** Provider playback ref, e.g. `library://radio/1` or `tunein--xxx://radio/s27421`. */
+/** A browsable extra-media item — radio station, podcast, or audiobook. Radio is a live
+    stream; a podcast is a container (fetch its episodes); an audiobook plays directly. */
+export interface ProviderMediaItem {
+  /** Provider playback ref, e.g. `library://radio/1`, `spotify://podcast/…`, `…://audiobook/…`. */
   providerUri: string;
   provider: string;
   name: string;
-  /** Station tagline / network (shown where an album shows the artist); null if none. */
+  /** Second line — station tagline, podcast publisher, or audiobook author(s); null if none. */
   description: string | null;
   artworkUrl: string | null;
+}
+/** @deprecated alias — radio is now one `ProviderMediaItem` kind. */
+export type ProviderRadio = ProviderMediaItem;
+
+/** One podcast episode (a playable child of a podcast container). */
+export interface ProviderEpisode {
+  trackUri: string;
+  title: string;
+  durationSec: number | null;
+  subtitle: string | null;
 }
 
 export interface ProviderPlayer {

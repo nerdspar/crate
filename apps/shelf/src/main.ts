@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 // Weights span light→heavy so the ink-weight setting has real range to move across.
 import '@fontsource/archivo-narrow/400.css';
@@ -36,19 +36,25 @@ let settings: Settings = { ...DEFAULT_SETTINGS };
 let shelves: Shelf[] = [];
 let activeShelf = 'all';
 let shelfTab: ShelfKind = 'album';
-let hasRadioSource = false; // is a radio-capable source (TuneIn etc.) connected? → show the Radio tab
+let sourceKinds: SourceKinds = { radio: false, podcast: false, audiobook: false }; // which extra kinds a source serves
+/** Virtual (non-editable) shelf ids: the built-ins plus the extra-media shelves. */
+const VIRTUAL_SHELVES = new Set<string>(['all', 'playlists', ...EXTRA_MEDIA.map((m) => m.shelfId)]);
 let shelfAdding = false; // showing the inline "name this shelf" box
 
-/** Show the Radio find-tab only when a radio source is connected; if it vanishes while active,
-    fall back to Albums. Called whenever a shelf response lands (carries hasRadioSource). */
-function updateRadioTab(): void {
-  const tab = document.querySelector<HTMLElement>('.find-shelf-tab[data-kind="radio"]');
-  if (tab) tab.style.display = hasRadioSource ? '' : 'none';
-  if (!hasRadioSource && shelfTab === 'radio') {
-    shelfTab = 'album';
-    document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset['kind'] === 'album'));
-    if (activeShelf === 'radio') void switchShelf('all');
-    else renderShelfList();
+/** Show each extra-media find-tab (Radio/Podcasts/Audiobooks) only when a capable source is
+    connected AND the user hasn't hidden it in settings. If the active tab hides, fall back to
+    Albums. Called whenever a shelf response lands (carries sourceKinds). */
+function updateMediaTabs(): void {
+  for (const m of EXTRA_MEDIA) {
+    const show = sourceKinds[m.kind] && (settings.mediaTabs?.[m.kind] ?? true);
+    const tab = document.querySelector<HTMLElement>(`.find-shelf-tab[data-kind="${m.kind}"]`);
+    if (tab) tab.style.display = show ? '' : 'none';
+    if (!show && shelfTab === m.kind) {
+      shelfTab = 'album';
+      document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset['kind'] === 'album'));
+      if (activeShelf === m.shelfId) void switchShelf('all');
+      else renderShelfList();
+    }
   }
 }
 let shelfDeleteArmed: string | null = null; // shelf id whose ✕ is armed for confirm
@@ -914,6 +920,35 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
   // A radio station is a live stream — no track list. Show a single "live" row instead.
   if (item.kind === 'radio') {
     wrap.innerHTML = `<div class="track radio-live"><span class="n">◉</span><span class="tt">Live radio stream</span></div>`;
+    return;
+  }
+  // An audiobook plays as one resumable item — the card's Play button starts it.
+  if (item.kind === 'audiobook') {
+    wrap.innerHTML = `<div class="track radio-live"><span class="n">▶</span><span class="tt">Audiobook — press Play to start</span></div>`;
+    return;
+  }
+  // A podcast is a container of episodes — list them; double-tap an episode to play it.
+  if (item.kind === 'podcast') {
+    wrap.innerHTML = `<div class="track"><span class="tt">Loading episodes…</span></div>`;
+    const uri = item.providerUri;
+    const episodes = uri ? (await client.podcastEpisodes(uri).catch(() => ({ episodes: [] as PodcastEpisode[] }))).episodes : [];
+    if (openIdx !== i) return;
+    if (!episodes.length) {
+      wrap.innerHTML = `<div class="track"><span class="tt">No episodes.</span></div>`;
+      return;
+    }
+    wrap.innerHTML = '';
+    episodes.forEach((ep, ti) => {
+      const row = document.createElement('div');
+      row.className = 'track';
+      const dur = ep.durationSec ? fmtDur(ep.durationSec) : '';
+      row.innerHTML = `<span class="n">${ti + 1}</span><span class="tt">${escapeHtml(ep.title)}</span><span class="dur">${dur}</span>`;
+      row.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        void playEpisode(i, ep);
+      });
+      wrap.appendChild(row);
+    });
     return;
   }
   const draw = (tracks: Track[], cueIdx: number): void => {
@@ -3422,6 +3457,15 @@ function songResultCard(s: SearchSong): HTMLElement {
 }
 
 /** Play a searched song now: resolve its album + track index, play from that track. */
+/** Play one podcast episode by its uri on the current play target. */
+async function playEpisode(i: number, ep: PodcastEpisode): Promise<void> {
+  const item = items[i]!;
+  await client
+    .play({ albumId: item.albumId, trackUris: [ep.trackUri], ...(activePlayerId ? { playerId: activePlayerId } : {}) })
+    .catch(() => {});
+  showToast(`Playing ${ep.title}`);
+}
+
 async function playSong(trackUri: string): Promise<void> {
   if (activePlayerId && activeSolo) await ungroupActiveSoloIfNeeded();
   try {
@@ -3940,8 +3984,8 @@ async function makeSongShelfFromPlaylist(pl: LibraryPlaylist): Promise<void> {
   }
   const res = await client.getShelf('playlists');
   shelves = res.shelves;
-  hasRadioSource = res.hasRadioSource;
-  updateRadioTab();
+  sourceKinds = res.sourceKinds;
+  updateMediaTabs();
   const media = res.items.find((it) => it.title === pl.name);
   if (!media) {
     showToast('Could not open shelf');
@@ -4119,7 +4163,7 @@ function renderShelfList(): void {
   }
   for (const s of shelves.filter((sh) => sh.kind === shelfTab)) {
     const selected = s.id === activeShelf;
-    const editable = selected && s.id !== 'all' && s.id !== 'playlists' && s.id !== 'radio';
+    const editable = selected && !VIRTUAL_SHELVES.has(s.id);
     const chip = document.createElement('div');
     chip.className = 'find-shelf chip' + (selected ? ' on' : '') + (editable ? ' has-actions' : '');
     if (editable && shelfRenaming === s.id) {
@@ -4176,9 +4220,9 @@ function renderShelfList(): void {
     }
     findShelfList.appendChild(chip);
   }
-  // Add control: album shelves are named here; playlist shelves come from the library;
-  // radio has one virtual shelf whose stations are added from the admin app (no control).
-  if (shelfTab === 'radio') {
+  // Add control: album shelves are named here; playlist shelves come from the library; the
+  // extra-media shelves (radio/podcasts/audiobooks) are curated from the admin app (no control).
+  if (EXTRA_MEDIA.some((m) => m.kind === shelfTab)) {
     /* nothing to add on the wall */
   } else if (shelfTab === 'playlist') {
     const add = document.createElement('button');
@@ -4292,8 +4336,8 @@ async function switchShelf(id: string, close = true): Promise<void> {
   activeShelf = id;
   items = res.items;
   shelves = res.shelves;
-  hasRadioSource = res.hasRadioSource;
-  updateRadioTab();
+  sourceKinds = res.sourceKinds;
+  updateMediaTabs();
   applySort();
   openIdx = null;
   buildShelf();
@@ -5325,8 +5369,8 @@ async function reloadShelf(): Promise<void> {
   const openId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
   items = res.items;
   shelves = res.shelves;
-  hasRadioSource = res.hasRadioSource;
-  updateRadioTab();
+  sourceKinds = res.sourceKinds;
+  updateMediaTabs();
   applySort();
   openIdx = null;
   buildShelf();
@@ -5591,14 +5635,14 @@ window.addEventListener('scroll', () => {
 /* ---------- Boot ---------- */
 async function boot(): Promise<void> {
   const [shelfRes, playersRes, settingsRes] = await Promise.all([
-    client.getShelf().catch(() => ({ items: [], stacks: [], shelves: [], hasRadioSource: false })),
+    client.getShelf().catch(() => ({ items: [], stacks: [], shelves: [], sourceKinds: { radio: false, podcast: false, audiobook: false } })),
     client.getPlayers().catch(() => ({ players: [], state: [] })),
     client.getSettings().catch(() => settings),
   ]);
   items = shelfRes.items;
   shelves = shelfRes.shelves;
-  hasRadioSource = shelfRes.hasRadioSource;
-  updateRadioTab();
+  sourceKinds = shelfRes.sourceKinds;
+  updateMediaTabs();
   players = playersRes.players;
   settings = settingsRes;
   searchSource = settings.defaultSource || 'all'; // start search filtered to the configured default

@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
+  AddMediaRequest,
   AddPlaylistRequest,
-  AddRadioRequest,
   AddToShelfRequest,
   BrightnessRequest,
   CrateBackup,
   CreateShelfRequest,
+  ExtraMediaKind,
   GroupRequest,
   MaConfigValue,
   OverrideRequest,
@@ -18,6 +19,7 @@ import type {
   UpdateTarget,
   VolumeRequest,
 } from '@crate/shared';
+import { EXTRA_MEDIA } from '@crate/shared';
 import type { Service } from './service.js';
 import type { Auth } from './auth.js';
 
@@ -282,19 +284,36 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return uri ? service.providerPlaylistTracks(uri) : [];
   });
 
-  // --- Radio (stations from TuneIn etc. via MA) ---
-  app.get('/api/radio/library', () => service.listLibraryRadios());
-  app.get('/api/radio/search', (req) => {
-    const q = req.query as { q?: string; source?: string };
-    return service.searchRadio((q.q ?? '').trim(), q.source);
+  // --- Extra media: radio / podcasts / audiobooks (via MA) ---
+  const MEDIA_KINDS = new Set<string>(EXTRA_MEDIA.map((m) => m.kind));
+  const asKind = (reply: FastifyReply, k: string): ExtraMediaKind | null => {
+    if (MEDIA_KINDS.has(k)) return k as ExtraMediaKind;
+    void reply.code(404).send({ error: 'unknown media kind' });
+    return null;
+  };
+  app.get('/api/media/:kind/library', (req, reply) => {
+    const kind = asKind(reply, (req.params as { kind: string }).kind);
+    return kind ? service.listLibraryMedia(kind) : undefined;
   });
-  app.post('/api/radio', async (req) => {
-    const b = req.body as AddRadioRequest;
-    await service.addRadio(b.providerUri);
+  app.get('/api/media/:kind/search', (req, reply) => {
+    const kind = asKind(reply, (req.params as { kind: string }).kind);
+    if (!kind) return undefined;
+    const q = req.query as { q?: string; source?: string };
+    return service.searchMedia(kind, (q.q ?? '').trim(), q.source);
+  });
+  app.post('/api/media/:kind', async (req, reply) => {
+    const kind = asKind(reply, (req.params as { kind: string }).kind);
+    if (!kind) return undefined;
+    await service.addMedia(kind, (req.body as AddMediaRequest).providerUri);
     return { ok: true };
   });
-  // Import every station saved in MA's library onto the Radio shelf.
-  app.post('/api/radio/sync', () => service.syncLibraryRadios());
+  // Import every saved item of a kind from MA's library onto its shelf.
+  app.post('/api/media/:kind/sync', (req, reply) => {
+    const kind = asKind(reply, (req.params as { kind: string }).kind);
+    return kind ? service.syncLibraryMedia(kind) : undefined;
+  });
+  // A saved podcast's episodes (for its track-list view).
+  app.get('/api/media/podcast/episodes', (req) => service.podcastEpisodes((req.query as { uri?: string }).uri ?? ''));
 
   // Per-album overrides: upload custom spine/cover, or set label font/color/spacing.
   app.post('/api/albums/:id/art/:kind', async (req, reply) => {

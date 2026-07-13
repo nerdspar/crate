@@ -3,6 +3,7 @@
 import type {
   Album,
   AlbumOverride,
+  ExtraMediaKind,
   InkSize,
   InkWeight,
   LabelLayoutFixed,
@@ -13,6 +14,7 @@ import type {
   Shelf,
   ShelfItem,
   ShelfKind,
+  SourceKinds,
   SpineMode,
   Stack,
   Track,
@@ -42,9 +44,9 @@ export interface ShelfResponse {
   items: ShelfItem[];
   stacks: Stack[];
   shelves: Shelf[];
-  /** True when a radio-capable source (e.g. TuneIn) is connected — the front-ends show the
-      Radio tab only then. */
-  hasRadioSource: boolean;
+  /** Which extra media kinds a connected source can serve (radio/podcast/audiobook) — the
+      front-ends reveal each tab only when its kind is true (and not hidden in settings). */
+  sourceKinds: SourceKinds;
 }
 
 export interface CreateShelfRequest {
@@ -340,32 +342,54 @@ export interface AddPlaylistRequest {
 
 /** A radio station (from a music-provider like TuneIn via MA), plus whether it's
     already saved to Crate's Radio shelf. Radio has no tracks — it's a live stream. */
-export interface RadioStation {
+/** A browsable extra-media item (radio station / podcast / audiobook) and whether it's saved.
+    Radio is a live stream; a podcast is opened for its episodes; an audiobook plays directly. */
+export interface MediaBrowseItem {
   providerUri: string;
   provider: string;
   name: string;
-  /** Station tagline / network (shown where an album shows the artist); null if none. */
+  /** Second line — station tagline, podcast publisher, or audiobook author(s); null if none. */
   description: string | null;
   artworkUrl: string | null;
   onShelf: boolean;
-  /** Streaming source display name (e.g. "Tune-In Radio"); optional. */
+  /** Streaming source display name (e.g. "Spotify"); optional. */
   source?: string;
+  kind?: ExtraMediaKind;
 }
+/** @deprecated alias kept for the radio call sites. */
+export type RadioStation = MediaBrowseItem;
 
-/** Radio search: stations across the connected radio sources, plus the source list. */
-export interface RadioSearchResponse {
-  stations: RadioStation[];
+/** Extra-media search: matching items across the connected sources, plus the source list. */
+export interface MediaSearchResponse {
+  items: MediaBrowseItem[];
   sources: MusicSourceInfo[];
 }
+export type RadioSearchResponse = MediaSearchResponse;
 
-export interface AddRadioRequest {
+export interface AddMediaRequest {
   providerUri: string;
 }
+export type AddRadioRequest = AddMediaRequest;
 
-/** Result of syncing MA's saved radio stations into Crate's Radio shelf. */
-export interface RadioSyncResult {
+/** Result of syncing a source's saved items of one kind into its Crate shelf. */
+export interface MediaSyncResult {
   added: number;
   total: number;
+}
+export type RadioSyncResult = MediaSyncResult;
+
+/** One podcast episode — rendered in the podcast's track-list view and playable by uri. */
+export interface PodcastEpisode {
+  /** Playable episode uri. */
+  trackUri: string;
+  title: string;
+  /** Seconds, or null. */
+  durationSec: number | null;
+  /** Human date/subtitle line, or null. */
+  subtitle: string | null;
+}
+export interface PodcastEpisodesResponse {
+  episodes: PodcastEpisode[];
 }
 
 export interface PlayersResponse {

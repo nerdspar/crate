@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, isSpeaker, type AutoUpdateConfig, type CrateBackup, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MusicSourceInfo, type OverrideRequest, type Player, type RadioStation, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
+import { CrateClient, EXTRA_MEDIA, isSpeaker, type AutoUpdateConfig, type CrateBackup, type ExtraMediaKind, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MediaBrowseItem, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type SourceKinds, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -19,7 +19,9 @@ const toast = document.getElementById('toast') as HTMLElement;
 
 type ShelfView = 'list' | 'tile';
 type ShelfSort = 'custom' | 'added' | 'artist' | 'title' | 'year';
-type AddType = 'album' | 'playlist' | 'radio';
+type AddType = 'album' | 'playlist' | ExtraMediaKind;
+const emptyMediaMap = <T>(v: () => T): Record<ExtraMediaKind, T> => ({ radio: v(), podcast: v(), audiobook: v() });
+const isExtraKind = (t: AddType): t is ExtraMediaKind => EXTRA_MEDIA.some((m) => m.kind === t);
 
 // Add tab: one search over your library + the catalog, per content type. Source-aware.
 let addType: AddType = 'album';
@@ -30,8 +32,9 @@ let libAlbums: LibraryAlbum[] = [];
 let catAlbums: SearchAlbum[] = [];
 let libPlaylists: LibraryPlaylist[] = [];
 let catPlaylists: LibraryPlaylist[] = [];
-let libRadios: RadioStation[] = []; // your saved MA radio stations
-let catRadios: RadioStation[] = []; // radio search results (TuneIn etc.)
+// Saved + catalog-search results per extra media kind (radio/podcast/audiobook).
+const libMedia: Record<ExtraMediaKind, MediaBrowseItem[]> = emptyMediaMap(() => []);
+const catMedia: Record<ExtraMediaKind, MediaBrowseItem[]> = emptyMediaMap(() => []);
 let addOffset = 0;
 let addHasMore = false;
 let addLoading = false;
@@ -42,14 +45,17 @@ let settings: Settings | null = null;
 const crateMembers = new Map<string, Set<string>>(); // shelf id → member album ids (named shelves)
 let libraryCount = 0; // size of the "All" shelf
 let playlistCount = 0; // size of the "All Playlists" shelf
-let radioCount = 0; // size of the "Radio" shelf
-let hasRadioSource = false; // a radio-capable source (TuneIn etc.) is connected → show the Radio segments
+const mediaCounts: Record<ExtraMediaKind, number> = emptyMediaMap(() => 0); // size of each extra-media shelf
+let sourceKinds: SourceKinds = { radio: false, podcast: false, audiobook: false }; // which extra kinds a source serves
 
-/** Show the Radio segments (Add + Shelves) only when a radio source is connected; if it vanishes
-    while Radio is the active type, fall back to Albums. */
-function updateRadioSegments(): void {
-  document.querySelectorAll<HTMLElement>('.seg-btn[data-type="radio"]').forEach((b) => (b.style.display = hasRadioSource ? '' : 'none'));
-  if (!hasRadioSource && addType === 'radio') setContentType('album');
+/** Show each extra-media segment (Radio/Podcasts/Audiobooks) only when a capable source is
+    connected AND the user hasn't hidden it; fall back to Albums if the active one vanishes. */
+function updateMediaSegments(): void {
+  for (const m of EXTRA_MEDIA) {
+    const show = sourceKinds[m.kind] && (settings?.mediaTabs?.[m.kind] ?? true);
+    document.querySelectorAll<HTMLElement>(`.seg-btn[data-type="${m.kind}"]`).forEach((b) => (b.style.display = show ? '' : 'none'));
+    if (!show && addType === m.kind) setContentType('album');
+  }
 }
 const playlistSongCounts = new Map<string, number>(); // named playlist shelf id → song count
 
@@ -162,15 +168,15 @@ function mkBtn(label: string, cls: string): HTMLButtonElement {
 const taKey = (t: string, a: string): string => `${t} ${a}`.toLowerCase().replace(/\s+/g, ' ').trim();
 
 function updateAddToolbar(): void {
-  addSearchInput.placeholder =
-    addType === 'radio'
-      ? 'Search radio stations — name or network…'
-      : `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
+  const extra = EXTRA_MEDIA.find((m) => m.kind === addType);
+  addSearchInput.placeholder = extra
+    ? `Search ${extra.name.toLowerCase()} — by name…`
+    : `Search your library & Apple Music — ${addType === 'album' ? 'album or artist' : 'playlist'}…`;
   // "Add all" for every type — albums import your library, playlists add all your library
-  // playlists, radio adds every station saved in Music Assistant.
+  // playlists, and an extra kind adds every item of it saved in Music Assistant.
   importBtn.hidden = false;
   importBtn.textContent = 'Add all';
-  syncSourceSel(); // hide the album-source dropdown when on Radio
+  syncSourceSel(); // hide the album-source dropdown for the extra media kinds
 }
 // Albums vs Playlists is one shared choice across Add and Shelves.
 function setContentType(type: AddType): void {
@@ -189,9 +195,9 @@ document
 
 function syncSourceSel(): void {
   const picks = albumSources();
-  if (addType === 'radio' || picks.length <= 1) {
-    // Radio searches all radio providers; the album-source dropdown doesn't apply. And with a single
-    // album source there's nothing to switch between.
+  if (isExtraKind(addType) || picks.length <= 1) {
+    // The extra media kinds search all their providers; the album-source dropdown doesn't apply.
+    // And with a single album source there's nothing to switch between.
     sourceSel.hidden = true;
     return;
   }
@@ -270,15 +276,16 @@ async function reloadAdd(reset: boolean): Promise<void> {
       catPlaylists = q ? await client.searchPlaylists(q) : [];
       if (token !== addToken) return;
     } else {
-      // Radio: your saved stations on top, plus TuneIn (etc.) search results below.
-      let radios = await client.listLibraryRadios();
+      // An extra media kind (radio/podcast/audiobook): saved items on top, catalog search below.
+      const kind = addType as ExtraMediaKind;
+      let lib = await client.listLibraryMedia(kind);
       if (token !== addToken) return;
       if (q) {
         const ql = q.toLowerCase();
-        radios = radios.filter((r) => r.name.toLowerCase().includes(ql) || (r.description ?? '').toLowerCase().includes(ql));
+        lib = lib.filter((r) => r.name.toLowerCase().includes(ql) || (r.description ?? '').toLowerCase().includes(ql));
       }
-      libRadios = radios;
-      catRadios = q ? (await client.searchRadio(q)).stations : [];
+      libMedia[kind] = lib;
+      catMedia[kind] = q ? (await client.searchMedia(kind, q)).items : [];
       if (token !== addToken) return;
     }
     renderAdd();
@@ -310,7 +317,7 @@ function renderAdd(): void {
   const searching = !!addQuery;
   addListEl.className = '';
   addListEl.innerHTML = '';
-  const kind = addType === 'album' ? 'albums' : addType === 'playlist' ? 'playlists' : 'stations';
+  const kind = addType === 'album' ? 'albums' : addType === 'playlist' ? 'playlists' : (EXTRA_MEDIA.find((m) => m.kind === addType)?.name.toLowerCase() ?? 'items');
   // Source filter (the dropdown) applied client-side so playlists filter by source just like
   // albums. curSource is a provider instance id; results carry the source display name.
   const curSrcName = curSource === 'all' ? null : (sources.find((s) => s.instanceId === curSource)?.name ?? null);
@@ -319,9 +326,9 @@ function renderAdd(): void {
   // Browsing (no query): just your library, one flat grid.
   if (!searching) {
     const cards =
-      addType === 'album' ? bySrc(libAlbums).map(albumCard) : addType === 'playlist' ? bySrc(libPlaylists).map(playlistCard) : libRadios.map(radioCard);
+      addType === 'album' ? bySrc(libAlbums).map(albumCard) : addType === 'playlist' ? bySrc(libPlaylists).map(playlistCard) : libMedia[addType].map(mediaCard);
     if (!cards.length) {
-      const hint = addType === 'radio' ? 'No saved stations yet — search above, or Sync saved.' : `No ${kind} in your library yet.`;
+      const hint = isExtraKind(addType) ? `No saved ${kind} yet — search above, or Add all.` : `No ${kind} in your library yet.`;
       addListEl.innerHTML = `<div class="empty">${hint}</div>`;
       addMoreBtn.hidden = true;
       return;
@@ -380,24 +387,27 @@ function renderAdd(): void {
     if (owned.length) addSection('In your library', owned.map(playlistCard));
     if (catalog.length) addSection(catalogLabel(), catalog.map(playlistCard));
   } else {
-    // Radio: On your shelf → Your saved stations → From radio search.
+    // An extra media kind: On your shelf → Saved → From search.
+    const k = addType as ExtraMediaKind;
+    const lib = libMedia[k];
+    const cat = catMedia[k];
     const seen = new Set<string>();
-    const dedupe = (r: RadioStation): boolean => {
+    const dedupe = (r: MediaBrowseItem): boolean => {
       if (seen.has(r.providerUri)) return false;
       seen.add(r.providerUri);
       return true;
     };
-    const libUris = new Set(libRadios.map((r) => r.providerUri));
-    const onShelf = [...libRadios.filter((r) => r.onShelf), ...catRadios.filter((r) => r.onShelf && !libUris.has(r.providerUri))].filter(dedupe);
-    const owned = libRadios.filter((r) => !r.onShelf);
-    const catalog = catRadios.filter((r) => !r.onShelf && !libUris.has(r.providerUri));
+    const libUris = new Set(lib.map((r) => r.providerUri));
+    const onShelf = [...lib.filter((r) => r.onShelf), ...cat.filter((r) => r.onShelf && !libUris.has(r.providerUri))].filter(dedupe);
+    const owned = lib.filter((r) => !r.onShelf);
+    const catalog = cat.filter((r) => !r.onShelf && !libUris.has(r.providerUri));
     if (!onShelf.length && !owned.length && !catalog.length) {
-      addListEl.innerHTML = `<div class="empty">No stations found.</div>`;
+      addListEl.innerHTML = `<div class="empty">No ${kind} found.</div>`;
       return;
     }
-    if (onShelf.length) addSection('On your shelf', onShelf.map(radioCard));
-    if (owned.length) addSection('Your saved stations', owned.map(radioCard));
-    if (catalog.length) addSection('From radio search', catalog.map(radioCard));
+    if (onShelf.length) addSection('On your shelf', onShelf.map(mediaCard));
+    if (owned.length) addSection(`Your saved ${kind}`, owned.map(mediaCard));
+    if (catalog.length) addSection('From search', catalog.map(mediaCard));
   }
 }
 
@@ -538,10 +548,11 @@ async function addPlaylistToShelf(p: LibraryPlaylist, card: HTMLElement, btn: HT
   }
 }
 
-function radioCard(r: RadioStation): HTMLElement {
+function mediaCard(r: MediaBrowseItem): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
-  const sub = r.description && r.description !== r.name ? r.description : (r.source ?? 'Radio');
+  const fallback = r.kind === 'podcast' ? 'Podcast' : r.kind === 'audiobook' ? 'Audiobook' : 'Radio';
+  const sub = r.description && r.description !== r.name ? r.description : (r.source ?? fallback);
   card.innerHTML = `
     ${artHtml(r.artworkUrl, r.source)}
     <div class="body">
@@ -558,18 +569,18 @@ function radioCard(r: RadioStation): HTMLElement {
     actions.append(b);
   } else {
     const b = mkBtn('Add', '');
-    b.addEventListener('click', () => void addRadioToShelf(r, card, b));
+    b.addEventListener('click', () => void addMediaToShelf(r, card, b));
     actions.append(b);
   }
   return card;
 }
 
-async function addRadioToShelf(r: RadioStation, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+async function addMediaToShelf(r: MediaBrowseItem, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
   btn.disabled = true;
   btn.textContent = 'Adding…';
   card.classList.add('busy');
   try {
-    await client.addRadio(r.providerUri);
+    await client.addMedia(r.kind ?? (addType as ExtraMediaKind), r.providerUri);
     r.onShelf = true;
     showToast(`Added ${r.name}`);
     renderAdd();
@@ -613,14 +624,15 @@ async function addAllPlaylists(): Promise<void> {
   }
 }
 
-/** "Sync saved" — pull every station saved in Music Assistant onto the Radio shelf. */
-async function syncSavedRadios(): Promise<void> {
+/** "Add all" for an extra kind — pull every saved item of it from Music Assistant onto its shelf. */
+async function syncSavedMedia(kind: ExtraMediaKind): Promise<void> {
+  const label = EXTRA_MEDIA.find((m) => m.kind === kind)?.name.toLowerCase() ?? 'items';
   const orig = importBtn.textContent;
   importBtn.disabled = true;
   importBtn.textContent = 'Syncing…';
   try {
-    const r = await client.syncRadios();
-    showToast(r.added ? `Added ${r.added} station${r.added === 1 ? '' : 's'}` : 'Saved stations already added');
+    const r = await client.syncMedia(kind);
+    showToast(r.added ? `Added ${r.added} ${label}` : `Saved ${label} already added`);
     await reloadAdd(true);
     void loadShelvesIndex();
   } catch (e) {
@@ -668,7 +680,7 @@ addClearBtn.addEventListener('click', () => {
   addSearchInput.focus();
   void reloadAdd(true);
 });
-importBtn.addEventListener('click', () => void (addType === 'radio' ? syncSavedRadios() : addType === 'playlist' ? addAllPlaylists() : importAll()));
+importBtn.addEventListener('click', () => void (isExtraKind(addType) ? syncSavedMedia(addType) : addType === 'playlist' ? addAllPlaylists() : importAll()));
 addMoreBtn.addEventListener('click', () => void reloadAdd(false));
 
 /* ================= Shelves — index ================= */
@@ -684,20 +696,21 @@ function albumCrates(): Shelf[] {
 
 async function loadShelvesIndex(): Promise<void> {
   try {
-    const [res, pl, ra] = [
-      await client.getShelf(),
-      await client.getShelf('playlists').catch(() => ({ items: [] })),
-      await client.getShelf('radio').catch(() => ({ items: [] })),
-    ];
+    const res = await client.getShelf();
+    const pl = await client.getShelf('playlists').catch(() => ({ items: [] }));
     shelves = res.shelves;
-    hasRadioSource = res.hasRadioSource;
-    updateRadioSegments();
+    sourceKinds = res.sourceKinds;
+    updateMediaSegments();
     libraryCount = res.items.length;
     playlistCount = pl.items.length;
-    radioCount = ra.items.length;
     if (openShelfId === 'all') detailItems = res.items; // keep the open All detail fresh
     if (openShelfId === 'playlists') detailItems = pl.items;
-    if (openShelfId === 'radio') detailItems = ra.items;
+    // Each extra-media shelf's count (+ refresh its open detail).
+    for (const m of EXTRA_MEDIA) {
+      const r = await client.getShelf(m.shelfId).catch(() => ({ items: [] }));
+      mediaCounts[m.kind] = r.items.length;
+      if (openShelfId === m.shelfId) detailItems = r.items;
+    }
   } catch {
     shelvesListEl.innerHTML = `<div class="empty">Could not reach the device service.</div>`;
     return;
@@ -729,9 +742,11 @@ async function loadShelvesIndex(): Promise<void> {
 
 function renderShelvesIndex(): void {
   shelvesListEl.innerHTML = '';
-  if (addType === 'radio') {
-    crateForm.hidden = true; // radio has one virtual shelf; no named radio shelves
-    shelvesListEl.appendChild(shelfRow('radio', 'Radio', radioCount, true, 'station'));
+  const extra = EXTRA_MEDIA.find((m) => m.kind === addType);
+  if (extra) {
+    crateForm.hidden = true; // each extra kind has one virtual shelf; nothing named here
+    const noun = extra.kind === 'radio' ? 'station' : extra.kind === 'podcast' ? 'podcast' : 'audiobook';
+    shelvesListEl.appendChild(shelfRow(extra.shelfId, extra.name, mediaCounts[extra.kind], true, noun));
     return;
   }
   if (addType === 'playlist') {
@@ -751,7 +766,7 @@ function renderShelvesIndex(): void {
   }
 }
 
-function shelfRow(id: string, name: string, count: number, isDefault: boolean, unit: 'album' | 'playlist' | 'station'): HTMLElement {
+function shelfRow(id: string, name: string, count: number, isDefault: boolean, unit: 'album' | 'playlist' | 'station' | 'podcast' | 'audiobook'): HTMLElement {
   const row = document.createElement('button');
   row.className = 'shelf-row' + (isDefault ? ' default' : '');
   row.innerHTML =
@@ -1004,8 +1019,8 @@ function sortedDetail(): ShelfItem[] {
 function renderShelfDetail(): void {
   if (!openShelfId) return;
   const playlists = openShelfId === 'playlists';
-  const radios = openShelfId === 'radio';
-  const unit = playlists ? 'playlist' : radios ? 'station' : 'album';
+  const extra = EXTRA_MEDIA.find((m) => m.shelfId === openShelfId);
+  const unit = playlists ? 'playlist' : extra ? (extra.kind === 'radio' ? 'station' : extra.kind) : 'album';
   const view = viewByShelf.get(openShelfId) ?? 'tile';
   const sort = sortByShelf.get(openShelfId) ?? 'custom';
   shelfDetailCount.textContent = `${detailItems.length} ${unit}${detailItems.length === 1 ? '' : 's'}`;
@@ -1013,8 +1028,8 @@ function renderShelfDetail(): void {
   if (detailItems.length === 0) {
     const msg = playlists
       ? 'No playlists yet — add them from Add › Playlists.'
-      : radios
-        ? 'No stations yet — add them from Add › Radio.'
+      : extra
+        ? `No ${extra.name.toLowerCase()} yet — add them from Add › ${extra.name}.`
         : openShelfId === 'all'
           ? 'Nothing on the shelf yet — add albums from Add.'
           : 'No albums in this shelf yet — add them from All albums.';
@@ -1057,7 +1072,7 @@ function renderShelfDetail(): void {
       meta.addEventListener('click', nav);
       card.querySelector('.edit-btn')!.addEventListener('click', () => void openEditor(it));
       card.querySelector('.rm-btn')!.addEventListener('click', () => void removeFromDetail(it.albumId));
-    } else if (radios) {
+    } else if (extra) {
       card.innerHTML = `
         ${artHtml(it.artworkUrl)}
         <div class="body">
@@ -1158,14 +1173,16 @@ function wirePointerDrag(row: HTMLElement, handle: HTMLElement, container: HTMLE
 }
 
 async function removeFromDetail(albumId: string): Promise<void> {
-  const fromLibrary = openShelfId === 'all' || openShelfId === 'playlists' || openShelfId === 'radio';
+  const extra = EXTRA_MEDIA.find((m) => m.shelfId === openShelfId);
+  // 'all'/'playlists'/the extra-media shelves are library-wide removals; named shelves detach.
+  const fromLibrary = openShelfId === 'all' || openShelfId === 'playlists' || !!extra;
   try {
     if (fromLibrary) await client.removeFromShelf(albumId);
     else if (openShelfId) await client.removeAlbumFromShelf(openShelfId, albumId);
     detailItems = detailItems.filter((it) => it.albumId !== albumId);
     renderShelfDetail();
     showToast(
-      openShelfId === 'playlists' ? 'Removed playlist' : openShelfId === 'radio' ? 'Removed station' : fromLibrary ? 'Removed from library' : 'Taken out of shelf',
+      openShelfId === 'playlists' ? 'Removed playlist' : extra ? `Removed ${extra.kind === 'radio' ? 'station' : extra.kind}` : fromLibrary ? 'Removed from library' : 'Taken out of shelf',
     );
     void loadShelvesIndex();
   } catch (e) {

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DEFAULT_SETTINGS, type Album, type AlbumOverride, type CrateBackupTables, type Palette, type Player, type Settings, type Shelf, type ShelfKind, type Stack } from '@crate/shared';
+import { DEFAULT_SETTINGS, EXTRA_MEDIA, type Album, type AlbumOverride, type CrateBackupTables, type Palette, type Player, type Settings, type Shelf, type ShelfKind, type Stack } from '@crate/shared';
 
 export interface AlbumRow {
   id: string;
@@ -310,7 +310,8 @@ export class Db {
     return [
       { id: 'all', name: 'All', kind: 'album' as ShelfKind, order: -1 },
       { id: 'playlists', name: 'All Playlists', kind: 'playlist' as ShelfKind, order: -1 },
-      { id: 'radio', name: 'Radio', kind: 'radio' as ShelfKind, order: -1 },
+      // The extra-media virtual shelves (Radio / Podcasts / Audiobooks), table-driven.
+      ...EXTRA_MEDIA.map((m) => ({ id: m.shelfId, name: m.name, kind: m.kind as ShelfKind, order: -1 })),
       ...user,
     ];
   }

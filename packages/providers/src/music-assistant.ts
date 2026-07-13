@@ -8,6 +8,7 @@
  */
 
 import type {
+  ExtraMediaKind,
   MaConfigEntry,
   MaConfigValue,
   MaProviderManifest,
@@ -18,6 +19,7 @@ import type {
   PlayerState,
   PlayerType,
   RepeatMode,
+  SourceKinds,
   Track,
 } from '@crate/shared';
 import { MaClient, type MaClientOptions, type MaEvent, type MaServerInfo } from './ma-client.js';
@@ -26,10 +28,11 @@ import type {
   PlayerTarget,
   ProviderAlbum,
   ProviderArtist,
+  ProviderEpisode,
   ProviderLibraryAlbum,
+  ProviderMediaItem,
   ProviderPlayer,
   ProviderPlaylist,
-  ProviderRadio,
   ProviderTrackHit,
   TransportCommand,
 } from './interfaces.js';
@@ -563,11 +566,17 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return data;
   }
 
-  /** True when any connected streaming source can serve radio (has the `library_radios`
-      feature) — e.g. TuneIn. Drives whether the Radio tab is shown. */
-  async hasRadioSource(): Promise<boolean> {
+  /** Which extra media kinds the connected sources can serve, keyed by kind — from each
+      source's `supported_features` (e.g. TuneIn → radio; Spotify → podcast + audiobook).
+      Drives which extra tabs the front-ends may show. */
+  async sourceKinds(): Promise<SourceKinds> {
     const provs = await this.listMusicProviders().catch(() => []);
-    return provs.some((p) => p.features.includes('library_radios'));
+    const has = (feature: string): boolean => provs.some((p) => p.features.includes(feature));
+    return {
+      radio: has('library_radios'),
+      podcast: has('library_podcasts'),
+      audiobook: has('library_audiobooks'),
+    };
   }
 
   /** The user's saved albums. MA returns `library://album/N` uris (canonical + playable)
@@ -723,49 +732,83 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return this.toProviderPlaylist(item);
   }
 
-  // --- Radio (TuneIn etc.) ------------------------------------------------
+  // --- Extra media: radio / podcasts / audiobooks -------------------------
+  // MA exposes each kind through parallel search/library commands. A radio is a live stream;
+  // a podcast is a container (fetch its episodes); an audiobook plays directly.
 
-  private toProviderRadio(item: Record<string, unknown>): ProviderRadio | null {
+  private static readonly MEDIA_MA: Record<ExtraMediaKind, { search: string; result: string; library: string }> = {
+    radio: { search: 'radio', result: 'radio', library: 'music/radios/library_items' },
+    podcast: { search: 'podcast', result: 'podcasts', library: 'music/podcasts/library_items' },
+    audiobook: { search: 'audiobook', result: 'audiobooks', library: 'music/audiobooks/library_items' },
+  };
+
+  private toProviderMedia(item: Record<string, unknown>): ProviderMediaItem | null {
     const uri = str(item['uri']);
     const name = str(item['name']);
     if (!uri || !name) return null;
     const md = rec(item['metadata']);
+    const authors = arr(item['authors']).map(str).filter((a): a is string => !!a);
     return {
       providerUri: uri,
       provider: str(item['provider']) ?? parseProviderUri(uri)?.provider ?? 'unknown',
       name,
-      description: str(md['description']) ?? null,
+      // Second line: station tagline / podcast publisher / audiobook author(s).
+      description: str(md['description']) ?? str(item['publisher']) ?? (authors.length ? authors.join(', ') : null),
       artworkUrl: this.artworkUrl(item),
     };
   }
 
-  /** Search radio stations (across all radio providers, or one when scoped). */
-  async searchRadio(query: string, limit = 20, providerInstance?: string): Promise<ProviderRadio[]> {
+  /** Search one extra media kind (across all capable providers, or one when scoped). */
+  async searchMedia(kind: ExtraMediaKind, query: string, limit = 20, providerInstance?: string): Promise<ProviderMediaItem[]> {
+    const m = MusicAssistantProvider.MEDIA_MA[kind];
     const result = rec(
       await this.client.command('music/search', {
         search_query: query,
-        media_types: ['radio'],
+        media_types: [m.search],
         limit,
         library_only: false,
         ...(providerInstance ? { provider: providerInstance } : {}),
       }),
     );
-    return arr(result['radio'])
-      .map((r) => this.toProviderRadio(rec(r)))
-      .filter((r): r is ProviderRadio => r !== null);
+    return arr(result[m.result])
+      .map((r) => this.toProviderMedia(rec(r)))
+      .filter((r): r is ProviderMediaItem => r !== null);
   }
 
-  /** The user's saved radio stations (MA library) — e.g. custom TuneIn stations. */
-  async listLibraryRadios(limit = 200): Promise<ProviderRadio[]> {
-    const raw = await this.client.command('music/radios/library_items', { limit, favorite: false });
+  /** The user's saved items of one kind from the MA library. */
+  async listLibraryMedia(kind: ExtraMediaKind, limit = 200): Promise<ProviderMediaItem[]> {
+    const raw = await this.client.command(MusicAssistantProvider.MEDIA_MA[kind].library, { limit, favorite: false });
     const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);
-    return items.map((r) => this.toProviderRadio(rec(r))).filter((r): r is ProviderRadio => r !== null);
+    return items.map((r) => this.toProviderMedia(rec(r))).filter((r): r is ProviderMediaItem => r !== null);
   }
 
-  /** Resolve one radio station (name, tagline, artwork) for ingestion. */
-  async getRadio(providerUri: string): Promise<ProviderRadio | null> {
+  /** Resolve one item (name, subtitle, artwork) for ingestion. */
+  async getMedia(providerUri: string): Promise<ProviderMediaItem | null> {
     const item = rec(await this.client.command('music/item_by_uri', { uri: providerUri }));
-    return this.toProviderRadio(item);
+    return this.toProviderMedia(item);
+  }
+
+  /** A podcast's episodes (its playable children), newest first as MA returns them. */
+  async listPodcastEpisodes(providerUri: string, limit = 200): Promise<ProviderEpisode[]> {
+    const parsed = parseProviderUri(providerUri);
+    if (!parsed) return [];
+    const raw = await this.client.command('music/podcasts/podcast_episodes', {
+      item_id: parsed.id,
+      provider_instance_id_or_domain: parsed.provider,
+      limit,
+    });
+    const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);
+    return items
+      .map((e): ProviderEpisode | null => {
+        const ep = rec(e);
+        const uri = str(ep['uri']);
+        const title = str(ep['name']);
+        if (!uri || !title) return null;
+        const md = rec(ep['metadata']);
+        const dur = num(ep['duration']);
+        return { trackUri: uri, title, durationSec: dur ?? null, subtitle: str(md['description']) ?? null };
+      })
+      .filter((e): e is ProviderEpisode => e !== null);
   }
 
   // --- PlayerTarget -------------------------------------------------------
