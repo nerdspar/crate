@@ -523,8 +523,9 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
      its own layer (which flickered labels during stepping). */
   position: relative;
 }
-.spine-label .artist { opacity: 0.72; font-weight: 500; }
-.spine-label .title { font-weight: 700; }
+/* Weight is set inline per the ink-weight setting (main.ts); only the artist's
+   dimming lives here so it reads a step quieter than the title. */
+.spine-label .artist { opacity: 0.72; }
 
 /* scan mode: the real spine image carries its own label — hide the generated
    label + imprint, but keep the plastic materials layer (SPINE_RENDERING §2). */

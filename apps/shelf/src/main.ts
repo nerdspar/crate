@@ -11,12 +11,16 @@
 
 import { CrateClient, DEFAULT_SETTINGS, isSpeaker, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
+// Weights span light→heavy so the ink-weight setting has real range to move across.
+import '@fontsource/archivo-narrow/400.css';
 import '@fontsource/archivo-narrow/500.css';
 import '@fontsource/archivo-narrow/600.css';
 import '@fontsource/archivo-narrow/700.css';
+import '@fontsource/oswald/300.css';
 import '@fontsource/oswald/400.css';
 import '@fontsource/oswald/500.css';
 import '@fontsource/oswald/600.css';
+import '@fontsource/oswald/700.css';
 import '@fontsource-variable/newsreader/standard.css';
 import '@fontsource-variable/newsreader/standard-italic.css';
 import './styles.css';
@@ -350,7 +354,15 @@ function buildShelf(): void {
     const inkWeight = a.overrideInkWeight ?? settings.inkWeight;
     const sizeMul = inkSize === 'small' ? 0.8 : inkSize === 'large' ? 1.25 : 1;
     const fontSize = Math.min(baseW * (font.includes('Newsreader') ? 0.66 : 0.6), 19) * sizeMul;
-    const labelWeight = Math.max(200, Math.min(800, ts.weight + (inkWeight === 'light' ? -150 : inkWeight === 'bold' ? 150 : 0)));
+    // Ink weight shifts the whole label across the bundled weight range; the title always
+    // sits a step heavier than the artist for hierarchy. These weights are applied to the
+    // text spans directly (below) so the setting actually renders — the .artist/.title CSS
+    // no longer pins a fixed weight that would override it.
+    const wShift = inkWeight === 'light' ? -200 : inkWeight === 'bold' ? 150 : 0;
+    const clampW = (n: number): number => Math.max(200, Math.min(800, n));
+    const artistWeight = clampW(ts.weight - 100 + wShift);
+    const titleWeight = clampW(ts.weight + 100 + wShift);
+    const labelWeight = clampW(ts.weight + wShift);
     const baseInk = a.inkColor === 'dark' ? 'rgba(20,18,16,0.88)' : 'rgba(240,236,228,0.92)';
     const artistCol = a.artistColor ?? baseInk;
     const titleCol = a.titleColor ?? (settings.inkMode === 'match' ? matchInk(a) : baseInk);
@@ -375,8 +387,8 @@ function buildShelf(): void {
     // Split layout puts the artist and title at opposite ends of the spine;
     // the others render them together (positioned by the layout-* class).
     const labelCss = `font-size:calc(${fontSize}px * var(--zoom, 1)); font-family:${font}; font-weight:${labelWeight}; text-transform:${ts.transform}; letter-spacing:${tracking}`;
-    const artistSpan = `<span class="artist" style="color:${artistCol}">${escapeHtml(a.artist)}</span>`;
-    const titleSpan = `<span class="title" style="color:${titleCol}">${escapeHtml(a.title)}</span>`;
+    const artistSpan = `<span class="artist" style="color:${artistCol}; font-weight:${artistWeight}">${escapeHtml(a.artist)}</span>`;
+    const titleSpan = `<span class="title" style="color:${titleCol}; font-weight:${titleWeight}">${escapeHtml(a.title)}</span>`;
     const labelHtml =
       layout === 'split'
         ? `<div class="spine-label artist-label" style="${labelCss}">${artistSpan}</div>` +
