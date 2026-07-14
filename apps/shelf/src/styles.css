@@ -1141,8 +1141,10 @@ body.find-open #cc-grip { pointer-events: none; }
    forces its column wider than a third. min-width:0 lets the cards truncate inside it. */
 /* Narrow leading Artists column + three equal Albums/Playlists/Songs columns. */
 .find-cats { display: grid; grid-template-columns: 13vh repeat(3, minmax(0, 1fr)); gap: 1.4vw; min-height: 0; }
-/* Playlists / Podcasts / Audiobooks / Radio tabs: On-your-shelf + one catalog column. */
-.find-cats.cats-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+/* Playlists / Podcasts / Audiobooks / Radio tabs: On-your-shelf + one catalog column. Capped +
+   left-aligned so cards stay a sensible reading width on an ultrawide wall (otherwise each card
+   stretches the full column and the Add button strands at the far edge). */
+.find-cats.cats-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); max-width: 150vh; }
 .find-cat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* A column header that also carries the "Filter shelf" action (the On-your-shelf column). */
 .find-cat-h.find-subhead-row { display: flex; align-items: center; justify-content: space-between; gap: 1vw; }
