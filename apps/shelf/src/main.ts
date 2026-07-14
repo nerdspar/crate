@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type MediaBrowseItem, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 // Weights span light→heavy so the ink-weight setting has real range to move across.
 import '@fontsource/archivo-narrow/400.css';
@@ -3084,6 +3084,22 @@ let searchSourceUserSet = false; // did the user pick a source this session? (do
 let searchMultiSource = false; // do the current results span >1 source? (drives badges + filter)
 const searchSourceIcon = new Map<string, string | null>(); // source name → inline SVG icon
 let globalResults: GlobalSearchResponse | null = null;
+let playlistResults: LibraryPlaylist[] | null = null; // Playlists-tab search
+let mediaResults: MediaSearchResponse | null = null; // Radio/Podcast/Audiobook-tab search
+// The active kind's shelf items, for the "On your shelf" search column — fetched once per kind
+// and reused, so the column reflects your whole shelf (not just what the catalog search returned).
+const shelfItemsCache = new Map<ShelfKind, ShelfItem[]>();
+function canonicalShelfId(kind: ShelfKind): string | undefined {
+  if (kind === 'album') return undefined; // "all"
+  if (kind === 'playlist') return 'playlists';
+  return EXTRA_MEDIA.find((m) => m.kind === kind)?.shelfId;
+}
+async function ensureShelfItems(kind: ShelfKind): Promise<void> {
+  if (shelfItemsCache.has(kind)) return;
+  const res = await client.getShelf(canonicalShelfId(kind)).catch(() => ({ items: [] as ShelfItem[] }));
+  shelfItemsCache.set(kind, res.items);
+  if (shelfTab === kind && filterQuery) renderSearch(false); // fill the On-your-shelf column once loaded
+}
 let artistView: SearchArtist | null = null; // non-null = the artist detail is showing
 let artistSeq = 0; // cancels stale artist-detail fetches
 // Warm the top artists' (slow) song lists in the background as soon as they appear in
@@ -3185,9 +3201,9 @@ function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
   const need = Math.max(searchShown.albums, searchShown.playlists, searchShown.songs);
   if (need > searchLimit) {
     searchLimit = need;
-    void runGlobalSearch(); // fetch the bigger page, then re-render
+    void runSearch(); // fetch the bigger page, then re-render
   } else {
-    renderGlobal(false); // already fetched — just reveal more
+    renderSearch(false); // already fetched — just reveal more
   }
 }
 
@@ -3201,8 +3217,8 @@ findSearch.addEventListener('input', () => {
   if (searchTimer) clearTimeout(searchTimer);
   if (filterQuery.length >= 2) {
     resetSearchPaging(); // a new query starts back at the first page
-    renderGlobal(true); // show the loading scaffold immediately
-    searchTimer = setTimeout(() => void runGlobalSearch(), 400);
+    renderSearch(true); // show the loading scaffold immediately
+    searchTimer = setTimeout(() => void runSearch(), 400);
   } else if (!filterQuery) {
     renderRecents(); // empty box → offer the last few searches
   } else {
@@ -3223,7 +3239,7 @@ findClear.addEventListener('click', () => {
 findSearch.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && filterQuery) {
     if (searchTimer) clearTimeout(searchTimer);
-    void runGlobalSearch();
+    void runSearch();
   }
 });
 
@@ -3237,31 +3253,47 @@ function clearFindResults(): void {
   findResults.innerHTML = '';
 }
 
-/** Global search across the connected sources → albums, playlists, songs. */
-async function runGlobalSearch(): Promise<void> {
+/** Run the search scoped to the ACTIVE tab: Albums → artists/albums/songs, Playlists → playlists,
+    Radio/Podcasts/Audiobooks → that kind. Each renders its own "On your shelf" column. */
+async function runSearch(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
+  const tab = shelfTab;
   const seq = ++searchSeq;
   addRecent(q); // remember it for the recent-searches list
+  void ensureShelfItems(tab); // warm the On-your-shelf column (cached; re-renders when it lands)
   try {
-    const res = await client.globalSearch(q, undefined, searchLimit);
-    if (seq !== searchSeq) return;
-    globalResults = res;
-    // Did this (larger) fetch return more than the previous one? If so, keep offering more.
-    const counts = { albums: res.albums.length, playlists: res.playlists.length, songs: res.songs.length };
-    (['albums', 'playlists', 'songs'] as const).forEach((k) => {
-      searchGrew[k] = counts[k] > lastFetchCount[k];
-      lastFetchCount[k] = counts[k];
-    });
+    if (tab === 'album') {
+      const res = await client.globalSearch(q, undefined, searchLimit);
+      if (seq !== searchSeq) return;
+      globalResults = res;
+      // Did this (larger) fetch return more than the previous one? If so, keep offering more.
+      const counts = { albums: res.albums.length, playlists: res.playlists.length, songs: res.songs.length };
+      (['albums', 'playlists', 'songs'] as const).forEach((k) => {
+        searchGrew[k] = counts[k] > lastFetchCount[k];
+        lastFetchCount[k] = counts[k];
+      });
+    } else if (tab === 'playlist') {
+      const res = await client.searchPlaylists(q);
+      if (seq !== searchSeq) return;
+      playlistResults = res;
+    } else {
+      const res = await client.searchMedia(tab, q);
+      if (seq !== searchSeq) return;
+      mediaResults = res;
+    }
   } catch {
     if (seq !== searchSeq) return;
-    globalResults = null;
+    if (tab === 'album') globalResults = null;
+    else if (tab === 'playlist') playlistResults = null;
+    else mediaResults = null;
   }
-  renderGlobal(false);
+  renderSearch(false);
 }
 
-/** Sonos-style results: a source dropdown + three columns (Albums / Playlists / Songs). */
-function renderGlobal(loading: boolean): void {
+/** Render the results for the ACTIVE tab. Every tab leads with an "On your shelf" column
+    (your matching curated items + the Filter-shelf button); the rest is that kind's catalog. */
+function renderSearch(loading: boolean): void {
   if (artistView) return; // artist detail is showing — don't clobber it
   if (!filterQuery) {
     clearFindResults();
@@ -3270,71 +3302,203 @@ function renderGlobal(loading: boolean): void {
   findResults.hidden = false;
   find.classList.add('searching'); // grow the sheet to full height for the results
   findResults.innerHTML = '';
-  const g = globalResults;
+  if (shelfTab === 'album') renderAlbumResults(loading);
+  else if (shelfTab === 'playlist') renderPlaylistResults(loading);
+  else renderMediaResults(shelfTab, loading);
+}
 
-  // Source badges + filter only matter when the results span more than one source. Cache each
-  // source's icon by name, and drop an active filter this result set doesn't contain (else it'd
-  // hide everything). Only clobber against *loaded* results — never the empty loading scaffold,
-  // which has no sources yet and would otherwise wipe the boot default on the first keystroke.
+/** Source dropdown (client-side filter) atop the results — only when >1 source is present. */
+function renderSourceBar(sources: MusicSourceInfo[]): void {
   searchSourceIcon.clear();
-  for (const s of g?.sources ?? []) searchSourceIcon.set(s.name, s.iconSvg ?? null);
-  searchMultiSource = (g?.sources?.length ?? 0) > 1;
-  if (!loading && g && searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
-  const srcOk = (s?: string): boolean => searchSource === 'all' || s === searchSource;
-
+  for (const s of sources) searchSourceIcon.set(s.name, s.iconSvg ?? null);
+  searchMultiSource = sources.length > 1;
+  if (searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
   if (searchMultiSource) {
     const bar = document.createElement('div');
     bar.className = 'find-srcbar';
-    bar.appendChild(sourceDropdown(g?.sources ?? []));
+    bar.appendChild(sourceDropdown(sources));
     findResults.appendChild(bar);
   }
+}
+const srcOk = (s?: string): boolean => searchSource === 'all' || s === searchSource;
+/** Distinct sources (by display name) present in a result list, as minimal source infos. */
+function uniqueSources(names: (string | undefined)[]): MusicSourceInfo[] {
+  const seen = new Set<string>();
+  const out: MusicSourceInfo[] = [];
+  for (const n of names) if (n && !seen.has(n)) (seen.add(n), out.push({ instanceId: n, name: n }));
+  return out;
+}
 
+function renderAlbumResults(loading: boolean): void {
+  const g = globalResults;
+  renderSourceBar(g?.sources ?? []);
   if (!loading) prefetchArtistSongs(g?.artists ?? []); // warm the slow song lists in the background
-
-  const cats = document.createElement('div');
-  cats.className = 'find-cats';
-  const remoteAlbums = g?.albums ?? [];
-  // On-shelf hits come from the curated spines (authoritative). Dedupe remote hits
-  // against them by album id AND by title+artist (Apple has library-vs-catalog ids),
-  // then split the rest into "in your library" (MA favorite) vs catalog-only.
-  const localMatches = items.filter((it) => matchesQuery(it, filterQuery));
-  const localIds = new Set(localMatches.map((it) => it.albumId));
-  const localKeys = new Set(localMatches.map((it) => albumKey(it.artist, it.title)));
-  const remoteNew = remoteAlbums.filter(
-    (a) => !localIds.has(albumIdFromUri(a.providerUri)) && !localKeys.has(albumKey(a.artist, a.title)),
-  );
-  // Apply the source filter to the streaming results (on-shelf matches are yours regardless).
+  // Albums already on a shelf move to the dedicated On-your-shelf column; the Albums column shows
+  // only NEW results (library favorites, then catalog), source-filtered.
+  const shelved = new Set((shelfItemsCache.get('album') ?? []).map((it) => it.albumId));
+  const remoteNew = (g?.albums ?? []).filter((a) => !a.onShelf && !shelved.has(albumIdFromUri(a.providerUri)));
   const libAlbums = remoteNew.filter((a) => a.inLibrary && srcOk(a.source));
   const catalogAlbums = remoteNew.filter((a) => !a.inLibrary && srcOk(a.source));
-  const playlists = (g?.playlists ?? []).filter((p) => srcOk(p.source));
   const songs = (g?.songs ?? []).filter((s) => srcOk(s.source));
-  // More to load = the server's per-section hasMore (a source page came back full). Fall back to
-  // our own raw growth check only when the server didn't send hasMore (older build). Both are
-  // computed from the RAW result count, so they aren't fooled by on-shelf dedup shrinking the list.
   const more = g?.hasMore ?? searchGrew;
+  const cats = document.createElement('div');
+  cats.className = 'find-cats';
   cats.appendChild(artistsColumn((g?.artists ?? []).filter((a) => srcOk(a.source)), loading)); // narrow leading column
-  cats.appendChild(albumsColumn(localMatches, libAlbums, catalogAlbums, loading, more.albums));
-  cats.appendChild(catColumn('Playlists', playlists.map(playlistCard), loading, 'playlists', more.playlists));
+  cats.appendChild(shelfColumn('album'));
+  cats.appendChild(albumsColumn(libAlbums, catalogAlbums, loading, more.albums));
   cats.appendChild(catColumn('Songs', songs.map(songResultCard), loading, 'songs', more.songs));
   findResults.appendChild(cats);
 }
 
-/** A normalized title+artist key so a shelf album and its catalog search hit (Apple's
-    library-vs-catalog ids differ) don't show up in two tiers at once. */
-function albumKey(artist: string, title: string): string {
-  return `${artist}|${title}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
+function renderPlaylistResults(loading: boolean): void {
+  const pls = playlistResults ?? [];
+  renderSourceBar(uniqueSources(pls.map((p) => p.source)));
+  const shelved = new Set((shelfItemsCache.get('playlist') ?? []).map((it) => it.albumId));
+  const remoteNew = pls.filter((p) => !p.onShelf && !shelved.has(albumIdFromUri(p.providerUri)) && srcOk(p.source));
+  const cats = document.createElement('div');
+  cats.className = 'find-cats cats-two';
+  cats.appendChild(shelfColumn('playlist'));
+  cats.appendChild(simpleColumn('Playlists', remoteNew.map(playlistCard), loading));
+  findResults.appendChild(cats);
 }
 
-/** The Albums results column, sectioned into three ordered tiers: what's already on
-    your shelf, then what's in your library, then everything else from your sources.
-    On-shelf shows in full; the two remote tiers share the paging cap + "Load more". */
-function albumsColumn(
-  local: ShelfItem[],
-  lib: SearchAlbum[],
-  catalog: SearchAlbum[],
-  loading: boolean,
-  more: boolean,
-): HTMLElement {
+function renderMediaResults(kind: ExtraMediaKind, loading: boolean): void {
+  const res = mediaResults;
+  renderSourceBar(res?.sources ?? []);
+  const shelved = new Set((shelfItemsCache.get(kind) ?? []).map((it) => it.albumId));
+  const remoteNew = (res?.items ?? []).filter((it) => !it.onShelf && !shelved.has(albumIdFromUri(it.providerUri)) && srcOk(it.source));
+  const label = EXTRA_MEDIA.find((m) => m.kind === kind)?.name ?? 'Results';
+  const cats = document.createElement('div');
+  cats.className = 'find-cats cats-two';
+  cats.appendChild(shelfColumn(kind));
+  cats.appendChild(simpleColumn(label, remoteNew.map((it) => mediaResultCard(it, kind)), loading));
+  findResults.appendChild(cats);
+}
+
+/** The "On your shelf" column for a tab — matching shelved items of that kind, with the
+    Filter-shelf action pinned to the header. Tapping a card opens it on the wall. */
+function shelfColumn(kind: ShelfKind): HTMLElement {
+  const its = (shelfItemsCache.get(kind) ?? []).filter((it) => matchesQuery(it, filterQuery));
+  const col = document.createElement('div');
+  col.className = 'find-cat';
+  const h = document.createElement('div');
+  h.className = 'find-cat-h find-subhead-row';
+  h.innerHTML = '<span>On your shelf</span>';
+  const filterBtn = document.createElement('button');
+  filterBtn.className = 'find-filter-shelf';
+  filterBtn.textContent = 'Filter shelf';
+  filterBtn.onclick = () => void filterShelfForTab(filterQuery, kind);
+  h.appendChild(filterBtn);
+  col.appendChild(h);
+  const list = document.createElement('div');
+  list.className = 'find-cat-list';
+  if (its.length) its.forEach((it) => list.appendChild(kind === 'album' ? shelfCard(it) : shelfOpenCard(it)));
+  else {
+    const e = document.createElement('div');
+    e.className = 'find-empty';
+    e.textContent = shelfItemsCache.has(kind) ? 'Nothing here' : 'Loading…';
+    list.appendChild(e);
+  }
+  col.appendChild(list);
+  return col;
+}
+
+/** A plain results column (no paging) — used for the playlist/podcast/audiobook/radio catalog. */
+function simpleColumn(title: string, cards: HTMLElement[], loading: boolean): HTMLElement {
+  const col = document.createElement('div');
+  col.className = 'find-cat';
+  const h = document.createElement('div');
+  h.className = 'find-cat-h';
+  h.textContent = title;
+  col.appendChild(h);
+  const list = document.createElement('div');
+  list.className = 'find-cat-list';
+  if (cards.length) cards.forEach((c) => list.appendChild(c));
+  else {
+    const e = document.createElement('div');
+    e.className = 'find-empty';
+    e.textContent = loading ? 'Searching…' : 'None';
+    list.appendChild(e);
+  }
+  col.appendChild(list);
+  return col;
+}
+
+/** An on-shelf card for a non-album kind (playlist/podcast/audiobook/radio): tap or "Open"
+    switches the wall to that kind's shelf and opens the item. */
+function shelfOpenCard(it: ShelfItem): HTMLElement {
+  const card = cardShell(it.title, it.artist, it.artworkUrl, '');
+  card.querySelector('.find-card-add')?.remove();
+  card.classList.add('find-card-tap');
+  const open = (): void => void openShelvedItem(it);
+  card.addEventListener('click', open);
+  const ctrl = document.createElement('div');
+  ctrl.className = 'find-add-ctrl';
+  const btn = document.createElement('button');
+  btn.className = 'find-card-add';
+  btn.textContent = 'Open';
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    open();
+  };
+  ctrl.appendChild(btn);
+  card.appendChild(ctrl);
+  return card;
+}
+
+/** Switch the wall to a shelved item's shelf and open it. */
+async function openShelvedItem(it: ShelfItem): Promise<void> {
+  clearSearch();
+  await switchShelf(canonicalShelfId(it.kind) ?? 'all', true);
+  const idx = items.findIndex((x) => x.albumId === it.albumId);
+  if (idx >= 0) openAlbum(idx);
+}
+
+/** A catalog result card for podcast/audiobook/radio search: Add it to its kind's shelf. */
+function mediaResultCard(item: MediaBrowseItem, kind: ExtraMediaKind): HTMLElement {
+  const card = cardShell(item.name, item.description ?? '', item.artworkUrl, '', item.source);
+  card.querySelector('.find-card-add')?.remove();
+  card.classList.add('find-card-tap');
+  const ctrl = document.createElement('div');
+  ctrl.className = 'find-add-ctrl';
+  const btn = document.createElement('button');
+  btn.className = 'find-card-add';
+  btn.textContent = 'Add';
+  const doAdd = async (): Promise<void> => {
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    try {
+      await client.addMedia(kind, item.providerUri);
+      shelfItemsCache.delete(kind); // the On-your-shelf column reflects it next render
+      item.onShelf = true;
+      btn.textContent = 'Added';
+      showToast(`Added ${item.name}`);
+    } catch {
+      btn.disabled = false;
+      btn.textContent = 'Add';
+      showToast('Could not add');
+    }
+  };
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    void doAdd();
+  };
+  card.addEventListener('click', () => void doAdd());
+  ctrl.appendChild(btn);
+  card.appendChild(ctrl);
+  return card;
+}
+
+/** "Filter shelf" from any tab: show that kind's shelf on the wall, filtered to the query. */
+async function filterShelfForTab(q: string, kind: ShelfKind): Promise<void> {
+  const shelfId = canonicalShelfId(kind) ?? 'all';
+  if (activeShelf !== shelfId) await switchShelf(shelfId, false);
+  applyShelfFilter(q); // sets the filter, reflects it on the wall, closes Find
+}
+
+/** The Albums results column (catalog only — on-shelf albums live in their own column now):
+    library favorites first, then everything else from your sources, sharing the "Load more" cap. */
+function albumsColumn(lib: SearchAlbum[], catalog: SearchAlbum[], loading: boolean, more: boolean): HTMLElement {
   const col = document.createElement('div');
   col.className = 'find-cat';
   const h = document.createElement('div');
@@ -3349,20 +3513,6 @@ function albumsColumn(
     s.textContent = label;
     list.appendChild(s);
   };
-  if (local.length) {
-    // Header carries a "Filter shelf" action: apply this query to the shelf spines and
-    // close the overlay in one tap (searching never leaves the shelf stuck filtered).
-    const head = document.createElement('div');
-    head.className = 'find-subhead find-subhead-row';
-    head.innerHTML = '<span>On your shelf</span>';
-    const filterBtn = document.createElement('button');
-    filterBtn.className = 'find-filter-shelf';
-    filterBtn.textContent = 'Filter shelf';
-    filterBtn.onclick = () => applyShelfFilter(filterQuery);
-    head.appendChild(filterBtn);
-    list.appendChild(head);
-    local.forEach((it) => list.appendChild(shelfCard(it)));
-  }
   // Library first, then catalog — paged together so "Load more" reveals the next page.
   const remote = [...lib.map((a) => ['lib', a] as const), ...catalog.map((a) => ['cat', a] as const)];
   let lastSec: string | null = null;
@@ -3373,7 +3523,7 @@ function albumsColumn(
     }
     list.appendChild(albumResultCard(a));
   });
-  if (!local.length && !remote.length) {
+  if (!remote.length) {
     const e = document.createElement('div');
     e.className = 'find-empty';
     e.textContent = loading ? 'Searching…' : 'None';
@@ -3436,7 +3586,7 @@ async function openArtist(a: SearchArtist): Promise<void> {
   head.innerHTML = `<button class="artist-back">‹ Results</button><h2 class="artist-title">${escapeHtml(a.name)}</h2>`;
   (head.querySelector('.artist-back') as HTMLElement).onclick = () => {
     artistView = null;
-    renderGlobal(false);
+    renderSearch(false);
   };
   findResults.appendChild(head);
 
@@ -3536,7 +3686,7 @@ function sourceDropdown(sources: GlobalSearchResponse['sources']): HTMLElement {
 function pickSource(name: string): void {
   searchSource = name;
   searchSourceUserSet = true; // an explicit pick — settings changes won't override it
-  renderGlobal(false); // client-side filter — the results are already fetched, no re-query
+  renderSearch(false); // client-side filter — the results are already fetched, no re-query
 }
 
 /** A song result — tap the card to open its album with the track cued; the ▶ button
@@ -4309,10 +4459,19 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     shelfAdding = false;
     shelfDeleteArmed = null;
     shelfRenaming = null;
-    clearSearch(); // search behaves differently per tab; reset it
     document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', t === tab));
     renderShelfList();
     void renderContinueStrip(); // spoken-word tabs get an in-progress "Continue listening" row
+    // Keep the query across tabs and re-run it scoped to the new kind (an artist detail closes).
+    if (filterQuery) {
+      artistView = null;
+      resetSearchPaging();
+      searchSource = 'all';
+      renderSearch(true); // loading scaffold in the new scope
+      void runSearch();
+    } else {
+      clearSearch();
+    }
   });
 });
 
@@ -5577,6 +5736,7 @@ function connectWs(): void {
 // whole spine DOM. Coalesce a burst into one rebuild ~200ms after it settles.
 let reloadShelfTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleReloadShelf(): void {
+  shelfItemsCache.clear(); // a shelf changed → the "On your shelf" search column may be stale
   clearTimeout(reloadShelfTimer);
   reloadShelfTimer = setTimeout(() => void reloadShelf(), 200);
 }
