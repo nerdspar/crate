@@ -3478,8 +3478,8 @@ function shelfOpenCard(it: ShelfItem): HTMLElement {
   card.classList.add('find-card-tap');
   const open = (): void => void openShelvedItem(it);
   card.addEventListener('click', open);
-  const ctrl = document.createElement('div');
-  ctrl.className = 'find-add-ctrl';
+  // Standalone "Open" button appended directly (no .find-add-ctrl wrapper — it strips the right
+  // border/corners for a ▾ caret this card doesn't have, which read as a cut-off button).
   const btn = document.createElement('button');
   btn.className = 'find-card-add';
   btn.textContent = 'Open';
@@ -3487,8 +3487,7 @@ function shelfOpenCard(it: ShelfItem): HTMLElement {
     e.stopPropagation();
     open();
   };
-  ctrl.appendChild(btn);
-  card.appendChild(ctrl);
+  card.appendChild(btn);
   return card;
 }
 
@@ -3505,8 +3504,8 @@ function mediaResultCard(item: MediaBrowseItem, kind: ExtraMediaKind): HTMLEleme
   const card = cardShell(item.name, item.description ?? '', item.artworkUrl, '', item.source);
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap');
-  const ctrl = document.createElement('div');
-  ctrl.className = 'find-add-ctrl';
+  // A standalone Add button — appended directly (NOT wrapped in .find-add-ctrl, whose CSS strips
+  // the button's right border/corners to butt against a ▾ caret these cards don't have).
   const btn = document.createElement('button');
   btn.className = 'find-card-add';
   btn.textContent = 'Add';
@@ -3530,8 +3529,7 @@ function mediaResultCard(item: MediaBrowseItem, kind: ExtraMediaKind): HTMLEleme
     void doAdd();
   };
   card.addEventListener('click', () => void doAdd());
-  ctrl.appendChild(btn);
-  card.appendChild(ctrl);
+  card.appendChild(btn);
   return card;
 }
 
