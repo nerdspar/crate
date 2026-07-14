@@ -1316,6 +1316,12 @@ body.find-open #cc-grip { pointer-events: none; }
   font-size: 1.7vh; font-weight: 600; padding: 0.6vh 1.6vw; letter-spacing: 0.03em;
 }
 .find-card-add:disabled { color: var(--ink-dim); border-color: rgba(236,231,221,0.2); }
+/* An added result: reads "Added", but hover/focus flips it to "Remove" (reddish) — click removes. */
+.find-card-add.find-card-added { color: var(--ink-dim); border-color: rgba(236,231,221,0.28); }
+.find-card-added .lbl-off { display: none; }
+.find-card-added:hover .lbl-on, .find-card-added:focus-visible .lbl-on { display: none; }
+.find-card-added:hover .lbl-off, .find-card-added:focus-visible .lbl-off { display: inline; }
+.find-card-added:hover, .find-card-added:focus-visible { color: #e0674f; border-color: #e0674f; }
 /* ▶ Play button on a song result — plays the song without opening the album. */
 .find-card-play {
   flex-shrink: 0; width: 4.6vh; height: 4.6vh; border-radius: 50%;

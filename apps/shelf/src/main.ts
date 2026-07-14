@@ -2999,6 +2999,7 @@ function openFind(): void {
   renderCCSort();
   renderShelfList();
   void renderContinueStrip(); // refresh in-progress items if reopened on a spoken-word tab
+  if (!filterQuery) renderRecents(); // surface recent searches straight away (no need to tap the box)
   // No auto-focus: the shelf list is the primary content; tapping the search
   // field is what pops the on-screen keyboard.
 }
@@ -3279,6 +3280,7 @@ async function runSearch(): Promise<void> {
   const q = findSearch.value.trim();
   if (!q) return;
   const tab = shelfTab;
+  if (!searchSourceUserSet) searchSource = defaultSourceFor(tab); // apply the tab's default source up front
   const seq = ++searchSeq;
   addRecent(q); // remember it for the recent-searches list
   void ensureShelfItems(tab); // warm the On-your-shelf column (cached; re-renders when it lands)
@@ -3333,7 +3335,7 @@ function shownSources(sources: MusicSourceInfo[]): MusicSourceInfo[] {
   return sources.filter((s) => !hidden.has(s.name));
 }
 /** Source dropdown (client-side filter) atop the results — only when >1 shown source is present. */
-function renderSourceBar(sources: MusicSourceInfo[]): void {
+function renderSourceBar(sources: MusicSourceInfo[], loading: boolean): void {
   const shown = shownSources(sources);
   searchSourceIcon.clear();
   for (const s of shown) {
@@ -3341,7 +3343,9 @@ function renderSourceBar(sources: MusicSourceInfo[]): void {
     if (s.iconSvg) sourceIconByName.set(s.name, s.iconSvg); // keep the persistent map fresh
   }
   searchMultiSource = shown.length > 1;
-  if (searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
+  // Drop an active source filter only against LOADED results that lack it — never the empty loading
+  // scaffold (which has no sources yet), or the configured default would be wiped before it applies.
+  if (!loading && searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
   if (searchMultiSource) {
     const bar = document.createElement('div');
     bar.className = 'find-srcbar';
@@ -3368,7 +3372,7 @@ function defaultSourceFor(kind: ShelfKind): string {
 
 function renderAlbumResults(loading: boolean): void {
   const g = globalResults;
-  renderSourceBar(g?.sources ?? []);
+  renderSourceBar(g?.sources ?? [], loading);
   if (!loading) prefetchArtistSongs(g?.artists ?? []); // warm the slow song lists in the background
   // Albums already on a shelf move to the dedicated On-your-shelf column; the Albums column shows
   // only NEW results (library favorites, then catalog), source-filtered.
@@ -3396,7 +3400,7 @@ function renderAlbumResults(loading: boolean): void {
 
 function renderPlaylistResults(loading: boolean): void {
   const pls = playlistResults ?? [];
-  renderSourceBar(uniqueSources(pls.map((p) => p.source)));
+  renderSourceBar(uniqueSources(pls.map((p) => p.source)), loading);
   const shelved = new Set((shelfItemsCache.get('playlist') ?? []).map((it) => it.albumId));
   const remoteNew = pls.filter((p) => !p.onShelf && !shelved.has(albumIdFromUri(p.providerUri)) && srcOk(p.source));
   const cats = document.createElement('div');
@@ -3408,7 +3412,7 @@ function renderPlaylistResults(loading: boolean): void {
 
 function renderMediaResults(kind: ExtraMediaKind, loading: boolean): void {
   const res = mediaResults;
-  renderSourceBar(res?.sources ?? []);
+  renderSourceBar(res?.sources ?? [], loading);
   const shelved = new Set((shelfItemsCache.get(kind) ?? []).map((it) => it.albumId));
   const remoteNew = (res?.items ?? []).filter((it) => !it.onShelf && !shelved.has(albumIdFromUri(it.providerUri)) && srcOk(it.source));
   const label = EXTRA_MEDIA.find((m) => m.kind === kind)?.name ?? 'Results';
@@ -3499,36 +3503,56 @@ async function openShelvedItem(it: ShelfItem): Promise<void> {
   if (idx >= 0) openAlbum(idx);
 }
 
-/** A catalog result card for podcast/audiobook/radio search: Add it to its kind's shelf. */
+/** A catalog result card for podcast/audiobook/radio search. Add it to its kind's shelf; once added
+    the button reads "Added" and, on hover, "Remove" — clicking it takes it back off the shelf. */
 function mediaResultCard(item: MediaBrowseItem, kind: ExtraMediaKind): HTMLElement {
   const card = cardShell(item.name, item.description ?? '', item.artworkUrl, '', item.source);
   card.querySelector('.find-card-add')?.remove();
   card.classList.add('find-card-tap');
-  // A standalone Add button — appended directly (NOT wrapped in .find-add-ctrl, whose CSS strips
-  // the button's right border/corners to butt against a ▾ caret these cards don't have).
+  const albumId = albumIdFromUri(item.providerUri);
+  // A standalone button — appended directly (NOT wrapped in .find-add-ctrl, whose CSS strips the
+  // button's right border/corners to butt against a ▾ caret these cards don't have).
   const btn = document.createElement('button');
   btn.className = 'find-card-add';
-  btn.textContent = 'Add';
-  const doAdd = async (): Promise<void> => {
+  const setState = (added: boolean): void => {
+    item.onShelf = added;
+    btn.disabled = false;
+    btn.classList.toggle('find-card-added', added);
+    btn.innerHTML = added ? '<span class="lbl-on">Added</span><span class="lbl-off">Remove</span>' : 'Add';
+  };
+  const add = async (): Promise<void> => {
     btn.disabled = true;
     btn.textContent = 'Adding…';
     try {
       await client.addMedia(kind, item.providerUri);
       shelfItemsCache.delete(kind); // the On-your-shelf column reflects it next render
-      item.onShelf = true;
-      btn.textContent = 'Added';
+      setState(true);
       showToast(`Added ${item.name}`);
     } catch {
-      btn.disabled = false;
-      btn.textContent = 'Add';
+      setState(false);
       showToast('Could not add');
     }
   };
+  const remove = async (): Promise<void> => {
+    btn.disabled = true;
+    btn.textContent = 'Removing…';
+    try {
+      await client.removeFromShelf(albumId);
+      shelfItemsCache.delete(kind);
+      setState(false);
+      showToast(`Removed ${item.name}`);
+    } catch {
+      setState(true);
+      showToast('Could not remove');
+    }
+  };
+  const toggle = (): void => void (item.onShelf ? remove() : add());
   btn.onclick = (e) => {
     e.stopPropagation();
-    void doAdd();
+    toggle();
   };
-  card.addEventListener('click', () => void doAdd());
+  card.addEventListener('click', toggle);
+  setState(!!item.onShelf);
   card.appendChild(btn);
   return card;
 }
@@ -3551,22 +3575,10 @@ function albumsColumn(lib: SearchAlbum[], catalog: SearchAlbum[], loading: boole
   col.appendChild(h);
   const list = document.createElement('div');
   list.className = 'find-cat-list';
-  const sub = (label: string): void => {
-    const s = document.createElement('div');
-    s.className = 'find-subhead';
-    s.textContent = label;
-    list.appendChild(s);
-  };
-  // Library first, then catalog — paged together so "Load more" reveals the next page.
-  const remote = [...lib.map((a) => ['lib', a] as const), ...catalog.map((a) => ['cat', a] as const)];
-  let lastSec: string | null = null;
-  remote.slice(0, searchShown.albums).forEach(([sec, a]) => {
-    if (sec !== lastSec) {
-      sub(sec === 'lib' ? 'In your library' : 'From your sources');
-      lastSec = sec;
-    }
-    list.appendChild(albumResultCard(a));
-  });
+  // Library-owned first, then catalog — as one flat list. (The old "In your library" / "From your
+  // sources" tier labels are dropped now that on-shelf items have their own column.)
+  const remote = [...lib, ...catalog];
+  remote.slice(0, searchShown.albums).forEach((a) => list.appendChild(albumResultCard(a)));
   if (!remote.length) {
     const e = document.createElement('div');
     e.className = 'find-empty';
@@ -5829,8 +5841,11 @@ function applySettings(s: Settings): void {
   const prev = settings;
   settings = s;
   openMode = s.openMode;
-  // Follow the admin default search source until the user picks one on the wall.
-  if (!searchSourceUserSet) searchSource = s.defaultSource || 'all';
+  // Follow the admin default search source until the user picks one on the wall. Use the
+  // per-kind default for the ACTIVE tab (defaultSourceFor), not the global album default —
+  // otherwise a WS settings snapshot arriving mid-search wipes the tab's configured source
+  // back to "All" (the "default only kicks in after a while" bug).
+  if (!searchSourceUserSet) searchSource = defaultSourceFor(shelfTab);
   // Follow the admin default speaker until the user picks a room on the wall.
   if (s.defaultPlayerId && s.defaultPlayerId !== prev.defaultPlayerId && !userPickedPlayer) {
     activePlayerId = s.defaultPlayerId;
