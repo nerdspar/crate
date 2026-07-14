@@ -219,19 +219,26 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .field-toggle { flex-direction: column; align-items: stretch; gap: 0.3rem; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 0.9rem; cursor: pointer; color: var(--ink); }
 .switch-row .switch-label { font-size: 0.95rem; line-height: 1.3; }
-.field-toggle input[type='checkbox'] {
+.field-toggle input[type='checkbox'],
+.media-kind-head input[type='checkbox'] {
   appearance: none; -webkit-appearance: none; flex: none; margin: 0;
   width: 2.7rem; height: 1.6rem; border-radius: 999px; background: var(--line);
   position: relative; cursor: pointer; transition: background 0.18s ease;
 }
-.field-toggle input[type='checkbox']::after {
+.field-toggle input[type='checkbox']::after,
+.media-kind-head input[type='checkbox']::after {
   content: ''; position: absolute; top: 0.16rem; left: 0.16rem; width: 1.28rem; height: 1.28rem;
   border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   transition: transform 0.18s ease;
 }
-.field-toggle input[type='checkbox']:checked { background: var(--brass); }
-.field-toggle input[type='checkbox']:checked::after { transform: translateX(1.1rem); }
-.field-toggle input[type='checkbox']:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.field-toggle input[type='checkbox']:checked,
+.media-kind-head input[type='checkbox']:checked { background: var(--brass); }
+.field-toggle input[type='checkbox']:checked::after,
+.media-kind-head input[type='checkbox']:checked::after { transform: translateX(1.1rem); }
+.field-toggle input[type='checkbox']:focus-visible,
+.media-kind-head input[type='checkbox']:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+/* Source show/hide are plain check boxes (distinct from the tab switches above them). */
+.media-src-row input[type='checkbox'] { flex: none; width: 1.2rem; height: 1.2rem; accent-color: var(--brass); cursor: pointer; }
 /* Per-setting explainer: a muted footnote under the control (and a title= tooltip). */
 .field-desc { color: var(--ink-dim); font-size: 0.78rem; line-height: 1.4; margin: 0.05rem 0 0; opacity: 0.85; }
 .field-toggle .field-desc { flex-basis: 100%; margin-top: 0.2rem; }

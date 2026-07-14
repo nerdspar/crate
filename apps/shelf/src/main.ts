@@ -3093,7 +3093,14 @@ let searchSeq = 0;
 let searchSource = 'all'; // client-side source filter: a source name, or 'all'
 let searchSourceUserSet = false; // did the user pick a source this session? (don't clobber with the default)
 let searchMultiSource = false; // do the current results span >1 source? (drives badges + filter)
-const searchSourceIcon = new Map<string, string | null>(); // source name → inline SVG icon
+const searchSourceIcon = new Map<string, string | null>(); // source name → inline SVG icon (per result set)
+// Persistent source-name → icon map (fetched once from /api/sources) so every card — including
+// playlist results, whose search response carries no source list — can show its source badge.
+const sourceIconByName = new Map<string, string | null>();
+void client
+  .getSources()
+  .then((srcs) => srcs.forEach((s) => sourceIconByName.set(s.name, s.iconSvg ?? null)))
+  .catch(() => {});
 let globalResults: GlobalSearchResponse | null = null;
 let playlistResults: LibraryPlaylist[] | null = null; // Playlists-tab search
 let mediaResults: MediaSearchResponse | null = null; // Radio/Podcast/Audiobook-tab search
@@ -3329,7 +3336,10 @@ function shownSources(sources: MusicSourceInfo[]): MusicSourceInfo[] {
 function renderSourceBar(sources: MusicSourceInfo[]): void {
   const shown = shownSources(sources);
   searchSourceIcon.clear();
-  for (const s of shown) searchSourceIcon.set(s.name, s.iconSvg ?? null);
+  for (const s of shown) {
+    searchSourceIcon.set(s.name, s.iconSvg ?? null);
+    if (s.iconSvg) sourceIconByName.set(s.name, s.iconSvg); // keep the persistent map fresh
+  }
   searchMultiSource = shown.length > 1;
   if (searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
   if (searchMultiSource) {
@@ -3392,7 +3402,7 @@ function renderPlaylistResults(loading: boolean): void {
   const cats = document.createElement('div');
   cats.className = 'find-cats cats-two';
   cats.appendChild(shelfColumn('playlist'));
-  cats.appendChild(simpleColumn('Playlists', remoteNew.map(playlistCard), loading));
+  cats.appendChild(simpleColumn('Playlists', remoteNew.map(playlistCard), loading, true));
   findResults.appendChild(cats);
 }
 
@@ -3405,7 +3415,7 @@ function renderMediaResults(kind: ExtraMediaKind, loading: boolean): void {
   const cats = document.createElement('div');
   cats.className = 'find-cats cats-two';
   cats.appendChild(shelfColumn(kind));
-  cats.appendChild(simpleColumn(label, remoteNew.map((it) => mediaResultCard(it, kind)), loading));
+  cats.appendChild(simpleColumn(label, remoteNew.map((it) => mediaResultCard(it, kind)), loading, true));
   findResults.appendChild(cats);
 }
 
@@ -3437,16 +3447,18 @@ function shelfColumn(kind: ShelfKind): HTMLElement {
   return col;
 }
 
-/** A plain results column (no paging) — used for the playlist/podcast/audiobook/radio catalog. */
-function simpleColumn(title: string, cards: HTMLElement[], loading: boolean): HTMLElement {
+/** A plain results column (no paging) — used for the playlist/podcast/audiobook/radio catalog.
+    `grid` lays the cards out two-up (the catalog gets a double-wide column) so they stay a sensible
+    reading width on an ultrawide wall instead of stretching. */
+function simpleColumn(title: string, cards: HTMLElement[], loading: boolean, grid = false): HTMLElement {
   const col = document.createElement('div');
-  col.className = 'find-cat';
+  col.className = 'find-cat' + (grid ? ' find-cat-wide' : '');
   const h = document.createElement('div');
   h.className = 'find-cat-h';
   h.textContent = title;
   col.appendChild(h);
   const list = document.createElement('div');
-  list.className = 'find-cat-list';
+  list.className = 'find-cat-list' + (grid ? ' find-cat-grid' : '');
   if (cards.length) cards.forEach((c) => list.appendChild(c));
   else {
     const e = document.createElement('div');
@@ -4143,7 +4155,7 @@ function cardShell(title: string, artist: string, artUrl: string | null, action:
     (so you can see at a glance whether a hit is from Apple Music, TuneIn, etc.). */
 function srcArtIcon(source?: string): string {
   if (!source) return '';
-  const icon = searchSourceIcon.get(source);
+  const icon = searchSourceIcon.get(source) ?? sourceIconByName.get(source);
   return icon ? `<span class="find-card-srcico" title="${escapeHtml(source)}">${icon}</span>` : '';
 }
 
