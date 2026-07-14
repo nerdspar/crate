@@ -37,12 +37,20 @@ await app.register(fastifyStatic, { root: cfg.artDir, prefix: '/art/' });
 // were mounted so the System service-status view can report them as alive & serving.
 const shelfServed = existsSync(cfg.shelfDist);
 const adminServed = existsSync(cfg.adminDist);
+// Cache policy for the built SPAs: the entry HTML must NEVER be cached (otherwise the wall's
+// kiosk browser keeps loading an old bundle after an update and never sees new CSS/JS), while the
+// content-hashed assets under /assets/ are immutable and can be cached forever. Without this, every
+// deploy risked leaving the wall on a stale build.
+const spaCacheHeaders = (res: { setHeader(k: string, v: string): void }, filePath: string): void => {
+  if (/\.html?$/.test(filePath)) res.setHeader('Cache-Control', 'no-store, must-revalidate');
+  else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+};
 // The admin owns the root (phones open http://<host>/); the wall/kiosk lives under /wall/.
 if (shelfServed) {
-  await app.register(fastifyStatic, { root: cfg.shelfDist, prefix: '/wall/', decorateReply: false });
+  await app.register(fastifyStatic, { root: cfg.shelfDist, prefix: '/wall/', decorateReply: false, cacheControl: false, setHeaders: spaCacheHeaders });
 }
 if (adminServed) {
-  await app.register(fastifyStatic, { root: cfg.adminDist, prefix: '/', decorateReply: false });
+  await app.register(fastifyStatic, { root: cfg.adminDist, prefix: '/', decorateReply: false, cacheControl: false, setHeaders: spaCacheHeaders });
   // Back-compat: old /admin bookmarks land on the admin root.
   app.get('/admin', (_req, reply) => reply.redirect('/'));
   app.get('/admin/', (_req, reply) => reply.redirect('/'));
