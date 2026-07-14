@@ -44,17 +44,28 @@ let shelfAdding = false; // showing the inline "name this shelf" box
 /** Show each extra-media find-tab (Radio/Podcasts/Audiobooks) only when a capable source is
     connected AND the user hasn't hidden it in settings. If the active tab hides, fall back to
     Albums. Called whenever a shelf response lands (carries sourceKinds). */
+const ALL_TABS: ShelfKind[] = ['album', 'playlist', 'radio', 'podcast', 'audiobook'];
+/** Show/hide the five find-shelf tabs. Album/playlist are gated on the user toggle only; the
+    extra-media tabs also need a capable connected source. A guard keeps ≥1 tab visible, and if the
+    active tab hides we fall back to the first visible one. */
 function updateMediaTabs(): void {
-  for (const m of EXTRA_MEDIA) {
-    const show = sourceKinds[m.kind] && (settings.mediaTabs?.[m.kind] ?? true);
-    const tab = document.querySelector<HTMLElement>(`.find-shelf-tab[data-kind="${m.kind}"]`);
+  const on = (k: ShelfKind): boolean => settings.mediaTabs?.[k] ?? true;
+  const capable = (k: ShelfKind): boolean => k === 'album' || k === 'playlist' || !!sourceKinds[k as ExtraMediaKind];
+  const visible = (k: ShelfKind): boolean => on(k) && capable(k);
+  const anyVisible = ALL_TABS.some(visible);
+  for (const k of ALL_TABS) {
+    const show = anyVisible ? visible(k) : k === 'album'; // never leave zero tabs
+    const tab = document.querySelector<HTMLElement>(`.find-shelf-tab[data-kind="${k}"]`);
     if (tab) tab.style.display = show ? '' : 'none';
-    if (!show && shelfTab === m.kind) {
-      shelfTab = 'album';
-      document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset['kind'] === 'album'));
-      if (activeShelf === m.shelfId) void switchShelf('all');
-      else renderShelfList();
-    }
+  }
+  const shown = (k: ShelfKind): boolean => (anyVisible ? visible(k) : k === 'album');
+  if (!shown(shelfTab)) {
+    const next = ALL_TABS.find(shown) ?? 'album';
+    shelfTab = next;
+    document.querySelectorAll('.find-shelf-tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset['kind'] === next));
+    const target = canonicalShelfId(next) ?? 'all';
+    if (activeShelf !== target) void switchShelf(target);
+    else renderShelfList();
   }
 }
 let shelfDeleteArmed: string | null = null; // shelf id whose ✕ is armed for confirm
@@ -3309,26 +3320,40 @@ function renderSearch(loading: boolean): void {
   else renderMediaResults(shelfTab, loading);
 }
 
-/** Source dropdown (client-side filter) atop the results — only when >1 source is present. */
+/** Sources the user hasn't hidden for the active tab (admin › Audio Sources). */
+function shownSources(sources: MusicSourceInfo[]): MusicSourceInfo[] {
+  const hidden = new Set(settings.hiddenSources?.[shelfTab] ?? []);
+  return sources.filter((s) => !hidden.has(s.name));
+}
+/** Source dropdown (client-side filter) atop the results — only when >1 shown source is present. */
 function renderSourceBar(sources: MusicSourceInfo[]): void {
+  const shown = shownSources(sources);
   searchSourceIcon.clear();
-  for (const s of sources) searchSourceIcon.set(s.name, s.iconSvg ?? null);
-  searchMultiSource = sources.length > 1;
+  for (const s of shown) searchSourceIcon.set(s.name, s.iconSvg ?? null);
+  searchMultiSource = shown.length > 1;
   if (searchSource !== 'all' && !searchSourceIcon.has(searchSource)) searchSource = 'all';
   if (searchMultiSource) {
     const bar = document.createElement('div');
     bar.className = 'find-srcbar';
-    bar.appendChild(sourceDropdown(sources));
+    bar.appendChild(sourceDropdown(shown));
     findResults.appendChild(bar);
   }
 }
-const srcOk = (s?: string): boolean => searchSource === 'all' || s === searchSource;
+const srcOk = (s?: string): boolean => {
+  if (s && (settings.hiddenSources?.[shelfTab] ?? []).includes(s)) return false; // hidden for this tab
+  return searchSource === 'all' || s === searchSource;
+};
 /** Distinct sources (by display name) present in a result list, as minimal source infos. */
 function uniqueSources(names: (string | undefined)[]): MusicSourceInfo[] {
   const seen = new Set<string>();
   const out: MusicSourceInfo[] = [];
   for (const n of names) if (n && !seen.has(n)) (seen.add(n), out.push({ instanceId: n, name: n }));
   return out;
+}
+/** The pre-selected search source for a tab: its per-kind default, then (albums only) the global
+    default, else All. */
+function defaultSourceFor(kind: ShelfKind): string {
+  return settings.defaultSourceByKind?.[kind] ?? (kind === 'album' ? settings.defaultSource : undefined) ?? 'all';
 }
 
 function renderAlbumResults(loading: boolean): void {
@@ -4475,7 +4500,8 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     if (filterQuery) {
       artistView = null;
       resetSearchPaging();
-      searchSource = 'all';
+      searchSource = defaultSourceFor(shelfTab);
+      searchSourceUserSet = false;
       renderSearch(true); // loading scaffold in the new scope
       void runSearch();
     } else {
@@ -6032,10 +6058,10 @@ async function boot(): Promise<void> {
   items = shelfRes.items;
   shelves = shelfRes.shelves;
   sourceKinds = shelfRes.sourceKinds;
-  updateMediaTabs();
   players = playersRes.players;
   settings = settingsRes;
-  searchSource = settings.defaultSource || 'all'; // start search filtered to the configured default
+  updateMediaTabs(); // after settings, so mediaTabs (tab on/off) is applied on the first paint
+  searchSource = defaultSourceFor('album'); // start (album tab) search filtered to the configured default
   computeRooms();
   openMode = settings.openMode;
   activePlayerId = settings.defaultPlayerId ?? rooms[0]?.id ?? null;

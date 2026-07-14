@@ -292,9 +292,16 @@ export interface Settings {
   /** Custom display label per music-source instance id, e.g. { "apple_music--ab12": "Apple Music — Alex" }.
       Lets two accounts of the same provider be told apart in results, badges and the source filter. */
   sourceLabels: Record<string, string>;
-  /** Per-extra-media-kind tab visibility (default all on). A tab shows only when a capable source
-      is connected AND the user hasn't hidden it here. */
-  mediaTabs: SourceKinds;
+  /** Per-tab visibility (default all on). The extra-media tabs (radio/podcast/audiobook) also
+      require a capable connected source; album/playlist can be hidden outright. A guard keeps at
+      least one tab visible. */
+  mediaTabs: Record<MediaKind, boolean>;
+  /** Per-kind hidden search sources (source display names). A hidden source's results + its entry
+      in that tab's source dropdown are dropped — e.g. hide Spotify everywhere but Audiobooks. */
+  hiddenSources: Partial<Record<MediaKind, string[]>>;
+  /** Per-kind default search source (a source display name, or 'all'). Overrides `defaultSource`
+      for that tab's search. */
+  defaultSourceByKind: Partial<Record<MediaKind, string>>;
   afterPlay: AfterPlay;
   /** What to do when an album's last track finishes (stop / repeat / next on shelf). */
   afterAlbum: AfterAlbum;
@@ -362,7 +369,9 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultPlayerId: null,
   defaultSource: 'all',
   sourceLabels: {},
-  mediaTabs: { radio: true, podcast: true, audiobook: true },
+  mediaTabs: { album: true, playlist: true, radio: true, podcast: true, audiobook: true },
+  hiddenSources: {},
+  defaultSourceByKind: {},
   afterPlay: 'linger',
   afterAlbum: 'next',
   afterPlayLingerSec: 8,

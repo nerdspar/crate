@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, EXTRA_MEDIA, isSpeaker, type AutoUpdateConfig, type CrateBackup, type ExtraMediaKind, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MediaBrowseItem, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type SourceKinds, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
+import { CrateClient, EXTRA_MEDIA, isSpeaker, type AutoUpdateConfig, type CrateBackup, type ExtraMediaKind, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MediaKind, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MediaBrowseItem, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type SourceKinds, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -47,6 +47,17 @@ let libraryCount = 0; // size of the "All" shelf
 let playlistCount = 0; // size of the "All Playlists" shelf
 const mediaCounts: Record<ExtraMediaKind, number> = emptyMediaMap(() => 0); // size of each extra-media shelf
 let sourceKinds: SourceKinds = { radio: false, podcast: false, audiobook: false }; // which extra kinds a source serves
+
+// The five media tabs, their MA capability feature, and display name (for the Tabs & sources manager).
+const MEDIA_KINDS: MediaKind[] = ['album', 'playlist', 'radio', 'podcast', 'audiobook'];
+const KIND_FEATURE: Record<MediaKind, string> = {
+  album: 'library_albums',
+  playlist: 'library_playlists',
+  radio: 'library_radios',
+  podcast: 'library_podcasts',
+  audiobook: 'library_audiobooks',
+};
+const KIND_NAME: Record<MediaKind, string> = { album: 'Albums', playlist: 'Playlists', radio: 'Radio', podcast: 'Podcasts', audiobook: 'Audiobooks' };
 
 /** Show each extra-media segment (Radio/Podcasts/Audiobooks) only when a capable source is
     connected AND the user hasn't hidden it; fall back to Albums if the active one vanishes. */
@@ -2805,80 +2816,123 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
         .finally(() => (plCb.disabled = false));
     });
 
-    // Default search source — what search filters to by default (wall + admin); 'all' shows every source.
-    const dsField = document.createElement('div');
-    dsField.className = 'field';
-    dsField.innerHTML = '<label>Default search source <span class="hint">(what search starts filtered to, on the wall and here)</span></label>';
-    const dsSel = document.createElement('select');
-    dsSel.add(new Option('All sources', 'all'));
-    dsField.appendChild(dsSel);
-    body.appendChild(dsField);
+    // Tabs & sources — per kind: show/hide the tab, choose which connected sources it searches, and
+    // its default source. Radio/Podcasts/Audiobooks also require a source that serves that kind.
+    const mgrHead = document.createElement('div');
+    mgrHead.className = 'set-subhead';
+    mgrHead.textContent = 'Tabs & sources';
+    body.appendChild(mgrHead);
+    const mgrHint = document.createElement('p');
+    mgrHint.className = 'hint';
+    mgrHint.textContent =
+      'For each tab: show or hide it, pick which connected sources it searches, and its default source. Use this to (say) keep Spotify for Audiobooks only.';
+    body.appendChild(mgrHint);
+    const mgr = document.createElement('div'); // synchronous so cardify() wraps it; filled once loaded
+    mgr.className = 'media-mgr';
+    body.appendChild(mgr);
     void Promise.all([client.getSettings(), client.getSources()])
       .then(([st, srcs]) => {
-        const seen = new Set<string>();
-        for (const s of srcs) if (s.name && !seen.has(s.name)) { seen.add(s.name); dsSel.add(new Option(s.name, s.name)); }
-        dsSel.value = st.defaultSource || 'all';
-      })
-      .catch(() => {});
-    dsSel.addEventListener('change', () => { void client.putSettings({ defaultSource: dsSel.value }).catch(maErr); showToast('Saved'); });
-
-    // Shown tabs — hide/show the Radio, Podcasts and Audiobooks tabs (wall + admin). A tab still
-    // only appears when a source that can serve it is connected.
-    const tabsHead = document.createElement('div');
-    tabsHead.className = 'set-subhead';
-    tabsHead.textContent = 'Shown tabs';
-    body.appendChild(tabsHead);
-    const tabsHint = document.createElement('p');
-    tabsHint.className = 'hint';
-    tabsHint.textContent = 'Show or hide the Radio, Podcasts and Audiobooks tabs. A tab only appears when a connected source serves it.';
-    body.appendChild(tabsHint);
-    // Container appended synchronously so cardify() wraps it into the section card; the toggles
-    // fill it once settings + sources load.
-    const tabsWrap = document.createElement('div');
-    tabsWrap.className = 'media-tabs';
-    body.appendChild(tabsWrap);
-    void Promise.all([client.getSettings(), client.getSources()])
-      .then(([st, srcs]) => {
-        const state: SourceKinds = {
+        const tabs: Record<MediaKind, boolean> = {
+          album: st.mediaTabs?.album !== false,
+          playlist: st.mediaTabs?.playlist !== false,
           radio: st.mediaTabs?.radio !== false,
           podcast: st.mediaTabs?.podcast !== false,
           audiobook: st.mediaTabs?.audiobook !== false,
         };
-        for (const m of EXTRA_MEDIA) {
-          const names = [...new Set(srcs.filter((s) => (s.features ?? []).includes(m.feature)).map((s) => s.name))];
-          const has = names.length > 0;
-          const tf = document.createElement('div');
-          tf.className = 'field field-toggle media-tab' + (has ? '' : ' media-tab-off');
-          const row = document.createElement('label');
-          row.className = 'switch-row';
+        const hidden: Partial<Record<MediaKind, string[]>> = { ...(st.hiddenSources ?? {}) };
+        const defaults: Partial<Record<MediaKind, string>> = { ...(st.defaultSourceByKind ?? {}) };
+        const cap = (f: string): boolean => srcs.some((s) => (s.features ?? []).includes(f));
+        const save = (patch: Partial<Settings>): void => {
+          void client
+            .putSettings(patch)
+            .then(() => {
+              if (settings) Object.assign(settings, patch);
+              showToast('Saved');
+            })
+            .catch(maErr);
+        };
+        for (const kind of MEDIA_KINDS) {
+          const feature = KIND_FEATURE[kind];
+          const core = kind === 'album' || kind === 'playlist';
+          const names = [...new Set(srcs.filter((s) => (s.features ?? []).includes(feature)).map((s) => s.name))];
+          const has = names.length > 0 || core;
+          const block = document.createElement('div');
+          block.className = 'media-kind' + (has ? '' : ' media-tab-off');
+          // Tab on/off.
+          const head = document.createElement('label');
+          head.className = 'switch-row media-kind-head';
           const span = document.createElement('span');
           span.className = 'switch-label';
-          span.textContent = m.name;
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.checked = has && state[m.kind];
-          cb.disabled = !has; // can't enable a tab when no connected source serves it
-          cb.addEventListener('change', () => {
-            state[m.kind] = cb.checked;
-            const next: SourceKinds = { ...state };
-            void client
-              .putSettings({ mediaTabs: next })
-              .then(() => {
-                if (settings) settings.mediaTabs = next;
-                const cap = (f: string): boolean => srcs.some((s) => (s.features ?? []).includes(f));
-                sourceKinds = { radio: cap('library_radios'), podcast: cap('library_podcasts'), audiobook: cap('library_audiobooks') };
-                updateMediaSegments();
-                showToast('Saved');
-              })
-              .catch(maErr);
+          span.textContent = KIND_NAME[kind];
+          const tabCb = document.createElement('input');
+          tabCb.type = 'checkbox';
+          tabCb.checked = has && tabs[kind];
+          tabCb.disabled = !has;
+          tabCb.addEventListener('change', () => {
+            const anyLeft = MEDIA_KINDS.some(
+              (k) => (k === kind ? tabCb.checked : tabs[k]) && (k === 'album' || k === 'playlist' || cap(KIND_FEATURE[k])),
+            );
+            if (!anyLeft) {
+              tabCb.checked = true;
+              showToast('Keep at least one tab');
+              return;
+            }
+            tabs[kind] = tabCb.checked;
+            save({ mediaTabs: { ...tabs } });
+            sourceKinds = { radio: cap('library_radios'), podcast: cap('library_podcasts'), audiobook: cap('library_audiobooks') };
+            updateMediaSegments();
           });
-          row.append(span, cb);
-          // The connected sources that serve this kind — or a prompt to add one.
-          const note = document.createElement('p');
-          note.className = 'field-desc' + (has ? '' : ' media-tab-note');
-          note.textContent = has ? names.join(', ') : 'No compatible source — add one under Sources to enable this tab.';
-          tf.append(row, note);
-          tabsWrap.appendChild(tf);
+          head.append(span, tabCb);
+          block.appendChild(head);
+          // Sources + default (only when a source serves this kind).
+          if (names.length) {
+            const srcWrap = document.createElement('div');
+            srcWrap.className = 'media-kind-src';
+            const hiddenSet = new Set(hidden[kind] ?? []);
+            const defField = document.createElement('div');
+            defField.className = 'field media-default';
+            defField.innerHTML = '<label>Default source</label>';
+            const defSel = document.createElement('select');
+            const rebuildDefault = (): void => {
+              defSel.innerHTML = '';
+              defSel.add(new Option('All shown', 'all'));
+              for (const name of names) if (!hiddenSet.has(name)) defSel.add(new Option(name, name));
+              const cur = defaults[kind] ?? 'all';
+              defSel.value = [...defSel.options].some((o) => o.value === cur) ? cur : 'all';
+            };
+            for (const name of names) {
+              const r = document.createElement('label');
+              r.className = 'switch-row media-src-row';
+              const s2 = document.createElement('span');
+              s2.textContent = name;
+              const cb2 = document.createElement('input');
+              cb2.type = 'checkbox';
+              cb2.checked = !hiddenSet.has(name);
+              cb2.addEventListener('change', () => {
+                if (cb2.checked) hiddenSet.delete(name);
+                else hiddenSet.add(name);
+                hidden[kind] = [...hiddenSet];
+                save({ hiddenSources: { ...hidden } });
+                rebuildDefault();
+              });
+              r.append(s2, cb2);
+              srcWrap.appendChild(r);
+            }
+            rebuildDefault();
+            defSel.addEventListener('change', () => {
+              defaults[kind] = defSel.value;
+              save({ defaultSourceByKind: { ...defaults } });
+            });
+            defField.appendChild(defSel);
+            srcWrap.appendChild(defField);
+            block.appendChild(srcWrap);
+          } else if (!core) {
+            const note = document.createElement('p');
+            note.className = 'field-desc media-tab-note';
+            note.textContent = 'No compatible source — add one under Sources to enable this tab.';
+            block.appendChild(note);
+          }
+          mgr.appendChild(block);
         }
       })
       .catch(() => {});
