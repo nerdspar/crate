@@ -1145,12 +1145,16 @@ body.find-open #cc-grip { pointer-events: none; }
    whose cards lay out two-up — so each card stays a sensible ~album-column width (Add stays in
    frame) instead of stretching the whole ultrawide. */
 .find-cats.cats-two { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); padding-right: 2vw; }
-/* Responsive card grid: as many ~30rem columns as fit — 3-up on an ultrawide wall (denser, Add
-   sits closer to the content), 2-up around 1080p, 1-up on a phone. */
+/* Card grid for the media/playlist catalog. Fixed column COUNTS by viewport width — NOT
+   auto-fill+min(), which can collapse to a single full-width column inside a flex parent in some
+   browsers (that was the "buttons cut off" bug). 2-up by default, 3-up on an ultrawide wall, 1-up
+   on a phone. `minmax(0,1fr)` lets cells shrink so wide content can't force overflow. */
 .find-cat-list.find-cat-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8vh 1.4vw; align-content: start;
 }
+@media (min-width: 2200px) { .find-cat-list.find-cat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 820px) { .find-cat-list.find-cat-grid { grid-template-columns: minmax(0, 1fr); } }
 .find-cat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* A column header that also carries the "Filter shelf" action (the On-your-shelf column). */
 .find-cat-h.find-subhead-row { display: flex; align-items: center; justify-content: space-between; gap: 1vw; }
