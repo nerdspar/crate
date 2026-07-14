@@ -1144,7 +1144,7 @@ body.find-open #cc-grip { pointer-events: none; }
 /* Playlists / Podcasts / Audiobooks / Radio tabs: On-your-shelf + a DOUBLE-WIDE catalog column
    whose cards lay out two-up — so each card stays a sensible ~album-column width (Add stays in
    frame) instead of stretching the whole ultrawide. */
-.find-cats.cats-two { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+.find-cats.cats-two { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); padding-right: 2vw; }
 .find-cat-list.find-cat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8vh 1.4vw; align-content: start; }
 /* Reset the grid to a single column when the sheet is narrow (tablet/phone). */
 @media (max-width: 900px) { .find-cat-list.find-cat-grid { grid-template-columns: minmax(0, 1fr); } }
