@@ -1145,9 +1145,12 @@ body.find-open #cc-grip { pointer-events: none; }
    whose cards lay out two-up — so each card stays a sensible ~album-column width (Add stays in
    frame) instead of stretching the whole ultrawide. */
 .find-cats.cats-two { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); padding-right: 2vw; }
-.find-cat-list.find-cat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8vh 1.4vw; align-content: start; }
-/* Reset the grid to a single column when the sheet is narrow (tablet/phone). */
-@media (max-width: 900px) { .find-cat-list.find-cat-grid { grid-template-columns: minmax(0, 1fr); } }
+/* Responsive card grid: as many ~30rem columns as fit — 3-up on an ultrawide wall (denser, Add
+   sits closer to the content), 2-up around 1080p, 1-up on a phone. */
+.find-cat-list.find-cat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+  gap: 0.8vh 1.4vw; align-content: start;
+}
 .find-cat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* A column header that also carries the "Filter shelf" action (the On-your-shelf column). */
 .find-cat-h.find-subhead-row { display: flex; align-items: center; justify-content: space-between; gap: 1vw; }
