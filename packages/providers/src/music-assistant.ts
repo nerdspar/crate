@@ -743,8 +743,26 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     audiobook: { search: 'audiobook', result: 'audiobooks', library: 'music/audiobooks/library_items' },
   };
 
-  private toProviderMedia(item: Record<string, unknown>): ProviderMediaItem | null {
+  /** The provider uri to store/play for a resolved MA item. MA's top-level `uri` is normally the
+      playable `provider://type/id`, but for some providers (notably iTunes Podcast Search) it's the
+      feed's homepage <link> — e.g. `https://wondery.com/…` — which can't fetch episodes or play.
+      When the top-level uri's scheme doesn't match the item's provider, rebuild it from the matching
+      provider_mapping's item_id (the real feed id). Search-result items already carry a correct
+      top-level uri, so they pass through untouched. */
+  private playableUri(item: Record<string, unknown>): string | undefined {
     const uri = str(item['uri']);
+    const provider = str(item['provider']);
+    if (!uri || !provider || uri.startsWith(`${provider}://`)) return uri;
+    const mediaType = str(item['media_type']);
+    const mappings = arr(item['provider_mappings']).map(rec);
+    const m = mappings.find((x) => str(x['provider_instance']) === provider || str(x['provider_domain']) === provider) ?? mappings[0];
+    const instance = m ? (str(m['provider_instance']) ?? str(m['provider_domain'])) : undefined;
+    const itemId = m ? str(m['item_id']) : undefined;
+    return instance && mediaType && itemId ? `${instance}://${mediaType}/${itemId}` : uri;
+  }
+
+  private toProviderMedia(item: Record<string, unknown>): ProviderMediaItem | null {
+    const uri = this.playableUri(item);
     const name = str(item['name']);
     if (!uri || !name) return null;
     const md = rec(item['metadata']);

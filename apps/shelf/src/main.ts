@@ -3119,6 +3119,14 @@ async function ensureShelfItems(kind: ShelfKind): Promise<void> {
   shelfItemsCache.set(kind, res.items);
   if (shelfTab === kind && filterQuery) renderSearch(false); // fill the On-your-shelf column once loaded
 }
+/** Re-fetch a kind's shelf items and re-render the search view so the On-your-shelf column
+    reflects an add/remove immediately (no need to redo the search). */
+async function refreshShelfItems(kind: ShelfKind): Promise<void> {
+  const res = await client.getShelf(canonicalShelfId(kind)).catch(() => null);
+  if (!res) return;
+  shelfItemsCache.set(kind, res.items);
+  if (shelfTab === kind && filterQuery) renderSearch(false);
+}
 let artistView: SearchArtist | null = null; // non-null = the artist detail is showing
 let artistSeq = 0; // cancels stale artist-detail fetches
 // Warm the top artists' (slow) song lists in the background as soon as they appear in
@@ -3525,9 +3533,9 @@ function mediaResultCard(item: MediaBrowseItem, kind: ExtraMediaKind): HTMLEleme
     btn.textContent = 'Adding…';
     try {
       await client.addMedia(kind, item.providerUri);
-      shelfItemsCache.delete(kind); // the On-your-shelf column reflects it next render
       setState(true);
       showToast(`Added ${item.name}`);
+      void refreshShelfItems(kind); // show it in the On-your-shelf column right away
     } catch {
       setState(false);
       showToast('Could not add');
@@ -3538,9 +3546,9 @@ function mediaResultCard(item: MediaBrowseItem, kind: ExtraMediaKind): HTMLEleme
     btn.textContent = 'Removing…';
     try {
       await client.removeFromShelf(albumId);
-      shelfItemsCache.delete(kind);
       setState(false);
       showToast(`Removed ${item.name}`);
+      void refreshShelfItems(kind); // drop it from the On-your-shelf column right away
     } catch {
       setState(true);
       showToast('Could not remove');
