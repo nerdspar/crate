@@ -116,6 +116,9 @@ const ICON_PREV = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" ari
 const ICON_NEXT = '<svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg>';
 const ICON_SHUFFLE = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>';
 const ICON_REPEAT = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+// Skip back / forward 10 seconds (spoken-word transport): a circular arrow with "10".
+const ICON_BACK10 = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M3 4v4h4"/><text x="12.5" y="15.5" font-size="8" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle" font-family="system-ui,sans-serif">10</text></svg>';
+const ICON_FWD10 = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M21 4v4h-4"/><text x="11.5" y="15.5" font-size="8" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle" font-family="system-ui,sans-serif">10</text></svg>';
 const ICON_ARROW = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15"/><path d="M13 6l6 6-6 6"/></svg>';
 // Cover-art placeholder for external sources (TV audio, line-in, AirPlay…) that carry no artwork.
 const ICON_SOURCE = '<svg class="cc-art-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M8.8 8.8a4.5 4.5 0 0 0 0 6.4"/><path d="M15.2 8.8a4.5 4.5 0 0 1 0 6.4"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4"/><path d="M17.7 6.3a8 8 0 0 1 0 11.4"/></svg>';
@@ -414,6 +417,20 @@ function buildShelf(): void {
           `<div class="spine-label title-label" style="${labelCss}">${titleSpan}</div>`
         : `<div class="spine-label" style="${labelCss}; color:${baseInk}">${artistSpan}&nbsp;&nbsp;${titleSpan}</div>`;
 
+    // Transport side-controls by kind: albums/playlists get shuffle+repeat; podcasts/audiobooks
+    // get −10s/+10s skip; radio (a live stream) gets neither.
+    const spoken = a.kind === 'podcast' || a.kind === 'audiobook';
+    const leftCtl = spoken
+      ? `<button class="card-mode card-back10" aria-label="Back 10 seconds">${ICON_BACK10}</button>`
+      : a.kind === 'radio'
+        ? ''
+        : `<button class="card-mode card-shuffle" aria-label="Shuffle">${ICON_SHUFFLE}</button>`;
+    const rightCtl = spoken
+      ? `<button class="card-mode card-fwd10" aria-label="Forward 10 seconds">${ICON_FWD10}</button>`
+      : a.kind === 'radio'
+        ? ''
+        : `<button class="card-mode card-repeat" aria-label="Repeat">${ICON_REPEAT}</button>`;
+
     el.innerHTML = `
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
@@ -438,11 +455,11 @@ function buildShelf(): void {
         </div>
         <div class="actions">
           <div class="transport">
-            <button class="card-mode card-shuffle" aria-label="Shuffle">${ICON_SHUFFLE}</button>
+            ${leftCtl}
             <button class="np-btn np-prev" aria-label="Previous track" hidden>${ICON_PREV}</button>
             <button class="play">Play</button>
             <button class="np-btn np-next" aria-label="Next track" hidden>${ICON_NEXT}</button>
-            <button class="card-mode card-repeat" aria-label="Repeat">${ICON_REPEAT}</button>
+            ${rightCtl}
           </div>
           <div class="rooms"></div>
           <div class="vol">
@@ -473,13 +490,22 @@ function buildShelf(): void {
       stop(e);
       void onPlayButton(i);
     });
-    el.querySelector('.card-shuffle')!.addEventListener('click', (e) => {
+    // Shuffle/repeat exist only for albums & playlists; podcasts/audiobooks get ±10s skip instead.
+    el.querySelector('.card-shuffle')?.addEventListener('click', (e) => {
       stop(e);
       toggleShuffle();
     });
-    el.querySelector('.card-repeat')!.addEventListener('click', (e) => {
+    el.querySelector('.card-repeat')?.addEventListener('click', (e) => {
       stop(e);
       cycleAfterAlbum();
+    });
+    el.querySelector('.card-back10')?.addEventListener('click', (e) => {
+      stop(e);
+      skipSeconds(-10);
+    });
+    el.querySelector('.card-fwd10')?.addEventListener('click', (e) => {
+      stop(e);
+      skipSeconds(10);
     });
     // Tapping the artist name opens the search with that name typed in.
     el.querySelector('.panel h2')?.addEventListener('click', (e) => {
@@ -1376,6 +1402,17 @@ function cycleAfterAlbum(): void {
     if (pid) void client.setRepeat({ playerId: pid, mode: next === 'repeat' ? 'all' : 'off' }).catch(() => {});
   }
   renderCardModes();
+}
+
+/** Skip the current playback by ±N seconds (spoken-word transport). Optimistically moves the
+    seek bar, then seeks the real player. */
+function skipSeconds(delta: number): void {
+  if (!now.playerId || now.duration <= 0) return;
+  const pos = Math.max(0, Math.min(now.duration, Math.round(liveElapsed() + delta)));
+  now.elapsed = pos;
+  now.at = performance.now();
+  applyNow();
+  void client.transport({ playerId: now.playerId, cmd: 'seek', position: pos }).catch(() => {});
 }
 
 let afterPlayTimer: ReturnType<typeof setTimeout> | undefined;
