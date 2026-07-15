@@ -44,6 +44,8 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['GET', /^\/api\/playlists\/tracks$/],
     ['POST', /^\/api\/playlists\/prewarm$/],
     ['POST', /^\/api\/(play|transport|volume|shuffle|repeat|group)$/],
+    ['GET', /^\/api\/queue$/],
+    ['POST', /^\/api\/queue\/(play|move|remove|clear)$/],
     // Control-center system controls live on the wall (an unauthenticated touchscreen).
     ['GET', /^\/api\/system\/(status|services)$/],
     ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
@@ -215,6 +217,32 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.post('/api/group', async (req) => {
     const b = req.body as GroupRequest;
     await service.group(b.playerIds);
+    return { ok: true };
+  });
+
+  // Play queue ("Up Next" overlay). Per-player; the wall passes its current target.
+  app.get('/api/queue', (req) => {
+    const player = (req.query as { player?: string }).player;
+    return player ? service.queue(player) : { items: [], currentIndex: null };
+  });
+  app.post('/api/queue/play', async (req) => {
+    const b = req.body as { player: string; index: number };
+    await service.queuePlay(b.player, b.index);
+    return { ok: true };
+  });
+  app.post('/api/queue/move', async (req) => {
+    const b = req.body as { player: string; itemId: string; posShift: number };
+    await service.queueMove(b.player, b.itemId, b.posShift);
+    return { ok: true };
+  });
+  app.post('/api/queue/remove', async (req) => {
+    const b = req.body as { player: string; itemId: string };
+    await service.queueRemove(b.player, b.itemId);
+    return { ok: true };
+  });
+  app.post('/api/queue/clear', async (req) => {
+    const b = req.body as { player: string };
+    await service.queueClear(b.player);
     return { ok: true };
   });
 

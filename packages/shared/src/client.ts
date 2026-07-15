@@ -14,6 +14,7 @@ import type {
   OverrideRequest,
   PlayRequest,
   PlayersResponse,
+  QueueResponse,
   ProviderAlbumDetail,
   AudiobookDetail,
   MediaBrowseItem,
@@ -139,6 +140,23 @@ export class CrateClient {
 
   group(body: GroupRequest): Promise<{ ok: true }> {
     return this.post('/api/group', body);
+  }
+
+  // --- Play queue ("Up Next") ---
+  getQueue(playerId: string): Promise<QueueResponse> {
+    return this.req(`/api/queue?player=${encodeURIComponent(playerId)}`);
+  }
+  queuePlay(playerId: string, index: number): Promise<{ ok: true }> {
+    return this.post('/api/queue/play', { player: playerId, index });
+  }
+  queueMove(playerId: string, itemId: string, posShift: number): Promise<{ ok: true }> {
+    return this.post('/api/queue/move', { player: playerId, itemId, posShift });
+  }
+  queueRemove(playerId: string, itemId: string): Promise<{ ok: true }> {
+    return this.post('/api/queue/remove', { player: playerId, itemId });
+  }
+  queueClear(playerId: string): Promise<{ ok: true }> {
+    return this.post('/api/queue/clear', { player: playerId });
   }
 
   addToShelf(body: AddToShelfRequest): Promise<{ ok: true; albumId: string; duplicate: boolean }> {

@@ -22,6 +22,7 @@ import type {
   MaStatus,
   MusicSourceInfo,
   NowPlaying,
+  QueueResponse,
   SearchSong,
   PlayerState,
   PlayersResponse,
@@ -1145,6 +1146,26 @@ export class Service {
 
   setRepeat(playerId: string, mode: RepeatMode): Promise<void> {
     return this.ma.setRepeat(playerId, mode);
+  }
+
+  async queue(playerId: string): Promise<QueueResponse> {
+    const q = await this.ma.getQueue(playerId);
+    return {
+      items: q.items.map((it) => ({ ...it, isCurrent: q.currentIndex === it.index })),
+      currentIndex: q.currentIndex,
+    };
+  }
+  queuePlay(playerId: string, index: number): Promise<void> {
+    return this.ma.playQueueIndex(playerId, index);
+  }
+  queueMove(playerId: string, itemId: string, posShift: number): Promise<void> {
+    return this.ma.moveQueueItem(playerId, itemId, posShift);
+  }
+  queueRemove(playerId: string, itemId: string): Promise<void> {
+    return this.ma.removeQueueItem(playerId, itemId);
+  }
+  queueClear(playerId: string): Promise<void> {
+    return this.ma.clearQueue(playerId);
   }
 
   group(playerIds: string[]): Promise<void> {

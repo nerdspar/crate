@@ -42,6 +42,19 @@
   </div>
 </div>
 
+<!-- Play queue: swipe in from the left edge. The grip is a thin left-edge hotzone so the
+     horizontal shelf gesture engine stays untouched (only a press ON the grip opens it). -->
+<div id="queue-grip" aria-hidden="true"></div>
+<div id="queue">
+  <div id="queue-panel">
+    <div class="q-head">
+      <span class="q-title">Up Next</span>
+      <button id="queue-clear" class="q-clear">Clear</button>
+    </div>
+    <div id="queue-list"></div>
+  </div>
+</div>
+
 <!-- Find bar: swipe up from the bottom edge. Slim and un-dimmed so the shelf
      stays visible and filters live as you type. Holds sort + Settings too. -->
 <div id="find-grip" aria-hidden="true"></div>

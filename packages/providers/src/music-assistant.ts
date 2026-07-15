@@ -34,6 +34,8 @@ import type {
   ProviderMediaItem,
   ProviderPlayer,
   ProviderPlaylist,
+  ProviderQueue,
+  ProviderQueueTrack,
   ProviderTrackHit,
   TransportCommand,
 } from './interfaces.js';
@@ -924,6 +926,45 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     const args: Record<string, unknown> = { queue_id: playerId };
     if (cmd === 'seek') args['position'] = Math.max(0, Math.floor(positionSec ?? 0));
     await this.client.command(map[cmd], args);
+  }
+
+  /** A player's live queue for the "Up Next" overlay. queue_id == player_id (as with transport). */
+  async getQueue(playerId: string, limit = 100): Promise<ProviderQueue> {
+    const active = rec(await this.client.command('player_queues/get_active_queue', { player_id: playerId }));
+    const raw = await this.client.command('player_queues/items', { queue_id: playerId, limit, offset: 0 });
+    const items = (Array.isArray(raw) ? raw : arr(rec(raw)['items']))
+      .map((r, i) => this.toQueueTrack(rec(r), i))
+      .filter((x): x is ProviderQueueTrack => x !== null);
+    return { items, currentIndex: num(active['current_index']) ?? null };
+  }
+
+  private toQueueTrack(item: Record<string, unknown>, index: number): ProviderQueueTrack | null {
+    const id = str(item['queue_item_id']);
+    if (!id) return null;
+    const media = rec(item['media_item']);
+    const artists = arr(media['artists'])
+      .map((a) => str(rec(a)['name']))
+      .filter((n): n is string => !!n);
+    return {
+      id,
+      index,
+      title: str(item['name']) ?? str(media['name']) ?? 'Unknown',
+      subtitle: artists.length ? artists.join(', ') : (str(rec(media['album'])['name']) ?? null),
+      artworkUrl: this.artworkUrl(item) ?? this.artworkUrl(media),
+    };
+  }
+
+  async playQueueIndex(playerId: string, index: number): Promise<void> {
+    await this.client.command('player_queues/play_index', { queue_id: playerId, index });
+  }
+  async moveQueueItem(playerId: string, queueItemId: string, posShift: number): Promise<void> {
+    await this.client.command('player_queues/move_item', { queue_id: playerId, queue_item_id: queueItemId, pos_shift: posShift });
+  }
+  async removeQueueItem(playerId: string, itemIdOrIndex: string | number): Promise<void> {
+    await this.client.command('player_queues/delete_item', { queue_id: playerId, item_id_or_index: itemIdOrIndex });
+  }
+  async clearQueue(playerId: string): Promise<void> {
+    await this.client.command('player_queues/clear', { queue_id: playerId });
   }
 
   async setVolume(playerId: string, level: number): Promise<void> {

@@ -1470,22 +1470,24 @@ settingsEl.addEventListener('click', (e) => {
 
 /** Close an open sheet when the user swipes it back the way it came (opposite of
     the opening swipe). Ignores drags that begin on a slider so volume still works. */
-function swipeToClose(sheet: HTMLElement, dir: 'up' | 'down', close: () => void): void {
-  let startY = 0;
+function swipeToClose(sheet: HTMLElement, dir: 'up' | 'down' | 'left' | 'right', close: () => void): void {
+  let start = 0;
   let active = false;
+  const horiz = dir === 'left' || dir === 'right';
   sheet.addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement).closest('input[type="range"]')) {
       active = false;
       return;
     }
     active = true;
-    startY = e.clientY;
+    start = horiz ? e.clientX : e.clientY;
   });
   sheet.addEventListener('pointerup', (e) => {
     if (!active) return;
     active = false;
-    const dy = e.clientY - startY;
-    if (dir === 'up' ? dy < -45 : dy > 45) close();
+    const d = (horiz ? e.clientX : e.clientY) - start;
+    const shouldClose = dir === 'up' || dir === 'left' ? d < -45 : d > 45;
+    if (shouldClose) close();
   });
 }
 
@@ -2302,6 +2304,109 @@ window.addEventListener('pointerup', (e) => {
   if (handleDown) {
     handleDown = false;
     if (handleY - e.clientY > 40 || Math.abs(handleY - e.clientY) < 8) closeCC();
+  }
+});
+
+/* =====================================================================
+   Play queue ("Up Next"): a left-edge slide-in overlay. The current track is
+   pinned at top; tap a row to jump, ✕ to remove, "Clear" to empty. Bound to the
+   current play target; re-fetched on open and on state changes while open.
+   ===================================================================== */
+const queueEl = document.getElementById('queue') as HTMLElement;
+const queueGrip = document.getElementById('queue-grip') as HTMLElement;
+const queueListEl = document.getElementById('queue-list') as HTMLElement;
+const queueClearBtn = document.getElementById('queue-clear') as HTMLButtonElement;
+let queueOpen = false;
+let queueSeq = 0;
+function openQueue(): void {
+  queueOpen = true;
+  queueEl.classList.add('open');
+  void refreshQueue();
+}
+function closeQueue(): void {
+  queueOpen = false;
+  queueEl.classList.remove('open');
+}
+async function refreshQueue(): Promise<void> {
+  const pid = activePlayerId;
+  const seq = ++queueSeq;
+  if (!pid) {
+    queueListEl.innerHTML = '<div class="q-empty">Pick a room to see its queue.</div>';
+    return;
+  }
+  const res = await client.getQueue(pid).catch(() => null);
+  if (seq !== queueSeq || !queueOpen) return; // superseded or closed while fetching
+  if (!res || !res.items.length) {
+    queueListEl.innerHTML = '<div class="q-empty">Nothing queued.</div>';
+    return;
+  }
+  queueListEl.innerHTML = '';
+  // Show the current track, then everything after it (drop already-played rows).
+  res.items.slice(res.currentIndex ?? 0).forEach((t) => queueListEl.appendChild(queueRow(t, pid)));
+}
+function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'q-row' + (t.isCurrent ? ' q-current' : '');
+  const art = t.artworkUrl ? ` style="background-image:url('${t.artworkUrl}')"` : '';
+  row.innerHTML =
+    `<span class="q-art"${art}></span>` +
+    `<span class="q-meta"><span class="q-t">${escapeHtml(t.title)}</span>` +
+    (t.subtitle ? `<span class="q-s">${escapeHtml(t.subtitle)}</span>` : '') +
+    `</span>`;
+  row.addEventListener('click', () => {
+    void client
+      .queuePlay(playerId, t.index)
+      .then(() => setTimeout(() => void refreshQueue(), 400))
+      .catch(() => showToast('Could not play'));
+  });
+  if (!t.isCurrent) {
+    const x = document.createElement('button');
+    x.className = 'q-x';
+    x.setAttribute('aria-label', `Remove ${t.title} from the queue`);
+    x.textContent = '✕';
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      row.remove();
+      void client.queueRemove(playerId, t.id).catch(() => {
+        showToast('Could not remove');
+        void refreshQueue();
+      });
+    });
+    row.appendChild(x);
+  }
+  return row;
+}
+queueClearBtn.addEventListener('click', () => {
+  const pid = activePlayerId;
+  if (!pid) return;
+  void client
+    .queueClear(pid)
+    .then(() => void refreshQueue())
+    .catch(() => showToast('Could not clear'));
+});
+queueEl.addEventListener('click', (e) => {
+  if (e.target === queueEl) closeQueue(); // tap the backdrop to close
+});
+swipeToClose(queueEl, 'left', closeQueue);
+// Open: press the left-edge grip and drag right (or tap it).
+let qGripDown = false,
+  qGripX = 0,
+  qGripOpened = false;
+queueGrip.addEventListener('pointerdown', (e) => {
+  qGripDown = true;
+  qGripX = e.clientX;
+  qGripOpened = false;
+});
+window.addEventListener('pointermove', (e) => {
+  if (qGripDown && !qGripOpened && e.clientX - qGripX > 30) {
+    openQueue();
+    qGripOpened = true;
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (qGripDown) {
+    if (!qGripOpened && Math.abs(e.clientX - qGripX) < 8) openQueue();
+    qGripDown = false;
   }
 });
 
@@ -5895,7 +6000,10 @@ function connectWs(): void {
     } catch {
       return;
     }
-    if (msg.type === 'state') handleState(msg.state);
+    if (msg.type === 'state') {
+      handleState(msg.state);
+      if (queueOpen) void refreshQueue(); // keep "Up Next" live as the track/queue changes
+    }
     else if (msg.type === 'progress') handleProgress(msg.playerId, msg.elapsed);
     else if (msg.type === 'shelf' || msg.type === 'shelves') scheduleReloadShelf();
     else if (msg.type === 'players') void reloadPlayers();

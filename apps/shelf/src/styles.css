@@ -770,6 +770,61 @@ body.idle #find-grip::after { opacity: 0; }
 body.find-open #cc-grip::after { opacity: 0; }
 body.find-open #cc-grip { pointer-events: none; }
 
+/* Play queue: thin left-edge grip + slide-in "Up Next" panel (mirrors the CC/Find sheets).
+   Only a press ON the grip opens it, so the horizontal shelf gesture stays untouched. */
+#queue-grip { position: absolute; top: 0; bottom: 0; left: 0; width: 3.2vw; z-index: 16; }
+#queue-grip::after {
+  content: ""; position: absolute; left: 0.8vw; top: 50%; transform: translateY(-50%);
+  width: 0.5vh; height: 9vh; border-radius: 999px;
+  background: rgba(236,231,221,0.22); transition: opacity 0.6s ease;
+}
+body.idle #queue-grip::after { opacity: 0; }
+#queue {
+  position: absolute; inset: 0;
+  background: rgba(10, 9, 11, 0.55);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  opacity: 0; pointer-events: none; transition: opacity 0.28s ease; z-index: 17;
+}
+#queue.open { opacity: 1; pointer-events: auto; }
+#queue-panel {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  width: min(42vw, 520px);
+  display: flex; flex-direction: column; gap: 1.6vh; padding: 3vh 2vw;
+  background: linear-gradient(90deg, rgba(27,24,28,0.98), rgba(19,17,20,0.98));
+  border-right: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 24px 0 60px rgba(0,0,0,0.55);
+  transform: translateX(-102%);
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#queue.open #queue-panel { transform: translateX(0); }
+.q-head { display: flex; align-items: center; justify-content: space-between; }
+.q-title { font-size: 2.4vh; font-weight: 600; letter-spacing: 0.02em; }
+.q-clear {
+  font-size: 1.5vh; color: var(--ink-dim); background: none;
+  border: 1px solid rgba(236,231,221,0.22); border-radius: 999px; padding: 0.5vh 1.4vw;
+}
+.q-clear:active { color: var(--ink); border-color: var(--ink); }
+#queue-list { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6vh; scrollbar-width: none; }
+#queue-list::-webkit-scrollbar { display: none; }
+.q-row {
+  display: flex; align-items: center; gap: 1.2vw; width: 100%; text-align: left; cursor: pointer;
+  padding: 0.9vh 1vw; border-radius: 1vh; color: var(--ink);
+  background: rgba(236,231,221,0.04); border: 1px solid transparent;
+}
+.q-row:active { background: rgba(236,231,221,0.1); }
+.q-row.q-current { border-color: var(--brass); background: rgba(236,231,221,0.09); }
+.q-art { flex-shrink: 0; width: 5.6vh; height: 5.6vh; border-radius: 0.6vh; background: rgba(236,231,221,0.08) center/cover no-repeat; }
+.q-meta { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.2vh; }
+.q-t, .q-s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-t { font-size: 1.7vh; font-weight: 600; }
+.q-s { font-size: 1.4vh; color: var(--ink-dim); }
+.q-x {
+  flex-shrink: 0; width: 3.4vh; height: 3.4vh; border-radius: 50%; font-size: 1.5vh; line-height: 1; padding: 0;
+  background: none; border: 1px solid rgba(236,231,221,0.2); color: var(--ink-dim);
+}
+.q-x:active { color: #e0674f; border-color: #e0674f; }
+.q-empty { color: var(--ink-dim); font-size: 1.7vh; padding: 3vh 0; text-align: center; }
+
 #cc {
   position: absolute; inset: 0;
   background: rgba(10, 9, 11, 0.55);

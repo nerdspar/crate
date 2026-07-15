@@ -387,6 +387,22 @@ export interface MediaSyncResult {
 }
 export type RadioSyncResult = MediaSyncResult;
 
+/** One entry in a player's play queue ("Up Next" overlay). */
+export interface QueueTrack {
+  /** MA queue_item_id — stable handle for reorder/remove. */
+  id: string;
+  index: number;
+  title: string;
+  subtitle: string | null;
+  artworkUrl: string | null;
+  isCurrent: boolean;
+}
+/** A player's live queue. `currentIndex` is the now-playing row (null if idle/empty). */
+export interface QueueResponse {
+  items: QueueTrack[];
+  currentIndex: number | null;
+}
+
 /** One podcast episode — rendered in the podcast's track-list view and playable by uri. */
 export interface PodcastEpisode {
   /** Playable episode uri. */

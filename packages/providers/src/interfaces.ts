@@ -108,6 +108,19 @@ export interface ProviderPlayer {
   provider: string;
 }
 
+export interface ProviderQueueTrack {
+  /** MA queue_item_id. */
+  id: string;
+  index: number;
+  title: string;
+  subtitle: string | null;
+  artworkUrl: string | null;
+}
+export interface ProviderQueue {
+  items: ProviderQueueTrack[];
+  currentIndex: number | null;
+}
+
 export type TransportCommand = 'play' | 'pause' | 'next' | 'previous' | 'seek';
 
 /** A music metadata/catalog source (search, album, tracks). */
