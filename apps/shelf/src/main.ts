@@ -2484,7 +2484,7 @@ function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTML
     drag.setAttribute('aria-label', 'Drag to reorder');
     drag.textContent = '≡';
     wireQueueDrag(drag, row, playerId, t.id);
-    row.appendChild(drag);
+    row.insertBefore(drag, row.firstChild); // handle on the LEFT, before the artwork
     const x = document.createElement('button');
     x.className = 'q-x';
     x.setAttribute('aria-label', `Remove ${t.title} from the queue`);
