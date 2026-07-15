@@ -171,6 +171,8 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
 
 /* FEATURES */
 .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 900px; margin: 0 auto; }
+/* center a lone tile left over on the last row */
+.feature-grid > .feature-card:last-child:nth-child(3n+1) { grid-column: 2; }
 .feature-card {
   background: var(--cr-surface); border: 1px solid var(--cr-border);
   border-radius: 10px; padding: 15px 15px 16px;
@@ -288,6 +290,7 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
   .shot-ph.phone .shot-ph-icon { display: none; }
   .shot-ph.phone .shot-ph-label { font-size: 9px; }
   .feature-grid { grid-template-columns: 1fr; }
+  .feature-grid > .feature-card:last-child:nth-child(3n+1) { grid-column: auto; }
   .ps-grid { grid-template-columns: 1fr; }
   .ps-divider { display: none; }
   .ps-side { padding: 0 0 30px; }
@@ -346,7 +349,7 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
         Open-source · commodity hardware
       </div>
       <h1>Your streaming library,<br><span>rendered as a wall of albums.</span></h1>
-      <p class="hero-sub">Crate turns your streaming collection into physical CD-jewel-cases on a wall-mounted touchscreen. Tap a case, the album flips open, hit play &mdash; and it starts playing on your speakers.</p>
+      <p class="hero-sub">Crate turns your streaming collection into physical CD-jewel-cases on a wall-mounted touchscreen. Tap a case, the album flips open, hit play &mdash; and it starts playing on your speakers. Not just albums, either: radio stations, podcasts and audiobooks live on the wall too, with resume and chapters.</p>
       <div class="hero-actions">
         <a class="btn-primary" href="https://github.com/nerdspar/crate" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
@@ -481,6 +484,11 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
             <div class="feature-desc">Curated, reorderable collections, each with its own sort. Playlists render as song shelves you can view, reorder, and hide tracks in.</div>
           </div>
           <div class="feature-card">
+            <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></div>
+            <div class="feature-title">Radio, podcasts &amp; audiobooks</div>
+            <div class="feature-desc">More than albums. TuneIn radio stations get their own shelf, and podcasts &amp; audiobooks play with episode and chapter lists, resume-where-you-left-off progress, played &check; marks, and a &ldquo;Continue listening&rdquo; strip.</div>
+          </div>
+          <div class="feature-card">
             <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
             <div class="feature-title">Tiered search</div>
             <div class="feature-desc">One box across your sources: <em>On your shelf → In your library → From your sources</em>, plus artists and songs. Explicit tags, recent searches.</div>
@@ -567,13 +575,16 @@ h1,h2,h3,.nav-brand,.section-heading,.hero h1 { font-family: 'Space Grotesk', sa
       <div class="section-inner">
         <div class="section-label">Built on</div>
         <h2 class="section-heading" style="font-size:26px">Any source, any player &mdash; through Music Assistant</h2>
-        <p class="section-body" style="max-width:580px;margin:10px auto 0">A stretched-bar touchscreen, a small host, and a Music Assistant instance. Crate plays whatever your MA supports &mdash; Apple Music, Spotify, and more &mdash; out to Sonos, AirPlay, and any other player you connect.</p>
+        <p class="section-body" style="max-width:580px;margin:10px auto 0">A stretched-bar touchscreen, a small host, and a Music Assistant instance. Crate plays whatever your MA supports &mdash; Apple Music, Spotify, radio, podcasts, audiobooks, and more &mdash; out to Sonos, AirPlay, and any other player you connect.</p>
         <div class="chips">
           <div class="chip"><div class="chip-dot"></div>Music Assistant</div>
           <div class="chip"><div class="chip-dot"></div>Sonos</div>
           <div class="chip"><div class="chip-dot"></div>AirPlay</div>
           <div class="chip"><div class="chip-dot"></div>Apple Music</div>
           <div class="chip"><div class="chip-dot"></div>Spotify</div>
+          <div class="chip"><div class="chip-dot"></div>Radio</div>
+          <div class="chip"><div class="chip-dot"></div>Podcasts</div>
+          <div class="chip"><div class="chip-dot"></div>Audiobooks</div>
           <div class="chip"><div class="chip-dot"></div>+ any MA source or player</div>
           <div class="chip"><div class="chip-dot"></div>Fastify + SQLite</div>
           <div class="chip"><div class="chip-dot"></div>Vite + TypeScript</div>
