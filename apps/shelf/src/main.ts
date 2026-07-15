@@ -422,14 +422,15 @@ function buildShelf(): void {
 
     // Transport side-controls by kind: albums/playlists get shuffle+repeat; podcasts/audiobooks
     // get −10s/+10s skip; radio (a live stream) gets neither.
+    // −10s/+10s are live-transport controls (like ⏮/⏭): hidden until the stream is playing.
     const spoken = a.kind === 'podcast' || a.kind === 'audiobook';
     const leftCtl = spoken
-      ? `<button class="card-mode card-back10" aria-label="Back 10 seconds">${ICON_BACK10}</button>`
+      ? `<button class="card-mode card-back10" aria-label="Back 10 seconds" hidden>${ICON_BACK10}</button>`
       : a.kind === 'radio'
         ? ''
         : `<button class="card-mode card-shuffle" aria-label="Shuffle">${ICON_SHUFFLE}</button>`;
     const rightCtl = spoken
-      ? `<button class="card-mode card-fwd10" aria-label="Forward 10 seconds">${ICON_FWD10}</button>`
+      ? `<button class="card-mode card-fwd10" aria-label="Forward 10 seconds" hidden>${ICON_FWD10}</button>`
       : a.kind === 'radio'
         ? ''
         : `<button class="card-mode card-repeat" aria-label="Repeat">${ICON_REPEAT}</button>`;
@@ -2642,10 +2643,13 @@ function renderCCModes(): void {
   // podcasts & audiobooks swap shuffle/repeat for ±10s skip; music keeps shuffle/repeat.
   const spoken = now.mediaKind === 'podcast' || now.mediaKind === 'audiobook';
   const modes = !spoken && now.mediaKind !== 'radio';
+  // ±10s are live-transport controls — only show once the stream has actually started
+  // (playing or paused), like the ⏮/⏭ skips; shuffle/repeat stay as pre-play intent.
+  const started = spoken && now.state !== 'idle';
   ccShuffleBtn.style.display = modes ? '' : 'none';
   ccRepeatBtn.style.display = modes ? '' : 'none';
-  ccBack10Btn.style.display = spoken ? '' : 'none';
-  ccFwd10Btn.style.display = spoken ? '' : 'none';
+  ccBack10Btn.style.display = started ? '' : 'none';
+  ccFwd10Btn.style.display = started ? '' : 'none';
   if (!modes) return;
   const q = queueModes();
   ccShuffleBtn.classList.toggle('on', q.shuffle);
@@ -6205,6 +6209,8 @@ function updatePlayButton(): void {
   const eyebrow = panel.querySelector('.eyebrow') as HTMLElement | null;
   const prev = panel.querySelector('.np-prev') as HTMLElement | null;
   const next = panel.querySelector('.np-next') as HTMLElement | null;
+  const back10 = panel.querySelector('.card-back10') as HTMLElement | null;
+  const fwd10 = panel.querySelector('.card-fwd10') as HTMLElement | null;
   const isThis = playingIdx === openIdx; // this album is the focused now-playing
   // Hold the just-played album as "playing" through its queue-load window — the
   // now-state churns in and out of "settled" during the load, so we ride the timer
@@ -6221,9 +6227,12 @@ function updatePlayButton(): void {
     btn.textContent = transport ? (showPause ? 'Pause' : 'Resume') : 'Play';
     btn.classList.toggle('compact', transport); // shrink to make room for the flanking skips
   }
-  // Skip ⏮/⏭ flank the button only while it's the live play/pause control.
+  // Skip ⏮/⏭ and the −10s/+10s spoken-word skips flank the button only while it's the
+  // live play/pause control (i.e. the stream has actually started).
   if (prev) prev.hidden = !transport;
   if (next) next.hidden = !transport;
+  if (back10) back10.hidden = !transport;
+  if (fwd10) fwd10.hidden = !transport;
   // Eyebrow shows the current SONG while this album plays (its track list is right
   // below), else the album context.
   const np = lastStates.find((s) => s.playerId === now.playerId)?.nowPlaying;
