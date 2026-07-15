@@ -103,6 +103,15 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return { ok: true, enabled: auth.enabled() };
   });
 
+  // Recovery for a forgotten admin passphrase: clear the lock. Triggered ONLY from the wall's
+  // System settings (a physically-present, trusted surface — like the reboot/restart controls
+  // already are). Same LAN-trust posture as the rest of /api/auth/* and /api/system/*.
+  app.post('/api/auth/reset', (_req, reply) => {
+    auth.setPassphrase('');
+    void reply.header('set-cookie', auth.clearCookieHeader());
+    return { ok: true, enabled: auth.enabled() };
+  });
+
   app.get('/api/shelf', (req) => service.getShelf((req.query as { shelf?: string }).shelf));
 
   // Named shelves (curated collections; albums can belong to several).

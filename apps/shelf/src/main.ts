@@ -1271,7 +1271,7 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
       .play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), trackUris: uris })
       .catch((e) => {
         console.error('play failed', e);
-        showToast('Playback failed');
+        showPlayError(e);
       });
     return;
   }
@@ -3888,8 +3888,8 @@ async function playSong(trackUri: string): Promise<void> {
       ...(d.cueIndex > 0 ? { trackIndex: d.cueIndex } : {}),
     });
     showToast(`Sent to ${roomName(activePlayerId)}…`);
-  } catch {
-    showToast('Playback failed');
+  } catch (e) {
+    showPlayError(e);
   }
 }
 
@@ -4143,7 +4143,7 @@ async function playModal(trackIndex?: number): Promise<void> {
       ...(activePlayerId ? { playerId: activePlayerId } : {}),
       ...(cue > 0 ? { trackIndex: cue } : {}),
     })
-    .catch(() => showToast('Playback failed'));
+    .catch((e) => showPlayError(e));
 }
 
 /** A fixed-position dropdown anchored to a button, on <body> so the results
@@ -4959,6 +4959,7 @@ const ccIp = document.getElementById('cc-ip') as HTMLElement;
 const ccVer = document.getElementById('cc-ver') as HTMLElement;
 const ccRestart = document.getElementById('cc-restart') as HTMLButtonElement;
 const ccReboot = document.getElementById('cc-reboot') as HTMLButtonElement;
+const ccResetAuth = document.getElementById('cc-reset-auth') as HTMLButtonElement;
 let system: SystemStatus | null = null;
 
 /** Software-dim veil opacity from the current brightness (hardware methods dim
@@ -4984,6 +4985,13 @@ function applySystemStatus(s: SystemStatus): void {
 function refreshSystem(): void {
   void client.getSystemStatus().then(applySystemStatus).catch(() => {});
   refreshServices();
+  // Offer the "Reset admin login" recovery only when a lock is actually set.
+  void client
+    .getAuthStatus()
+    .then((a) => {
+      ccResetAuth.hidden = !a.enabled;
+    })
+    .catch(() => {});
 }
 
 // Service status — the three apps (Server / Shelf / Admin) + Music Assistant.
@@ -5077,6 +5085,33 @@ ccReboot.addEventListener('click', () => {
   if (ccReboot.disabled) return;
   void client.reboot().catch(() => {});
   showToast('Rebooting…');
+});
+// "Reset admin login" (forgot-passphrase recovery). Two-tap confirm — the first tap arms it,
+// a second within the window clears the lock. Only shown when a lock is set (refreshSystem).
+let resetAuthArmed = false;
+let resetAuthTimer: ReturnType<typeof setTimeout> | undefined;
+function disarmResetAuth(): void {
+  resetAuthArmed = false;
+  ccResetAuth.textContent = 'Reset admin login';
+  ccResetAuth.classList.remove('arm');
+  if (resetAuthTimer) clearTimeout(resetAuthTimer);
+}
+ccResetAuth.addEventListener('click', () => {
+  if (!resetAuthArmed) {
+    resetAuthArmed = true;
+    ccResetAuth.textContent = 'Tap again to confirm';
+    ccResetAuth.classList.add('arm');
+    resetAuthTimer = setTimeout(disarmResetAuth, 4000);
+    return;
+  }
+  disarmResetAuth();
+  void client
+    .resetAuth()
+    .then(() => {
+      ccResetAuth.hidden = true;
+      showToast('Admin login cleared — set a new passphrase in the admin app');
+    })
+    .catch(() => showToast('Could not reset admin login'));
 });
 
 /* =====================================================================

@@ -260,31 +260,40 @@ async function reloadAdd(reset: boolean): Promise<void> {
   } else {
     addMoreBtn.textContent = 'Loading…';
   }
+  // Each remote (MA) call degrades to empty on its own, so one flaky search/library call can't
+  // blank the whole view — in particular the on-shelf items (from the LOCAL Crate DB) always show.
+  let maWarn = false;
+  const safe = async <T>(p: Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await p;
+    } catch {
+      maWarn = true;
+      return fallback;
+    }
+  };
   try {
     if (addType === 'album') {
-      const res = await client.listLibraryAlbums({
-        source: curSource === 'all' ? undefined : curSource,
-        search: q || undefined,
-        limit: ADD_PAGE,
-        offset: addOffset,
-      });
+      const res = await safe(
+        client.listLibraryAlbums({ source: curSource === 'all' ? undefined : curSource, search: q || undefined, limit: ADD_PAGE, offset: addOffset }),
+        { items: [], sources, hasMore: false, offset: addOffset },
+      );
       if (token !== addToken) return;
-      sources = res.sources;
+      if (res.sources.length) sources = res.sources; // keep the current source selector on a failed fetch
       syncSourceSel();
       libAlbums = reset ? res.items : [...libAlbums, ...res.items];
       addHasMore = res.hasMore;
       addOffset += res.items.length;
-      catAlbums = q ? await client.search(q, curSource) : [];
+      catAlbums = q ? await safe(client.search(q, curSource), []) : [];
       if (token !== addToken) return;
     } else if (addType === 'playlist') {
-      let pls = await client.listLibraryPlaylists();
+      let pls = await safe(client.listLibraryPlaylists(), []);
       if (token !== addToken) return;
       if (q) {
         const ql = q.toLowerCase();
         pls = pls.filter((p) => p.name.toLowerCase().includes(ql) || (p.owner ?? '').toLowerCase().includes(ql));
       }
       libPlaylists = pls;
-      catPlaylists = q ? await client.searchPlaylists(q) : [];
+      catPlaylists = q ? await safe(client.searchPlaylists(q), []) : [];
       if (token !== addToken) return;
     } else {
       // An extra media kind (radio/podcast/audiobook): saved items on top, catalog search below.
@@ -294,7 +303,7 @@ async function reloadAdd(reset: boolean): Promise<void> {
       const kind = addType as ExtraMediaKind;
       const shelfId = EXTRA_MEDIA.find((m) => m.kind === kind)?.shelfId;
       const [maLib, shelf] = await Promise.all([
-        client.listLibraryMedia(kind),
+        safe(client.listLibraryMedia(kind), []), // MA hiccup here must NOT drop the on-shelf items below
         shelfId ? client.getShelf(shelfId).catch(() => ({ items: [] as ShelfItem[] })) : Promise.resolve({ items: [] as ShelfItem[] }),
       ]);
       if (token !== addToken) return;
@@ -314,10 +323,11 @@ async function reloadAdd(reset: boolean): Promise<void> {
         lib = lib.filter((r) => r.name.toLowerCase().includes(ql) || (r.description ?? '').toLowerCase().includes(ql));
       }
       libMedia[kind] = lib;
-      catMedia[kind] = q ? (await client.searchMedia(kind, q)).items : [];
+      catMedia[kind] = q ? (await safe(client.searchMedia(kind, q), { items: [], sources: [] })).items : [];
       if (token !== addToken) return;
     }
     renderAdd();
+    if (maWarn) showToast('Some results unavailable — check Music Assistant');
   } catch {
     if (token === addToken) addListEl.innerHTML = `<div class="empty">Could not load — check the connection.</div>`;
   } finally {

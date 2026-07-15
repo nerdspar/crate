@@ -372,6 +372,10 @@ export class CrateClient {
   setPassphrase(next: string, current?: string): Promise<{ ok: true; enabled: boolean }> {
     return this.post('/api/auth/passphrase', { next, ...(current ? { current } : {}) });
   }
+  /** Clear a forgotten admin passphrase (recovery from the physically-present wall). */
+  resetAuth(): Promise<{ ok: true; enabled: boolean }> {
+    return this.post('/api/auth/reset', {});
+  }
   /** All configured MA providers (filter to type 'music' for manageable sources). */
   getMaSources(): Promise<MaSource[]> {
     return this.req('/api/admin/ma/sources');

@@ -948,6 +948,8 @@ body.find-open #cc-grip { pointer-events: none; }
 }
 .cc-sysbtn:active { color: var(--ink); border-color: var(--ink); }
 .cc-sysbtn:disabled { opacity: 0.35; }
+/* Armed (awaiting the second confirming tap), e.g. "Reset admin login". */
+.cc-sysbtn.arm { color: #e0674f; border-color: #e0674f; }
 
 /* Software brightness dim — a black veil whose opacity tracks 100−brightness.
    Above the shelf/settings, below the control center so you can still adjust it. */
