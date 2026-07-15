@@ -931,6 +931,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   /** A player's live queue for the "Up Next" overlay. queue_id == player_id (as with transport). */
   async getQueue(playerId: string, limit = 100): Promise<ProviderQueue> {
     const active = rec(await this.client.command('player_queues/get_active_queue', { player_id: playerId }));
+    // An idle/stopped player keeps its LAST queue in MA — that's stale, not "up next". Only surface
+    // the queue while something is actually playing or paused; otherwise it reads as empty.
+    const state = str(active['state']);
+    if (state !== 'playing' && state !== 'paused') return { items: [], currentIndex: null };
     const raw = await this.client.command('player_queues/items', { queue_id: playerId, limit, offset: 0 });
     const items = (Array.isArray(raw) ? raw : arr(rec(raw)['items']))
       .map((r, i) => this.toQueueTrack(rec(r), i))
