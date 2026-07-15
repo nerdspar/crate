@@ -976,11 +976,18 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     // the queue while something is actually playing or paused; otherwise it reads as empty.
     const state = str(active['state']);
     if (state !== 'playing' && state !== 'paused') return { items: [], currentIndex: null };
-    const raw = await this.client.command('player_queues/items', { queue_id: playerId, limit, offset: 0 });
+    const currentIndex = num(active['current_index']) ?? null;
+    // Window the page around the current track. `current_index` is the ABSOLUTE queue position,
+    // and the "Up Next" overlay only shows the current item onward — so fetch starting at it.
+    // With a fixed `offset:0` a queue played past position `limit` would return an all-earlier
+    // page (current_index out of range) and the overlay would read empty. `index` stays absolute
+    // (offset + i) so play-index jumps and the "Now playing" match keep working.
+    const offset = Math.max(0, currentIndex ?? 0);
+    const raw = await this.client.command('player_queues/items', { queue_id: playerId, limit, offset });
     const items = (Array.isArray(raw) ? raw : arr(rec(raw)['items']))
-      .map((r, i) => this.toQueueTrack(rec(r), i))
+      .map((r, i) => this.toQueueTrack(rec(r), offset + i))
       .filter((x): x is ProviderQueueTrack => x !== null);
-    return { items, currentIndex: num(active['current_index']) ?? null };
+    return { items, currentIndex };
   }
 
   private toQueueTrack(item: Record<string, unknown>, index: number): ProviderQueueTrack | null {

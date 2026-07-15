@@ -2479,18 +2479,22 @@ async function refreshQueue(): Promise<void> {
     return;
   }
   queueListEl.innerHTML = '';
-  // Show the current track, then everything after it (drop already-played rows).
-  res.items.slice(res.currentIndex ?? 0).forEach((t) => queueListEl.appendChild(queueRow(t, pid)));
+  // The server already windows the queue to the current track onward (see getQueue), so render
+  // the rows as-is — slicing by the absolute currentIndex here would drop everything once a long
+  // queue is played past the page size.
+  res.items.forEach((t) => queueListEl.appendChild(queueRow(t, pid)));
 }
 function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTMLElement {
   const row = document.createElement('div');
   row.className = 'q-row' + (t.isCurrent ? ' q-current' : '');
-  const art = t.artworkUrl ? ` style="background-image:url('${t.artworkUrl}')"` : '';
   row.innerHTML =
-    `<span class="q-art"${art}></span>` +
+    `<span class="q-art"></span>` +
     `<span class="q-meta"><span class="q-t">${escapeHtml(t.title)}</span>` +
     (t.subtitle ? `<span class="q-s">${escapeHtml(t.subtitle)}</span>` : '') +
     `</span>`;
+  // Set the (provider-supplied) artwork URL via the style property, not interpolated into the
+  // innerHTML — avoids any attribute breakout from an unexpected character in the URL.
+  if (t.artworkUrl) (row.querySelector('.q-art') as HTMLElement).style.backgroundImage = `url('${t.artworkUrl}')`;
   row.addEventListener('click', () => {
     void client
       .queuePlay(playerId, t.index)
@@ -5825,8 +5829,9 @@ window.addEventListener('pointermove', (e) => {
   }
 
   // Swipe UP on a CLOSED spine flips it open straight into the extended card view — a shortcut
-  // past tap-to-open-then-⋯. Fires once; a mostly-horizontal drag falls through to scrolling.
-  if (downTarget && openIdx === null && !openSwipeDone) {
+  // past tap-to-open-then-⋯. Fires once, and only if we haven't already committed to a horizontal
+  // scroll (`!moved`), so a curved drag that began sideways can't get hijacked into opening.
+  if (downTarget && openIdx === null && !openSwipeDone && !moved) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (dy < -40 && Math.abs(dy) > Math.abs(dx) * 1.3) {
@@ -5999,7 +6004,10 @@ function handleState(states: PlayerState[]): void {
       elapsed: nextElapsed,
       duration: cand.nowPlaying.duration ?? (samePlayer ? now.duration : 0),
       state: st,
-      mediaKind: cand.nowPlaying.mediaKind ?? (samePlayer ? now.mediaKind : null),
+      // Every frame carries a definite mediaKind (a kind, or null for external sources like
+      // TV/line-in) — unlike album/track fields it's never transiently omitted, so take it as-is.
+      // Carrying a stale kind forward would e.g. keep the ±10s skips on after a podcast → TV switch.
+      mediaKind: cand.nowPlaying.mediaKind ?? null,
       at: performance.now(),
     };
   } else if (resumeGuard && now.albumId) {
