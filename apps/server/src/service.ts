@@ -962,6 +962,13 @@ export class Service {
     return { episodes, about: item?.about ?? null };
   }
 
+  /** Toggle a podcast episode / audiobook played-state. Feed providers (iTunes/RSS) persist it;
+      account-based streaming (e.g. Spotify) keeps its own state and ignores the write. */
+  async markPlayed(providerUri: string, played: boolean): Promise<void> {
+    if (!providerUri) return;
+    await this.ma.markPlayed(providerUri, played);
+  }
+
   /** An audiobook's progress + chapter list, for its reader view. */
   async audiobookDetail(providerUri: string): Promise<AudiobookDetail> {
     const item = await this.ma.getMedia(providerUri).catch(() => null);

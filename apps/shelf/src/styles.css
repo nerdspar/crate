@@ -522,6 +522,22 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 .track.ep.done .n { color: var(--brass); opacity: 1; }
 .track.ep.done .dur { color: var(--brass); }
 
+/* Mark-played toggle — a check-circle at the row's trailing edge; brass + filled when played.
+   Its own tap target (stops propagation) so it doesn't select/play the row. */
+.track.ep .ep-mark {
+  flex: none; margin-left: 1.2vh; width: 3.6vh; height: 3.6vh; padding: 0;
+  display: grid; place-items: center;
+  background: transparent; border: none; color: var(--ink-dim);
+  cursor: pointer; touch-action: manipulation; opacity: 0.68;
+}
+.track.ep .ep-mark svg { width: 2.4vh; height: 2.4vh; }
+.track.ep .ep-mark:active { opacity: 1; transform: scale(0.9); }
+.track.ep .ep-mark.on { color: var(--brass); opacity: 1; }
+.track.ep .ep-mark.on circle { fill: var(--brass); fill-opacity: 0.16; }
+/* Keep the toggle full-strength even though the finished row is dimmed. */
+.track.ep.done { position: relative; }
+.track.ep.done .ep-mark { opacity: 1; }
+
 /* Audiobook header: overall status line + a "Start over" action. */
 .ab-head {
   display: flex; align-items: center; gap: 1.4vh;

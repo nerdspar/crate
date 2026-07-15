@@ -248,6 +248,10 @@ export class CrateClient {
   audiobookDetail(providerUri: string): Promise<AudiobookDetail> {
     return this.req(`/api/media/audiobook/detail?uri=${encodeURIComponent(providerUri)}`);
   }
+  /** Toggle a podcast episode / audiobook played-state (feed providers persist it). */
+  markPlayed(providerUri: string, played: boolean): Promise<{ ok: boolean }> {
+    return this.req(`/api/media/played`, { method: 'POST', body: JSON.stringify({ uri: providerUri, played }) });
+  }
   /** In-progress episodes/audiobooks of one kind, for "Continue listening". */
   continueListening(kind: ExtraMediaKind): Promise<MediaBrowseItem[]> {
     return this.req(`/api/media/continue?kind=${kind}`);

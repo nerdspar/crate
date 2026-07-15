@@ -120,6 +120,8 @@ const ICON_REPEAT = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="c
 const ICON_BACK10 = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M3 4v4h4"/><text x="12.5" y="15.5" font-size="8" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle" font-family="system-ui,sans-serif">10</text></svg>';
 const ICON_FWD10 = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M21 4v4h-4"/><text x="11.5" y="15.5" font-size="8" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle" font-family="system-ui,sans-serif">10</text></svg>';
 const ICON_ARROW = '<svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15"/><path d="M13 6l6 6-6 6"/></svg>';
+// Mark-played toggle (podcast episodes): a check in a circle; `.on` fills it in.
+const ICON_CHECK_CIRCLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5 5-6"/></svg>';
 // Cover-art placeholder for external sources (TV audio, line-in, AirPlay…) that carry no artwork.
 const ICON_SOURCE = '<svg class="cc-art-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M8.8 8.8a4.5 4.5 0 0 0 0 6.4"/><path d="M15.2 8.8a4.5 4.5 0 0 1 0 6.4"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4"/><path d="M17.7 6.3a8 8 0 0 1 0 11.4"/></svg>';
 /** How long to hold a spine before its long-press (group-select) fires. Fixed — a quarter second. */
@@ -981,6 +983,39 @@ function fmtEpDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Played-state is writable for feed-based providers (iTunes/RSS/local) — MA's mark_played sticks
+// and shows up in fully_played. Account-based streaming (Spotify, Apple Music, …) owns played-state
+// server-side and ignores the write, so we don't offer the toggle there (it would just snap back).
+const PLAYED_UNWRITABLE = /^(spotify|applemusic|apple_music|ytmusic|tidal|deezer|qobuz)/i;
+function canMarkPlayed(trackUri: string | null | undefined): boolean {
+  return !!trackUri && !PLAYED_UNWRITABLE.test(trackUri.split('://')[0] ?? '');
+}
+
+/** Toggle an episode's played-state: flip the row optimistically, then persist via MA. `ep` is the
+    cached object, so the change also survives a re-render from cache; a failure reverts. */
+async function toggleEpisodePlayed(ep: PodcastEpisode, ti: number, isNow: boolean, row: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+  if (!ep.trackUri) return;
+  const next = !ep.fullyPlayed;
+  const paint = (played: boolean): void => {
+    ep.fullyPlayed = played;
+    row.classList.toggle('done', played);
+    btn.classList.toggle('on', played);
+    btn.setAttribute('aria-label', played ? 'Mark unplayed' : 'Mark played');
+    const n = row.querySelector('.n');
+    if (n) n.innerHTML = played ? '✓' : isNow ? TRACK_EQ : String(ti + 1);
+    const dur = row.querySelector('.dur');
+    if (dur) dur.textContent = played ? 'Played' : ep.durationSec ? fmtDur(ep.durationSec) : '';
+  };
+  paint(next);
+  try {
+    await client.markPlayed(ep.trackUri, next);
+    showToast(next ? 'Marked played' : 'Marked unplayed');
+  } catch {
+    paint(!next); // revert on failure
+    showToast('Could not update');
+  }
+}
+
 async function renderTracks(el: HTMLElement, i: number): Promise<void> {
   const item = items[i]!;
   const wrap = el.querySelector('.tracks') as HTMLElement;
@@ -1071,12 +1106,24 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
         `<span class="n">${ep.fullyPlayed ? '✓' : isNow ? TRACK_EQ : ti + 1}</span>` +
         `<span class="tt">${escapeHtml(ep.title)}${date ? `<span class="ep-date">${date}</span>` : ''}</span>` +
         `<span class="dur">${right}</span>` +
+        (canMarkPlayed(ep.trackUri)
+          ? `<button class="ep-mark${ep.fullyPlayed ? ' on' : ''}" aria-label="${ep.fullyPlayed ? 'Mark unplayed' : 'Mark played'}">${ICON_CHECK_CIRCLE}</button>`
+          : '') +
         (inProgress ? `<div class="ep-fill" style="width:${pct}%"></div>` : '');
       wireTrackSelect(row, wrap, item.albumId, ti); // tap = select; double-tap = play
       row.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         void playEpisode(i, ep);
       });
+      const markBtn = row.querySelector('.ep-mark') as HTMLButtonElement | null;
+      if (markBtn) {
+        // Its own tap target — don't let it bubble to the row's select/play handlers.
+        markBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        markBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void toggleEpisodePlayed(ep, ti, isNow, row, markBtn);
+        });
+      }
       wrap.appendChild(row);
     });
     return;

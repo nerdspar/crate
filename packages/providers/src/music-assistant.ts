@@ -902,6 +902,16 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       .filter((e): e is ProviderEpisode => e !== null);
   }
 
+  /** Mark a podcast episode / audiobook played or unplayed. MA's mark_played/mark_unplayed take
+      the full media_item, so resolve it via item_by_uri first. Feed providers (iTunes/RSS) persist
+      the change and it shows up in `fully_played`; account-based streaming (Spotify, …) accepts the
+      call but keeps its own server-side state. */
+  async markPlayed(uri: string, played: boolean): Promise<void> {
+    const item = rec(await this.client.command('music/item_by_uri', { uri }));
+    if (!str(item['uri'])) return;
+    await this.client.command(played ? 'music/mark_played' : 'music/mark_unplayed', { media_item: item });
+  }
+
   // --- PlayerTarget -------------------------------------------------------
 
   async listPlayers(): Promise<ProviderPlayer[]> {

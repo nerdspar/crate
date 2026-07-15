@@ -46,6 +46,12 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['POST', /^\/api\/(play|transport|volume|shuffle|repeat|group)$/],
     ['GET', /^\/api\/queue$/],
     ['POST', /^\/api\/queue\/(play|move|remove|clear|enqueue)$/],
+    // Wall-facing media reads: podcast/audiobook browse (library), tab-scoped search, episode
+    // lists, audiobook detail, continue-listening — plus the played/unplayed toggle. All are wall
+    // (unauthenticated touchscreen) surfaces; the media MUTATIONS (POST /api/media/:kind add + sync)
+    // stay protected as admin curation.
+    ['GET', /^\/api\/media\/(?:[^/]+\/(?:library|search|episodes|detail)|continue)$/],
+    ['POST', /^\/api\/media\/played$/],
     // Control-center system controls live on the wall (an unauthenticated touchscreen).
     ['GET', /^\/api\/system\/(status|services)$/],
     ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
@@ -362,6 +368,14 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.post('/api/media/:kind/sync', (req, reply) => {
     const kind = asKind(reply, (req.params as { kind: string }).kind);
     return kind ? service.syncLibraryMedia(kind) : undefined;
+  });
+  // Toggle a podcast episode / audiobook played-state (the wall ✓). Literal path so it doesn't
+  // hit POST /api/media/:kind. Feed providers (iTunes/RSS) persist it; account-based streaming
+  // (e.g. Spotify) owns played-state server-side and won't — the wall reflects the real result.
+  app.post('/api/media/played', async (req) => {
+    const b = (req.body ?? {}) as { uri?: string; played?: boolean };
+    await service.markPlayed(b.uri ?? '', b.played === true);
+    return { ok: true };
   });
   // A saved podcast's episodes (for its track-list view).
   app.get('/api/media/podcast/episodes', (req) => service.podcastEpisodes((req.query as { uri?: string }).uri ?? ''));
