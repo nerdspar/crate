@@ -45,7 +45,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['POST', /^\/api\/playlists\/prewarm$/],
     ['POST', /^\/api\/(play|transport|volume|shuffle|repeat|group)$/],
     ['GET', /^\/api\/queue$/],
-    ['POST', /^\/api\/queue\/(play|move|remove|clear)$/],
+    ['POST', /^\/api\/queue\/(play|move|remove|clear|enqueue)$/],
     // Control-center system controls live on the wall (an unauthenticated touchscreen).
     ['GET', /^\/api\/system\/(status|services)$/],
     ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
@@ -243,6 +243,11 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.post('/api/queue/clear', async (req) => {
     const b = req.body as { player: string };
     await service.queueClear(b.player);
+    return { ok: true };
+  });
+  app.post('/api/queue/enqueue', async (req) => {
+    const b = req.body as { player: string; uri: string };
+    await service.queueEnqueue(b.player, b.uri);
     return { ok: true };
   });
 

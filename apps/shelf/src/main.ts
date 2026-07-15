@@ -414,10 +414,6 @@ function buildShelf(): void {
           `<div class="spine-label title-label" style="${labelCss}">${titleSpan}</div>`
         : `<div class="spine-label" style="${labelCss}; color:${baseInk}">${artistSpan}&nbsp;&nbsp;${titleSpan}</div>`;
 
-    // A playlist *case* (on the All Playlists shelf) gets a "Songs" action that
-    // opens it as its own single-playlist song shelf. Song spines don't.
-    const isPlaylistCase = a.kind === 'playlist' && !a.albumUri;
-
     el.innerHTML = `
       <div class="flap">
         <div class="face face-spine" style="${spineBg}">
@@ -432,11 +428,7 @@ function buildShelf(): void {
       <button class="cover-btn cover-menu" aria-label="More">⋯</button>
       <div class="panel">
         <button class="panel-menu" aria-label="More">⋯</button>
-        <div class="panel-pop" hidden>
-          <div class="panel-pop-label">Add to shelf</div>
-          <div class="panel-add-shelves"></div>
-          <button class="panel-remove">Remove from shelf</button>
-        </div>
+        <div class="panel-pop" hidden></div>
         <div class="eyebrow">From your library</div>
         <h1>${escapeHtml(a.title)}</h1>
         <h2>${escapeHtml(a.artist)}</h2>
@@ -452,7 +444,6 @@ function buildShelf(): void {
             <button class="np-btn np-next" aria-label="Next track" hidden>${ICON_NEXT}</button>
             <button class="card-mode card-repeat" aria-label="Repeat">${ICON_REPEAT}</button>
           </div>
-          ${isPlaylistCase ? '<button class="songs">Songs</button>' : ''}
           <div class="rooms"></div>
           <div class="vol">
             <span class="vol-ico">${VOL_LOW_SVG}</span>
@@ -507,40 +498,14 @@ function buildShelf(): void {
       clearOpenCue();
       if (now.playerId) void client.transport({ playerId: now.playerId, cmd: 'next' }).catch(() => {});
     });
-    el.querySelector('.songs')?.addEventListener('click', (e) => {
-      stop(e);
-      void openAsSongShelf(a.albumId, a.title);
-    });
-    // ⋯ menu on the card (will also hold "Add to shelf…"). Toggles the popover.
+    // ⋯ menu on the card — content is kind-aware (renderCardMenu). Toggles the popover.
     const panelPop = el.querySelector('.panel-pop') as HTMLElement;
     el.querySelector('.panel-menu')!.addEventListener('click', (e) => {
       stop(e);
       panelPop.hidden = !panelPop.hidden;
-      if (!panelPop.hidden) renderAddShelves(el.querySelector('.panel-add-shelves') as HTMLElement, a.albumId);
+      if (!panelPop.hidden) renderCardMenu(panelPop, a);
     });
-    // Remove from shelf — two-tap to arm, so it can't fire by accident on a wall.
-    const removeBtn = el.querySelector('.panel-remove') as HTMLButtonElement;
-    let removeArmed = false;
-    let removeTimer: ReturnType<typeof setTimeout> | null = null;
-    removeBtn.addEventListener('click', (e) => {
-      stop(e);
-      if (!removeArmed) {
-        removeArmed = true;
-        removeBtn.textContent = 'Tap again to remove';
-        removeBtn.classList.add('armed');
-        removeTimer = setTimeout(() => {
-          removeArmed = false;
-          removeBtn.textContent = 'Remove from shelf';
-          removeBtn.classList.remove('armed');
-        }, 3000);
-        return;
-      }
-      if (removeTimer) clearTimeout(removeTimer);
-      void client
-        .removeFromShelf(a.albumId)
-        .then(() => showToast('Removed'))
-        .catch(() => showToast('Remove failed'));
-    });
+    panelPop.addEventListener('pointerdown', stop); // taps inside the popover don't bubble to the card
     wireVol(el.querySelector('.vol') as HTMLElement);
     const seek = el.querySelector('.seek') as HTMLElement;
     seek.addEventListener('pointerdown', stop);
@@ -5226,6 +5191,83 @@ async function openAsSongShelf(playlistMediaId: string, name: string): Promise<v
   shelves.push(sh);
   closeAlbum();
   await switchShelf(sh.id);
+}
+
+/** Populate the opened card's ⋯ popover, per media kind:
+    - album: "Add to shelf" list + "Add to queue" + Remove
+    - playlist case: "Open as shelf" + "Add to queue" + Remove
+    - playlist song: "Add to queue" + Remove
+    - radio / podcast / audiobook: Remove only (radio never ends; spoken-word is resume-based). */
+function renderCardMenu(pop: HTMLElement, a: ShelfItem): void {
+  pop.innerHTML = '';
+  const enqueueUri = a.albumUri ?? a.providerUri; // song → its track uri; else the album/playlist uri
+  if (a.kind === 'album') {
+    const lbl = document.createElement('div');
+    lbl.className = 'panel-pop-label';
+    lbl.textContent = 'Add to shelf';
+    pop.appendChild(lbl);
+    const list = document.createElement('div');
+    list.className = 'panel-add-shelves';
+    pop.appendChild(list);
+    renderAddShelves(list, a.albumId);
+  } else if (a.kind === 'playlist' && !a.albumUri) {
+    const open = document.createElement('button');
+    open.className = 'panel-shelf-add';
+    open.textContent = 'Open as shelf';
+    open.onclick = (e) => {
+      e.stopPropagation();
+      pop.hidden = true;
+      void openAsSongShelf(a.albumId, a.title);
+    };
+    pop.appendChild(open);
+  }
+  if ((a.kind === 'album' || a.kind === 'playlist') && enqueueUri) {
+    const q = document.createElement('button');
+    q.className = 'panel-shelf-add';
+    q.textContent = 'Add to queue';
+    q.onclick = (e) => {
+      e.stopPropagation();
+      const pid = now.playerId ?? activePlayerId;
+      if (!pid) {
+        showToast('Nothing playing to queue behind');
+        return;
+      }
+      q.disabled = true;
+      q.textContent = 'Added to queue ✓';
+      void client.queueEnqueue(pid, enqueueUri).catch(() => {
+        q.disabled = false;
+        q.textContent = 'Add to queue';
+        showToast('Could not add to queue');
+      });
+    };
+    pop.appendChild(q);
+  }
+  // Remove — every kind. Two-tap to arm so it can't fire by accident on a wall.
+  const rm = document.createElement('button');
+  rm.className = 'panel-remove';
+  rm.textContent = 'Remove from shelf';
+  let armed = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  rm.onclick = (e) => {
+    e.stopPropagation();
+    if (!armed) {
+      armed = true;
+      rm.textContent = 'Tap again to remove';
+      rm.classList.add('armed');
+      timer = setTimeout(() => {
+        armed = false;
+        rm.textContent = 'Remove from shelf';
+        rm.classList.remove('armed');
+      }, 3000);
+      return;
+    }
+    if (timer) clearTimeout(timer);
+    void client
+      .removeFromShelf(a.albumId)
+      .then(() => showToast('Removed'))
+      .catch(() => showToast('Remove failed'));
+  };
+  pop.appendChild(rm);
 }
 
 /** Populate the card ⋯ menu's "Add to shelf" list for one album. */

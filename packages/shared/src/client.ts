@@ -158,6 +158,10 @@ export class CrateClient {
   queueClear(playerId: string): Promise<{ ok: true }> {
     return this.post('/api/queue/clear', { player: playerId });
   }
+  /** Append a media item (album/playlist/track uri) to the end of a player's queue. */
+  queueEnqueue(playerId: string, uri: string): Promise<{ ok: true }> {
+    return this.post('/api/queue/enqueue', { player: playerId, uri });
+  }
 
   addToShelf(body: AddToShelfRequest): Promise<{ ok: true; albumId: string; duplicate: boolean }> {
     return this.post('/api/shelf/add', body);

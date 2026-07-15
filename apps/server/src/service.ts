@@ -1167,6 +1167,9 @@ export class Service {
   queueClear(playerId: string): Promise<void> {
     return this.ma.clearQueue(playerId);
   }
+  queueEnqueue(playerId: string, providerUri: string): Promise<void> {
+    return this.ma.enqueue(playerId, providerUri);
+  }
 
   group(playerIds: string[]): Promise<void> {
     const [leader, ...members] = playerIds;

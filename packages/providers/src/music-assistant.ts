@@ -970,6 +970,10 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   async clearQueue(playerId: string): Promise<void> {
     await this.client.command('player_queues/clear', { queue_id: playerId });
   }
+  /** Append a media item (album/playlist/track uri) to the end of the player's queue. */
+  async enqueue(playerId: string, providerUri: string): Promise<void> {
+    await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'add' });
+  }
 
   async setVolume(playerId: string, level: number): Promise<void> {
     await this.client.command('players/cmd/volume_set', {
