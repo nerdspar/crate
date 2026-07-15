@@ -2263,7 +2263,64 @@ function openCC(): void {
   cc.classList.add('open');
   renderCCNow();
   renderCCRooms();
+  renderSleepTimer(); // reflect the armed state + remaining time
 }
+
+/* ---- Sleep timer: pause playback after N minutes, or at the end of the current track. Pure
+   client-side — the wall is an always-on kiosk, so a setTimeout is enough. ---- */
+const ccSleepOpts = document.getElementById('cc-sleep-opts') as HTMLElement;
+const ccSleepLabel = document.getElementById('cc-sleep-label') as HTMLElement;
+let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+let sleepFireAt = 0; // performance.now() ms when it fires
+let sleepChoice = 0; // selected data-min: 0 = off, -1 = end of track, else minutes
+function clearSleepTimer(): void {
+  if (sleepTimer) clearTimeout(sleepTimer);
+  sleepTimer = null;
+  sleepFireAt = 0;
+  sleepChoice = 0;
+}
+function fireSleep(): void {
+  const pid = now.playerId ?? activePlayerId;
+  clearSleepTimer();
+  renderSleepTimer();
+  if (pid) void client.transport({ playerId: pid, cmd: 'pause' }).catch(() => {});
+  showToast('Sleep timer — paused');
+}
+function setSleepTimer(min: number): void {
+  clearSleepTimer();
+  let ms = 0;
+  if (min === -1) {
+    const remain = now.duration > 0 ? now.duration - liveElapsed() : 0;
+    if (now.state !== 'playing' || remain <= 1) {
+      showToast('Nothing playing');
+      renderSleepTimer();
+      return;
+    }
+    ms = remain * 1000;
+  } else if (min > 0) {
+    ms = min * 60000;
+  }
+  sleepChoice = min;
+  if (ms > 0) {
+    sleepFireAt = performance.now() + ms;
+    sleepTimer = setTimeout(fireSleep, ms);
+    showToast(min === -1 ? 'Sleep at end of track' : `Sleep timer — ${min} min`);
+  } else {
+    showToast('Sleep timer off');
+  }
+  renderSleepTimer();
+}
+function renderSleepTimer(): void {
+  ccSleepOpts.querySelectorAll('.cc-sleep-opt').forEach((b) => {
+    b.classList.toggle('on', Number((b as HTMLElement).dataset['min']) === sleepChoice);
+  });
+  if (sleepChoice === 0) ccSleepLabel.textContent = 'Sleep timer';
+  else if (sleepChoice === -1) ccSleepLabel.textContent = 'Sleep timer · end of track';
+  else ccSleepLabel.textContent = `Sleep timer · ${Math.max(1, Math.round((sleepFireAt - performance.now()) / 60000))} min left`;
+}
+ccSleepOpts.querySelectorAll('.cc-sleep-opt').forEach((b) => {
+  b.addEventListener('click', () => setSleepTimer(Number((b as HTMLElement).dataset['min'])));
+});
 function closeCC(): void {
   cc.classList.remove('open');
 }
