@@ -2405,9 +2405,14 @@ function playingRooms(): { id: string; name: string }[] {
 /** Default the overlay to the play target if it's playing, else the first playing room. */
 function defaultQueuePlayer(): string | null {
   const playing = playingRooms();
-  const lead = activePlayerId ? leaderOf(activePlayerId) : null;
-  if (lead && playing.some((r) => r.id === lead)) return lead;
-  return playing[0]?.id ?? lead;
+  // Prefer the room whose playback the wall is currently showing (now.playerId), then the sticky
+  // play target, then just the first playing room.
+  for (const cand of [now.playerId, activePlayerId]) {
+    if (!cand) continue;
+    const lead = leaderOf(cand);
+    if (playing.some((r) => r.id === lead)) return lead;
+  }
+  return playing[0]?.id ?? null;
 }
 /** Header selector: which speaker's queue is on screen. Tap to switch to another playing room
     (view-only — it doesn't change what the wall's Play targets). Hidden when nothing's playing. */
@@ -2500,6 +2505,11 @@ function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTML
       });
     });
     row.appendChild(x);
+  } else {
+    const tag = document.createElement('span');
+    tag.className = 'q-now';
+    tag.innerHTML = `${TRACK_EQ}<span>Now playing</span>`;
+    row.appendChild(tag);
   }
   return row;
 }
