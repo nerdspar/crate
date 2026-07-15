@@ -15,6 +15,7 @@ import type {
   MaProviderType,
   MaSource,
   MaStatus,
+  MediaKind,
   PlaybackState,
   PlayerState,
   PlayerType,
@@ -58,6 +59,28 @@ export function parseProviderUri(uri: string): { provider: string; type: string;
   const m = /^([^:]+):\/\/([^/]+)\/(.+)$/.exec(uri);
   if (!m) return null;
   return { provider: m[1]!, type: m[2]!, id: m[3]! };
+}
+
+/** MA `media_type` → Crate MediaKind (for the now-playing transport controls). */
+function mediaKindOf(mediaType: string | undefined): MediaKind | null {
+  switch (mediaType) {
+    case 'radio':
+      return 'radio';
+    case 'podcast':
+    case 'podcast_episode':
+      return 'podcast';
+    case 'audiobook':
+    case 'chapter':
+    case 'audiobook_chapter':
+      return 'audiobook';
+    case 'track':
+    case 'album':
+      return 'album';
+    case 'playlist':
+      return 'playlist';
+    default:
+      return null;
+  }
 }
 
 function firstArtistName(item: Record<string, unknown>): string {
@@ -1069,6 +1092,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 duration: (m && num(m['duration'])) ?? null,
                 elapsed: (m && num(m['elapsed_time'])) ?? null,
                 artworkUrl: (m && str(m['image_url'])) ?? null,
+                mediaKind: null, // external source (TV/line-in/AirPlay) — kind unknown
               },
             };
           }
@@ -1097,6 +1121,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 duration: num(current['duration']) ?? num(media['duration']) ?? null,
                 elapsed: num(queue['elapsed_time']) ?? null,
                 artworkUrl: this.artworkUrl(media) ?? this.artworkUrl(current) ?? this.artworkUrl(rec(media['album'])),
+                mediaKind: mediaKindOf(str(media['media_type']) ?? str(current['media_type'])),
               }
             : null,
         };

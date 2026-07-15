@@ -103,6 +103,9 @@ export interface NowPlaying {
   /** Cover art for the now-playing item (so the CC hero can show any room's
       content, even one not on the current shelf). */
   artworkUrl: string | null;
+  /** What kind of media is playing (radio/podcast/audiobook/album/playlist) — drives the
+      transport controls (radio hides shuffle/repeat; spoken-word swaps them for ±10s skip). */
+  mediaKind: MediaKind | null;
 }
 
 /** Queue repeat mode (off / repeat one track / repeat the whole queue). */

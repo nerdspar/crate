@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type AudiobookChapter, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type AudiobookChapter, type MediaKind, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 // Weights span light→heavy so the ink-weight setting has real range to move across.
 import '@fontsource/archivo-narrow/400.css';
@@ -150,9 +150,12 @@ interface NowState {
   elapsed: number;
   duration: number;
   state: 'playing' | 'paused' | 'idle';
+  /** What kind of media is playing — drives the transport controls (radio hides
+      shuffle/repeat; podcast/audiobook swap them for ±10s skip). */
+  mediaKind: MediaKind | null;
   at: number; // performance.now() at last elapsed sample
 }
-let now: NowState = { playerId: null, albumId: null, trackIndex: 0, trackUri: null, elapsed: 0, duration: 0, state: 'idle', at: performance.now() };
+let now: NowState = { playerId: null, albumId: null, trackIndex: 0, trackUri: null, elapsed: 0, duration: 0, state: 'idle', mediaKind: null, at: performance.now() };
 /** Is the track at row `ti` (uri `uri`) the one playing? Match by uri when we have it —
     the queue index can differ from the displayed order (MA reorders on start_item) — else
     fall back to the index. */
@@ -1250,7 +1253,7 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
     resumeGuardUntil = performance.now() + 8000;
     selfPlayUntil = performance.now() + 8000;
     songCue.delete(item.albumId);
-    now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: 0, trackUri: item.albumUri, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+    now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: 0, trackUri: item.albumUri, elapsed: 0, duration: 0, state: 'playing', mediaKind: 'playlist', at: performance.now() };
     applyNow();
     if (openIdx !== null) renderRooms(shelf.children[openIdx] as HTMLElement);
     if (!opts?.autoAdvance) scheduleAfterPlayClose();
@@ -1301,7 +1304,7 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
   // Selection is now committed to playback — clear it so the transient where the player
   // is still on the old track doesn't read as a pending change (flipping Pause→Play).
   songCue.delete(item.albumId);
-  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+  now = { playerId: activePlayerId, albumId: item.albumId, trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', mediaKind: item.kind, at: performance.now() };
   // Move, don't duplicate: stop other rooms already on this album that aren't part of
   // the target group (its EQ then clears once the pause lands — background paused rooms
   // show no marker). Grouped members stay, so a group keeps playing together.
@@ -2618,6 +2621,8 @@ ccPlayPauseBtn.addEventListener('click', () => void ccPlayPause());
 /* ---- Shuffle + repeat (reflect the target queue's state; toggle/cycle on tap) ---- */
 const ccShuffleBtn = document.getElementById('cc-shuffle') as HTMLElement;
 const ccRepeatBtn = document.getElementById('cc-repeat') as HTMLElement;
+const ccBack10Btn = document.getElementById('cc-back10') as HTMLElement;
+const ccFwd10Btn = document.getElementById('cc-fwd10') as HTMLElement;
 const REPEAT_CYCLE: RepeatMode[] = ['off', 'all', 'one'];
 function modeTarget(): string | null {
   return now.playerId ?? activePlayerId;
@@ -2627,11 +2632,22 @@ function queueModes(): { shuffle: boolean; repeat: RepeatMode } {
   return { shuffle: s?.shuffle ?? false, repeat: s?.repeat ?? 'off' };
 }
 function renderCCModes(): void {
+  // Kind-aware transport: radio is a single live stream → no shuffle/repeat/skip;
+  // podcasts & audiobooks swap shuffle/repeat for ±10s skip; music keeps shuffle/repeat.
+  const spoken = now.mediaKind === 'podcast' || now.mediaKind === 'audiobook';
+  const modes = !spoken && now.mediaKind !== 'radio';
+  ccShuffleBtn.style.display = modes ? '' : 'none';
+  ccRepeatBtn.style.display = modes ? '' : 'none';
+  ccBack10Btn.style.display = spoken ? '' : 'none';
+  ccFwd10Btn.style.display = spoken ? '' : 'none';
+  if (!modes) return;
   const q = queueModes();
   ccShuffleBtn.classList.toggle('on', q.shuffle);
   ccRepeatBtn.classList.toggle('on', q.repeat !== 'off');
   ccRepeatBtn.classList.toggle('repeat-one', q.repeat === 'one');
 }
+ccBack10Btn.addEventListener('click', () => skipSeconds(-10));
+ccFwd10Btn.addEventListener('click', () => skipSeconds(10));
 ccShuffleBtn.addEventListener('click', () => {
   const pid = modeTarget();
   if (!pid) return;
@@ -4117,6 +4133,7 @@ async function playEpisode(i: number, ep: PodcastEpisode): Promise<void> {
     elapsed: ep.resumeMs != null ? ep.resumeMs / 1000 : 0,
     duration: ep.durationSec ?? 0,
     state: 'playing',
+    mediaKind: 'podcast',
     at: performance.now(),
   };
   applyNow();
@@ -4436,7 +4453,7 @@ async function playModal(trackIndex?: number): Promise<void> {
     playPendingUntil = performance.now() + 8000;
     playPendingUri = modalAlbumUri;
     playPendingAlbum = (albumModal.querySelector('.am-title') as HTMLElement)?.textContent || null; // name fallback
-    now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', at: performance.now() };
+    now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', mediaKind: 'album', at: performance.now() };
     applyNow();
     renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's spinner now
   }
@@ -5947,6 +5964,7 @@ function handleState(states: PlayerState[]): void {
       elapsed: nextElapsed,
       duration: cand.nowPlaying.duration ?? (samePlayer ? now.duration : 0),
       state: st,
+      mediaKind: cand.nowPlaying.mediaKind ?? (samePlayer ? now.mediaKind : null),
       at: performance.now(),
     };
   } else if (resumeGuard && now.albumId) {
