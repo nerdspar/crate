@@ -2735,7 +2735,11 @@ function renderCCNow(): void {
   // right down onto the seek (same big header text as a song, just closer to the line).
   const artist = it?.artist ?? np?.artist ?? '';
   ccTitle.textContent = title;
-  ccArtistEl.textContent = [artist, albumName && albumName !== title ? albumName : null].filter(Boolean).join(' · ');
+  // Subtitle = artist · album, but drop any part that just repeats the headline (podcasts
+  // often report the show name == the episode title) and collapse duplicates, so a podcast
+  // reads "<episode>" / "<show>" rather than doubling up.
+  const subParts = [...new Set([artist, albumName].filter((p): p is string => !!p && p !== title))];
+  ccArtistEl.textContent = subParts.join(' · ');
   ccPlayPauseBtn.innerHTML = now.state === 'playing' ? ICON_PAUSE : ICON_PLAY;
   updateCCSeek();
 }

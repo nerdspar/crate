@@ -93,6 +93,24 @@ function firstArtistName(item: Record<string, unknown>): string {
   return single ?? '(unknown artist)';
 }
 
+/** The "artist" line for spoken-word now-playing: podcasts have no `artists` (that would read
+    "(unknown artist)"), so use the parent podcast's name; audiobooks use their author(s), else
+    the book title. Returns null when the media isn't spoken-word or carries no such name. */
+function spokenSubtitle(media: Record<string, unknown>): string | null {
+  const mt = str(media['media_type']);
+  if (mt === 'podcast_episode' || mt === 'podcast') {
+    return str(rec(media['podcast'])['name']) ?? null;
+  }
+  if (mt === 'audiobook' || mt === 'chapter' || mt === 'audiobook_chapter') {
+    const joinAuthors = (o: Record<string, unknown>): string | null => {
+      const a = arr(o['authors']).map(str).filter((x): x is string => !!x);
+      return a.length ? a.join(', ') : null;
+    };
+    return joinAuthors(media) ?? joinAuthors(rec(media['audiobook'])) ?? str(rec(media['audiobook'])['name']) ?? str(media['publisher']) ?? null;
+  }
+  return null;
+}
+
 /** MA marks explicit content on the item's metadata; tri-state (true/false/unknown). */
 function trackExplicit(item: Record<string, unknown>): boolean | null {
   const e = rec(item['metadata'])['explicit'];
@@ -1061,6 +1079,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         const vol = volumeById.get(id) ?? { volume: null, muted: false };
         const current = rec(queue['current_item']);
         const media = rec(current['media_item']);
+        const npKind = mediaKindOf(str(media['media_type']) ?? str(current['media_type']));
+        const npSpoken = npKind === 'podcast' || npKind === 'audiobook';
         const hasNow = str(media['name']) !== undefined || str(current['name']) !== undefined;
         // External source: the SPEAKER is playing something outside MA — TV audio, line-in,
         // AirPlay, Spotify Connect, etc. Detected by active_source not being a queue id
@@ -1114,14 +1134,16 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 albumId: null,
                 albumUri: str(rec(media['album'])['uri']) ?? null,
                 title: str(media['name']) ?? str(current['name']) ?? null,
-                artist: firstArtistName(media),
+                // Podcasts/audiobooks have no `artists` (→ "(unknown artist)"); show the
+                // podcast name / author instead. Tracks/albums keep the real artist.
+                artist: npSpoken ? spokenSubtitle(media) : firstArtistName(media),
                 album: str(rec(media['album'])['name']) ?? null,
                 trackIndex: num(queue['current_index']) ?? null,
                 trackUri: str(media['uri']) ?? str(current['uri']) ?? null,
                 duration: num(current['duration']) ?? num(media['duration']) ?? null,
                 elapsed: num(queue['elapsed_time']) ?? null,
                 artworkUrl: this.artworkUrl(media) ?? this.artworkUrl(current) ?? this.artworkUrl(rec(media['album'])),
-                mediaKind: mediaKindOf(str(media['media_type']) ?? str(current['media_type'])),
+                mediaKind: npKind,
               }
             : null,
         };
