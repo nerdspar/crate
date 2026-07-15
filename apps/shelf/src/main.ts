@@ -624,9 +624,15 @@ function openAlbum(i: number, autoscroll = true): void {
 }
 
 /** A shelf holding a single spine always shows flipped open — a lone closed spine is pointless.
-    Called after each shelf (re)load; a no-op unless there's exactly one item and none is open. */
+    Opens straight into the extended card view (cover + details panel), regardless of the global
+    openMode, since there's nothing else on the shelf to make room for. Called after each shelf
+    (re)load; a no-op unless there's exactly one item and none is open. */
 function autoOpenIfSingle(): void {
-  if (openIdx === null && items.length === 1) openAlbum(0, false);
+  if (openIdx === null && items.length === 1) {
+    openAlbum(0, false);
+    const el = shelf.children[0] as HTMLElement | undefined;
+    if (el && !el.classList.contains('expanded')) expand(el, true);
+  }
 }
 
 function expand(el: HTMLElement, on: boolean): void {
@@ -5545,7 +5551,9 @@ let stepping = false,
 let startY = 0,
   vSwipe = 0,
   vSwipeDone = false,
-  downOnOpenCover = false;
+  downOnOpenCover = false,
+  // Swipe-up on a CLOSED spine flips it open straight into the extended card view.
+  openSwipeDone = false;
 
 /* ---- Pinch to zoom (§ pinchZoom setting): spine-density resize OR a magnifier loupe.
    Tracks live pointers; two down => pinch, which suspends scroll/open for those fingers. */
@@ -5740,6 +5748,7 @@ vp.addEventListener('pointerdown', (e) => {
   // toggles the extended view — a faster trigger than the ⋯ button.
   vSwipe = 0;
   vSwipeDone = false;
+  openSwipeDone = false;
   // The open flap is rotated edge-on and its cover children are pointer-events:none, so a real
   // press lands on `.spine.open` itself — match that (minus the scrollable panel), not `.flap`.
   downOnOpenCover =
@@ -5807,6 +5816,23 @@ window.addEventListener('pointermove', (e) => {
     return;
   }
 
+  // Swipe UP on a CLOSED spine flips it open straight into the extended card view — a shortcut
+  // past tap-to-open-then-⋯. Fires once; a mostly-horizontal drag falls through to scrolling.
+  if (downTarget && openIdx === null && !openSwipeDone) {
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (dy < -40 && Math.abs(dy) > Math.abs(dx) * 1.3) {
+      openSwipeDone = true;
+      if (holdTimer) clearTimeout(holdTimer);
+      const idx = +downTarget.dataset['idx']!;
+      openAlbum(idx, false);
+      const el = shelf.children[idx] as HTMLElement | undefined;
+      if (el && !el.classList.contains('expanded')) expand(el, true);
+      return;
+    }
+  }
+  if (openSwipeDone) return; // gesture consumed by the swipe-up-to-open above
+
   if (Math.abs(e.clientX - startX) > 8) {
     moved = true;
     if (holdTimer) clearTimeout(holdTimer);
@@ -5833,6 +5859,7 @@ window.addEventListener('pointerup', (e) => {
   if (!pDown) return;
   pDown = false;
   if (holdTimer) clearTimeout(holdTimer);
+  if (openSwipeDone) return; // swipe-up already opened + expanded this spine — not a tap
 
   if (stepping) {
     stepping = false;
@@ -6328,6 +6355,7 @@ async function reloadShelf(): Promise<void> {
   const res = await client.getShelf(activeShelf === 'all' ? undefined : activeShelf);
   if (tok !== shelfLoadToken) return; // a newer load (e.g. a shelf switch) superseded this
   const openId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
+  const prevScroll = vp.scrollLeft; // preserve horizontal scroll across the DOM rebuild
   items = res.items;
   shelves = res.shelves;
   sourceKinds = res.sourceKinds;
@@ -6339,6 +6367,10 @@ async function reloadShelf(): Promise<void> {
   const reopen = openId ? items.findIndex((it) => it.albumId === openId) : -1;
   if (reopen >= 0) openAlbum(reopen, false);
   else autoOpenIfSingle();
+  // Rebuilding #shelf's innerHTML resets the scroller to 0. When nothing ended up open
+  // (the common case: a background art/enrichment `shelf` broadcast while the user has
+  // scrolled), restore their scroll position so the shelf doesn't snap back to the start.
+  if (openIdx === null) vp.scrollLeft = prevScroll;
   applyNow(); // restore EQ on playing spines after the rebuild
   renderShelfList();
 }
