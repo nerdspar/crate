@@ -629,6 +629,12 @@ function openAlbum(i: number, autoscroll = true): void {
   });
 }
 
+/** A shelf holding a single spine always shows flipped open — a lone closed spine is pointless.
+    Called after each shelf (re)load; a no-op unless there's exactly one item and none is open. */
+function autoOpenIfSingle(): void {
+  if (openIdx === null && items.length === 1) openAlbum(0, false);
+}
+
 function expand(el: HTMLElement, on: boolean): void {
   el.classList.toggle('expanded', on);
   el.style.width = openWidth(el) + 'px'; // grows to the right, pushing later spines along
@@ -4544,13 +4550,37 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     shown only on the Podcasts/Audiobooks tabs. Tapping a card resumes where you left off.
     The token guards against a slow fetch landing after the user has switched tabs. */
 let continueToken = 0;
+// Locally-dismissed continue-listening items (the hover ✕ on each card). Keyed by uri → the resume
+// position when dismissed, so making fresh progress on the same item later brings it back.
+const CONTINUE_DISMISS_KEY = 'crate.continueDismissed';
+function loadContinueDismissed(): Record<string, number> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(CONTINUE_DISMISS_KEY) ?? '{}');
+    return v && typeof v === 'object' ? (v as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function dismissContinue(it: MediaBrowseItem): void {
+  const d = loadContinueDismissed();
+  d[it.providerUri] = it.resumeMs ?? 0;
+  try {
+    localStorage.setItem(CONTINUE_DISMISS_KEY, JSON.stringify(d));
+  } catch {
+    /* best-effort — dismissals are a convenience, not critical state */
+  }
+}
+function isContinueDismissed(it: MediaBrowseItem): boolean {
+  const d = loadContinueDismissed();
+  return Object.prototype.hasOwnProperty.call(d, it.providerUri) && d[it.providerUri] === (it.resumeMs ?? 0);
+}
 async function renderContinueStrip(): Promise<void> {
   const kind = shelfTab;
   findContinue.hidden = true;
   findContinue.innerHTML = '';
   if (kind !== 'podcast' && kind !== 'audiobook') return;
   const token = ++continueToken;
-  const list = await client.continueListening(kind).catch((): MediaBrowseItem[] => []);
+  const list = (await client.continueListening(kind).catch((): MediaBrowseItem[] => [])).filter((it) => !isContinueDismissed(it));
   if (token !== continueToken || shelfTab !== kind || !list.length) return;
   const head = document.createElement('div');
   head.className = 'find-subhead';
@@ -4564,6 +4594,8 @@ async function renderContinueStrip(): Promise<void> {
 }
 
 function continueCard(it: MediaBrowseItem, kind: ExtraMediaKind): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'find-continue-item';
   const card = document.createElement('button');
   card.className = 'find-continue-card';
   const resumeSec = it.resumeMs != null ? it.resumeMs / 1000 : 0;
@@ -4577,7 +4609,23 @@ function continueCard(it: MediaBrowseItem, kind: ExtraMediaKind): HTMLElement {
     `<span class="fc-bar"><span class="fc-bar-fill" style="width:${pct}%"></span></span>` +
     (left ? `<span class="fc-left">${left}</span>` : '');
   card.onclick = () => void resumeContinue(it, kind);
-  return card;
+  // Hover ✕ → dismiss this item from the strip (kept out of view until fresh progress).
+  const rm = document.createElement('button');
+  rm.className = 'find-continue-x';
+  rm.setAttribute('aria-label', `Remove ${it.name} from Continue listening`);
+  rm.textContent = '✕';
+  rm.onclick = (e) => {
+    e.stopPropagation();
+    dismissContinue(it);
+    wrap.remove();
+    const row = findContinue.querySelector('.find-continue-row');
+    if (row && !row.children.length) {
+      findContinue.hidden = true;
+      findContinue.innerHTML = '';
+    }
+  };
+  wrap.append(card, rm);
+  return wrap;
 }
 
 /** Resume a continue-listening card: play its uri (MA auto-resumes from the saved spot). */
@@ -4785,6 +4833,7 @@ async function switchShelf(id: string, close = true): Promise<void> {
   openIdx = null;
   buildShelf();
   sizeFaces();
+  autoOpenIfSingle();
   applyNow();
   renderShelfList();
   if (close) closeFind();
@@ -5821,6 +5870,7 @@ async function reloadShelf(): Promise<void> {
   sizeFaces();
   const reopen = openId ? items.findIndex((it) => it.albumId === openId) : -1;
   if (reopen >= 0) openAlbum(reopen, false);
+  else autoOpenIfSingle();
   applyNow(); // restore EQ on playing spines after the rebuild
   renderShelfList();
 }
@@ -6105,6 +6155,7 @@ async function boot(): Promise<void> {
   applyYearGutter();
   applyYearEmphasis();
   sizeFaces();
+  autoOpenIfSingle();
   renderChoices();
   handleState(playersRes.state);
   refreshSystem();
