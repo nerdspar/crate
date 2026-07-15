@@ -2316,11 +2316,63 @@ const queueEl = document.getElementById('queue') as HTMLElement;
 const queueGrip = document.getElementById('queue-grip') as HTMLElement;
 const queueListEl = document.getElementById('queue-list') as HTMLElement;
 const queueClearBtn = document.getElementById('queue-clear') as HTMLButtonElement;
+const queueRoomBtn = document.getElementById('queue-room') as HTMLButtonElement;
 let queueOpen = false;
 let queueSeq = 0;
+let queueViewPlayer: string | null = null; // whose queue the overlay shows (may differ from the play target)
+
+/** Rooms currently playing or paused — the ones with a real queue — deduped by group leader. */
+function playingRooms(): { id: string; name: string }[] {
+  const seen = new Set<string>();
+  const out: { id: string; name: string }[] = [];
+  for (const s of lastStates) {
+    if (s.state !== 'playing' && s.state !== 'paused') continue;
+    const leader = leaderOf(s.playerId);
+    if (seen.has(leader)) continue;
+    seen.add(leader);
+    out.push({ id: leader, name: roomName(leader) });
+  }
+  return out;
+}
+/** Default the overlay to the play target if it's playing, else the first playing room. */
+function defaultQueuePlayer(): string | null {
+  const playing = playingRooms();
+  const lead = activePlayerId ? leaderOf(activePlayerId) : null;
+  if (lead && playing.some((r) => r.id === lead)) return lead;
+  return playing[0]?.id ?? lead;
+}
+/** Header selector: which speaker's queue is on screen. Tap to switch to another playing room
+    (view-only — it doesn't change what the wall's Play targets). Hidden when nothing's playing. */
+function renderQueueRoom(): void {
+  const playing = playingRooms();
+  if (!playing.length) {
+    queueRoomBtn.hidden = true;
+    return;
+  }
+  queueRoomBtn.hidden = false;
+  const cur = playing.find((r) => r.id === queueViewPlayer);
+  queueRoomBtn.textContent = `◉ ${cur?.name ?? roomName(queueViewPlayer)} ▾`;
+  queueRoomBtn.onclick = (e) => {
+    e.stopPropagation();
+    openAddMenu(
+      queueRoomBtn,
+      playing.map((r) => ({
+        label: r.name,
+        on: r.id === queueViewPlayer,
+        fn: () => {
+          queueViewPlayer = r.id;
+          renderQueueRoom();
+          void refreshQueue();
+        },
+      })),
+    );
+  };
+}
 function openQueue(): void {
   queueOpen = true;
   queueEl.classList.add('open');
+  queueViewPlayer = defaultQueuePlayer();
+  renderQueueRoom();
   void refreshQueue();
 }
 function closeQueue(): void {
@@ -2328,10 +2380,10 @@ function closeQueue(): void {
   queueEl.classList.remove('open');
 }
 async function refreshQueue(): Promise<void> {
-  const pid = activePlayerId;
+  const pid = queueViewPlayer;
   const seq = ++queueSeq;
   if (!pid) {
-    queueListEl.innerHTML = '<div class="q-empty">Pick a room to see its queue.</div>';
+    queueListEl.innerHTML = '<div class="q-empty">Nothing playing.</div>';
     return;
   }
   const res = await client.getQueue(pid).catch(() => null);
@@ -2377,7 +2429,7 @@ function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTML
   return row;
 }
 queueClearBtn.addEventListener('click', () => {
-  const pid = activePlayerId;
+  const pid = queueViewPlayer;
   if (!pid) return;
   void client
     .queueClear(pid)
@@ -6002,7 +6054,12 @@ function connectWs(): void {
     }
     if (msg.type === 'state') {
       handleState(msg.state);
-      if (queueOpen) void refreshQueue(); // keep "Up Next" live as the track/queue changes
+      if (queueOpen) {
+        // Keep "Up Next" live: a room may have started/stopped (selector list) or changed track.
+        if (!queueViewPlayer || !playingRooms().some((r) => r.id === queueViewPlayer)) queueViewPlayer = defaultQueuePlayer();
+        renderQueueRoom();
+        void refreshQueue();
+      }
     }
     else if (msg.type === 'progress') handleProgress(msg.playerId, msg.elapsed);
     else if (msg.type === 'shelf' || msg.type === 'shelves') scheduleReloadShelf();
