@@ -39,7 +39,7 @@ body {
   display: flex;
   align-items: flex-end;
   height: 100%;
-  padding: 3.5vh 6vw; /* symmetric top/bottom; halved from the old 7vh bottom so albums grow */
+  padding: 3.5vh 2vw; /* tight left/right margin so the first/last spine sits near the edge */
   gap: 3px;
 }
 
@@ -772,7 +772,7 @@ body.find-open #cc-grip { pointer-events: none; }
 
 /* Play queue: thin left-edge grip + slide-in "Up Next" panel (mirrors the CC/Find sheets).
    Only a press ON the grip opens it, so the horizontal shelf gesture stays untouched. */
-#queue-grip { position: absolute; top: 0; bottom: 0; left: 0; width: 3.2vw; z-index: 16; }
+#queue-grip { position: absolute; top: 0; bottom: 0; left: 0; width: 2vw; z-index: 16; }
 #queue-grip::after {
   content: ""; position: absolute; left: 0.8vw; top: 50%; transform: translateY(-50%);
   width: 0.5vh; height: 9vh; border-radius: 999px;
