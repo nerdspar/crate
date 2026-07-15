@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type AudiobookChapter, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 // Weights span light→heavy so the ink-weight setting has real range to move across.
 import '@fontsource/archivo-narrow/400.css';
@@ -934,6 +934,20 @@ function attachRoomLongPress(b: HTMLElement, id: string, el: HTMLElement): void 
 /** Episodes of the currently-open podcast, keyed by shelf-item id — so the card's Play
     button can play the resume/newest episode without a container play (which MA rejects). */
 const podcastEpisodeCache = new Map<string, PodcastEpisode[]>();
+const audiobookChaptersCache = new Map<string, AudiobookChapter[]>(); // for the card Play button (cued chapter)
+/** Single tap on a track row selects/cues it (highlight + Play-button target) — a quick
+    double-tap is what actually plays. Shared by album tracks, playlist songs, podcast episodes
+    and audiobook chapters so every track list behaves the same way. */
+function wireTrackSelect(row: HTMLElement, wrap: HTMLElement, albumId: string, ti: number): void {
+  row.addEventListener('click', (e) => {
+    e.stopPropagation();
+    songCue.set(albumId, ti);
+    wrap.querySelectorAll('.track').forEach((r, idx) => {
+      if (!r.classList.contains('now')) r.classList.toggle('cued', idx === ti);
+    });
+    updatePlayButton(); // a different track than what's playing → the Play button plays the selection
+  });
+}
 
 /** A dim description block (podcast/audiobook synopsis) clamped to a few lines, with a
     "More"/"Less" toggle when the text overflows. */
@@ -1003,6 +1017,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
     wrap.appendChild(head);
     if (detail?.about) wrap.appendChild(aboutBlock(detail.about));
     const chapters = detail?.chapters ?? [];
+    audiobookChaptersCache.set(item.albumId, chapters); // so the card Play button can play the cued chapter
     chapters.forEach((ch, ci) => {
       const next = chapters[ci + 1]?.startSec ?? dur;
       const isCur = inProgress && resumeSec >= ch.startSec && resumeSec < next;
@@ -1010,7 +1025,8 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       const row = document.createElement('div');
       row.className = 'track ch' + (isCur ? ' now' : '');
       row.innerHTML = `<span class="n">${isCur ? TRACK_EQ : ci + 1}</span><span class="tt">${escapeHtml(ch.title)}</span><span class="dur">${len}</span>`;
-      row.addEventListener('click', (e) => {
+      wireTrackSelect(row, wrap, item.albumId, ci); // tap = select; double-tap = play from here
+      row.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         void playAudiobook(i, Math.floor(ch.startSec));
       });
@@ -1055,7 +1071,8 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
         `<span class="tt">${escapeHtml(ep.title)}${date ? `<span class="ep-date">${date}</span>` : ''}</span>` +
         `<span class="dur">${right}</span>` +
         (inProgress ? `<div class="ep-fill" style="width:${pct}%"></div>` : '');
-      row.addEventListener('click', (e) => {
+      wireTrackSelect(row, wrap, item.albumId, ti); // tap = select; double-tap = play
+      row.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         void playEpisode(i, ep);
       });
@@ -1073,14 +1090,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
       const dur = t.duration ? fmtDur(t.duration) : '';
       row.innerHTML = `<span class="n">${isNow ? TRACK_EQ : ti + 1}</span><span class="tt">${escapeHtml(t.title)}${t.explicit ? ' <span class="ex-badge" title="Explicit">E</span>' : ''}</span><span class="dur">${dur}</span>`;
       // Tap = select/highlight only; the card's Play button plays the selected track.
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        songCue.set(item.albumId, ti);
-        wrap.querySelectorAll('.track').forEach((r, idx) => {
-          if (!r.classList.contains('now')) r.classList.toggle('cued', idx === ti);
-        });
-        updatePlayButton(); // a different track than what's playing → Play (not Pause)
-      });
+      wireTrackSelect(row, wrap, item.albumId, ti);
       // Double-tap plays this track immediately on the current player selection.
       row.addEventListener('dblclick', (e) => {
         e.stopPropagation();
@@ -3784,6 +3794,7 @@ function songResultCard(s: SearchSong): HTMLElement {
     optimistic now-state so the row highlights immediately, and reports a real failure honestly. */
 async function playEpisode(i: number, ep: PodcastEpisode): Promise<void> {
   const item = items[i]!;
+  songCue.delete(item.albumId); // committing the selection to playback — clear it (mirrors play())
   // Optimistic now-state (mirrors the playlist-song path) so the episode highlights + the
   // nowbar reflects it before the WS poll lands.
   playPendingIdx = i;
@@ -3824,8 +3835,12 @@ async function playPodcastPreferred(i: number): Promise<void> {
   if (!eps?.length && item.providerUri) {
     eps = (await client.podcastEpisodes(item.providerUri).catch(() => ({ episodes: [] as PodcastEpisode[] }))).episodes;
   }
+  const cued = songCue.get(item.albumId);
   const pick =
-    eps?.find((e) => e.resumeMs && !e.fullyPlayed) ?? eps?.find((e) => !e.fullyPlayed) ?? eps?.[0];
+    (cued != null ? eps?.[cued] : undefined) ?? // a tapped/selected episode wins
+    eps?.find((e) => e.resumeMs && !e.fullyPlayed) ??
+    eps?.find((e) => !e.fullyPlayed) ??
+    eps?.[0];
   if (!pick) {
     showToast('No episodes to play');
     return;
@@ -3833,16 +3848,26 @@ async function playPodcastPreferred(i: number): Promise<void> {
   await playEpisode(i, pick);
 }
 
-/** Dispatch the card's Play/cover-play: a podcast plays an episode; everything else (albums,
-    playlists, audiobooks, radio) plays through the normal album path. */
+/** Dispatch the card's Play/cover-play: a podcast plays its selected/preferred episode, an
+    audiobook plays from a selected chapter (else resumes from the saved spot), and everything
+    else (albums, playlists, radio) plays through the normal album path. Track ROWS are what
+    need a double-tap to play — the Play button always plays the current selection on one tap. */
 function playCard(i: number): Promise<void> {
-  return items[i]?.kind === 'podcast' ? playPodcastPreferred(i) : play(i);
+  const it = items[i];
+  if (it?.kind === 'podcast') return playPodcastPreferred(i);
+  if (it?.kind === 'audiobook') {
+    const cued = songCue.get(it.albumId);
+    const ch = cued != null ? audiobookChaptersCache.get(it.albumId)?.[cued] : undefined;
+    if (ch) return playAudiobook(i, Math.floor(ch.startSec)); // play the selected chapter
+  }
+  return play(i);
 }
 
 /** Play the open audiobook. No position → MA resumes from the saved spot; position 1 → start over;
     a chapter offset → jump there (the server seeks after playback starts). */
 async function playAudiobook(i: number, position?: number): Promise<void> {
   const item = items[i]!;
+  songCue.delete(item.albumId); // committing the selection to playback — clear it (mirrors play())
   try {
     await client.play({ albumId: item.albumId, ...(activePlayerId ? { playerId: activePlayerId } : {}), ...(position !== undefined ? { position } : {}) });
     showToast(position === undefined ? 'Resuming…' : position <= 1 ? 'Starting over…' : 'Jumping to chapter…');

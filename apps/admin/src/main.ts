@@ -533,6 +533,31 @@ async function removeAlbumFromBrowse(it: LibraryAlbum | SearchAlbum, albumId: st
   }
 }
 
+/** Shelf id for a provider uri — mirrors the server's albumIdFromUri (slugify). Playlist / radio /
+    podcast / audiobook browse cards don't carry their shelf id, so we derive it to remove them
+    (matches how the wall removes these). */
+function shelfIdFromUri(uri: string): string {
+  return uri
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+async function removePlaylistFromBrowse(p: LibraryPlaylist, card: HTMLElement): Promise<void> {
+  card.classList.add('busy');
+  try {
+    await client.removeFromShelf(shelfIdFromUri(p.providerUri));
+    p.onShelf = false;
+    showToast(`Removed ${p.name}`);
+    renderAdd();
+    void loadShelvesIndex();
+  } catch (e) {
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    card.classList.remove('busy');
+  }
+}
+
 function playlistCard(p: LibraryPlaylist): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
@@ -547,8 +572,8 @@ function playlistCard(p: LibraryPlaylist): HTMLElement {
     </div>`;
   const actions = card.querySelector('.card-actions') as HTMLElement;
   if (p.onShelf) {
-    const b = mkBtn('Added', 'ghost');
-    b.disabled = true;
+    const b = mkBtn('Remove', 'ghost');
+    b.addEventListener('click', () => void removePlaylistFromBrowse(p, card));
     actions.append(b);
   } else {
     const b = mkBtn('Add', '');
@@ -593,8 +618,8 @@ function mediaCard(r: MediaBrowseItem): HTMLElement {
     </div>`;
   const actions = card.querySelector('.card-actions') as HTMLElement;
   if (r.onShelf) {
-    const b = mkBtn('Added', 'ghost');
-    b.disabled = true;
+    const b = mkBtn('Remove', 'ghost');
+    b.addEventListener('click', () => void removeMediaFromBrowse(r, card));
     actions.append(b);
   } else {
     const b = mkBtn('Add', '');
@@ -602,6 +627,21 @@ function mediaCard(r: MediaBrowseItem): HTMLElement {
     actions.append(b);
   }
   return card;
+}
+
+async function removeMediaFromBrowse(r: MediaBrowseItem, card: HTMLElement): Promise<void> {
+  card.classList.add('busy');
+  try {
+    await client.removeFromShelf(shelfIdFromUri(r.providerUri));
+    r.onShelf = false;
+    showToast(`Removed ${r.name}`);
+    renderAdd();
+    void loadShelvesIndex();
+  } catch (e) {
+    showToast(`Failed: ${(e as Error).message}`);
+  } finally {
+    card.classList.remove('busy');
+  }
 }
 
 async function addMediaToShelf(r: MediaBrowseItem, card: HTMLElement, btn: HTMLButtonElement): Promise<void> {
