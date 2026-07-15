@@ -830,6 +830,16 @@ body.idle #queue-grip::after { opacity: 0; }
   background: none; border: 1px solid rgba(236,231,221,0.2); color: var(--ink-dim);
 }
 .q-x:active { color: #e0674f; border-color: #e0674f; }
+/* ≡ drag handle to reorder an upcoming row. touch-action:none so the drag doesn't scroll the list. */
+.q-drag {
+  flex-shrink: 0; width: 3.4vh; height: 3.4vh; font-size: 2.2vh; line-height: 1; padding: 0;
+  background: none; border: none; color: var(--ink-dim); cursor: grab; touch-action: none;
+}
+.q-drag:active { cursor: grabbing; color: var(--ink); }
+.q-row.q-dragging {
+  position: relative; z-index: 3; cursor: grabbing;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5); background: rgba(236,231,221,0.12);
+}
 .q-empty { color: var(--ink-dim); font-size: 1.7vh; padding: 3vh 0; text-align: center; }
 
 #cc {

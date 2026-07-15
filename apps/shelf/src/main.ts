@@ -2479,6 +2479,12 @@ function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTML
       .catch(() => showToast('Could not play'));
   });
   if (!t.isCurrent) {
+    const drag = document.createElement('button');
+    drag.className = 'q-drag';
+    drag.setAttribute('aria-label', 'Drag to reorder');
+    drag.textContent = '≡';
+    wireQueueDrag(drag, row, playerId, t.id);
+    row.appendChild(drag);
     const x = document.createElement('button');
     x.className = 'q-x';
     x.setAttribute('aria-label', `Remove ${t.title} from the queue`);
@@ -2494,6 +2500,58 @@ function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTML
     row.appendChild(x);
   }
   return row;
+}
+
+/** Drag a queue row (by its ≡ handle) up/down to reorder. The row lifts and follows the finger;
+    on drop we shift it that many slots (optimistically in the DOM, then via MA's move_item and a
+    refresh to reconcile). Only upcoming rows are draggable (the current track stays pinned). */
+function wireQueueDrag(handle: HTMLElement, row: HTMLElement, playerId: string, itemId: string): void {
+  handle.addEventListener('click', (e) => e.stopPropagation()); // a tap on the handle isn't a jump
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const rowH = row.offsetHeight + (parseFloat(getComputedStyle(queueListEl).rowGap) || 0);
+    let dy = 0;
+    row.classList.add('q-dragging');
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {
+      /* older engines */
+    }
+    const onMove = (ev: PointerEvent): void => {
+      dy = ev.clientY - startY;
+      row.style.transform = `translateY(${dy}px)`;
+    };
+    const onUp = (): void => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      row.classList.remove('q-dragging');
+      row.style.transform = '';
+      const shift = rowH > 0 ? Math.round(dy / rowH) : 0;
+      if (shift === 0) return;
+      // Optimistic DOM reorder among the draggable (non-current) rows for instant feedback.
+      const rows = [...queueListEl.querySelectorAll('.q-row:not(.q-current)')] as HTMLElement[];
+      const idx = rows.indexOf(row);
+      const target = Math.max(0, Math.min(rows.length - 1, idx + shift));
+      const ref = rows[target];
+      if (target !== idx && ref) {
+        if (target > idx) ref.after(row);
+        else ref.before(row);
+      }
+      void client
+        .queueMove(playerId, itemId, shift)
+        .then(() => setTimeout(() => void refreshQueue(), 500))
+        .catch(() => {
+          showToast('Could not reorder');
+          void refreshQueue();
+        });
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  });
 }
 queueClearBtn.addEventListener('click', () => {
   const pid = queueViewPlayer;
