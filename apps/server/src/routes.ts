@@ -105,10 +105,19 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return { ok: true, enabled: auth.enabled() };
   });
 
-  // Recovery for a forgotten admin passphrase: clear the lock. Triggered ONLY from the wall's
-  // System settings (a physically-present, trusted surface — like the reboot/restart controls
-  // already are). Same LAN-trust posture as the rest of /api/auth/* and /api/system/*.
-  app.post('/api/auth/reset', (_req, reply) => {
+  // Recovery for a forgotten admin passphrase: clear the lock. LOOPBACK-ONLY — the request must
+  // originate from the device itself (127.0.0.1/::1), which for the appliance means the wall's own
+  // kiosk browser (it loads http://localhost/wall/) or a shell on the box. Unlike the reboot/
+  // brightness wall controls this DEFEATS the admin credential, so a phone or laptop elsewhere on
+  // the LAN must not be able to trigger it — the physical presence the old comment only assumed is
+  // now enforced. (Split deploys where the wall is a separate device from the server reset from a
+  // host shell instead: `curl -X POST http://localhost:<port>/api/auth/reset`.)
+  app.post('/api/auth/reset', (req, reply) => {
+    const addr = req.socket.remoteAddress ?? '';
+    const loopback = addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+    if (!loopback) {
+      return reply.code(403).send({ error: 'Admin reset can only be run from the wall itself' });
+    }
     auth.setPassphrase('');
     void reply.header('set-cookie', auth.clearCookieHeader());
     return { ok: true, enabled: auth.enabled() };
