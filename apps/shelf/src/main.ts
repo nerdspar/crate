@@ -2268,8 +2268,8 @@ function openCC(): void {
 
 /* ---- Sleep timer: pause playback after N minutes, or at the end of the current track. Pure
    client-side — the wall is an always-on kiosk, so a setTimeout is enough. ---- */
-const ccSleepOpts = document.getElementById('cc-sleep-opts') as HTMLElement;
-const ccSleepLabel = document.getElementById('cc-sleep-label') as HTMLElement;
+const ccSleepBtn = document.getElementById('cc-sleep-btn') as HTMLButtonElement;
+const ccSleepRem = ccSleepBtn.querySelector('.cc-sleep-rem') as HTMLElement;
 let sleepTimer: ReturnType<typeof setTimeout> | null = null;
 let sleepFireAt = 0; // performance.now() ms when it fires
 let sleepChoice = 0; // selected data-min: 0 = off, -1 = end of track, else minutes
@@ -2311,15 +2311,25 @@ function setSleepTimer(min: number): void {
   renderSleepTimer();
 }
 function renderSleepTimer(): void {
-  ccSleepOpts.querySelectorAll('.cc-sleep-opt').forEach((b) => {
-    b.classList.toggle('on', Number((b as HTMLElement).dataset['min']) === sleepChoice);
-  });
-  if (sleepChoice === 0) ccSleepLabel.textContent = 'Sleep timer';
-  else if (sleepChoice === -1) ccSleepLabel.textContent = 'Sleep timer · end of track';
-  else ccSleepLabel.textContent = `Sleep timer · ${Math.max(1, Math.round((sleepFireAt - performance.now()) / 60000))} min left`;
+  // Moon tints brass while armed; the small badge shows minutes left (blank for end-of-track).
+  ccSleepBtn.classList.toggle('on', sleepChoice !== 0);
+  ccSleepBtn.setAttribute('aria-label', sleepChoice === 0 ? 'Sleep timer' : sleepChoice === -1 ? 'Sleep timer — end of track' : `Sleep timer — ${Math.max(1, Math.round((sleepFireAt - performance.now()) / 60000))} min left`);
+  ccSleepRem.textContent = sleepChoice > 0 ? `${Math.max(1, Math.round((sleepFireAt - performance.now()) / 60000))}m` : '';
 }
-ccSleepOpts.querySelectorAll('.cc-sleep-opt').forEach((b) => {
-  b.addEventListener('click', () => setSleepTimer(Number((b as HTMLElement).dataset['min'])));
+const SLEEP_OPTS: Array<{ label: string; min: number }> = [
+  { label: 'Off', min: 0 },
+  { label: '15 minutes', min: 15 },
+  { label: '30 minutes', min: 30 },
+  { label: '45 minutes', min: 45 },
+  { label: '1 hour', min: 60 },
+  { label: 'End of track', min: -1 },
+];
+ccSleepBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openAddMenu(
+    ccSleepBtn,
+    SLEEP_OPTS.map((o) => ({ label: o.label, on: o.min === sleepChoice, fn: () => setSleepTimer(o.min) })),
+  );
 });
 function closeCC(): void {
   cc.classList.remove('open');

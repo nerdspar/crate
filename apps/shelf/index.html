@@ -34,17 +34,9 @@
       <button id="cc-playpause" aria-label="Play or pause"><svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.53.85l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5Z"/></svg></button>
       <button id="cc-next" aria-label="Next"><svg class="tico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="16.5" y="5.5" width="2.5" height="13" rx="1"/><path d="M4 6.4v11.2a1 1 0 0 0 1.53.85l8.5-5.6a1 1 0 0 0 0-1.7L5.53 5.55A1 1 0 0 0 4 6.4Z"/></svg></button>
       <button id="cc-repeat" class="cc-mode" aria-label="Repeat"><svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
-    </div>
-    <div class="cc-block">
-      <div class="cc-block-label" id="cc-sleep-label">Sleep timer</div>
-      <div class="cc-sleep-opts" id="cc-sleep-opts">
-        <button class="cc-sleep-opt on" data-min="0">Off</button>
-        <button class="cc-sleep-opt" data-min="15">15m</button>
-        <button class="cc-sleep-opt" data-min="30">30m</button>
-        <button class="cc-sleep-opt" data-min="45">45m</button>
-        <button class="cc-sleep-opt" data-min="60">1h</button>
-        <button class="cc-sleep-opt" data-min="-1">End of track</button>
-      </div>
+      <!-- Sleep timer: a crescent-moon toggle floated right (the transport's 5 buttons stay
+           centered); tap for the Off/15/30/45/60/End-of-track options. -->
+      <button id="cc-sleep-btn" class="cc-sleep-btn" aria-label="Sleep timer"><svg class="tico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span class="cc-sleep-rem"></span></button>
     </div>
     <div class="cc-block">
       <div class="cc-block-label">Rooms &amp; volume</div>
