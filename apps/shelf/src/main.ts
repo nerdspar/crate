@@ -2386,6 +2386,7 @@ const queueClearBtn = document.getElementById('queue-clear') as HTMLButtonElemen
 const queueRoomBtn = document.getElementById('queue-room') as HTMLButtonElement;
 let queueOpen = false;
 let queueSeq = 0;
+let queueDragActive = false; // suppress live re-renders mid-drag (they'd detach the dragged rows)
 let queueViewPlayer: string | null = null; // whose queue the overlay shows (may differ from the play target)
 
 /** Rooms currently playing or paused — the ones with a real queue — deduped by group leader. */
@@ -2447,6 +2448,7 @@ function closeQueue(): void {
   queueEl.classList.remove('open');
 }
 async function refreshQueue(): Promise<void> {
+  if (queueDragActive) return; // never re-render mid-drag — it would detach the rows being moved
   const pid = queueViewPlayer;
   const seq = ++queueSeq;
   if (!pid) {
@@ -2454,7 +2456,7 @@ async function refreshQueue(): Promise<void> {
     return;
   }
   const res = await client.getQueue(pid).catch(() => null);
-  if (seq !== queueSeq || !queueOpen) return; // superseded or closed while fetching
+  if (seq !== queueSeq || !queueOpen || queueDragActive) return; // superseded, closed, or a drag started
   if (!res || !res.items.length) {
     queueListEl.innerHTML = '<div class="q-empty">Nothing queued.</div>';
     return;
@@ -2502,17 +2504,22 @@ function queueRow(t: import('@crate/shared').QueueTrack, playerId: string): HTML
   return row;
 }
 
-/** Drag a queue row (by its ≡ handle) up/down to reorder. The row lifts and follows the finger;
-    on drop we shift it that many slots (optimistically in the DOM, then via MA's move_item and a
-    refresh to reconcile). Only upcoming rows are draggable (the current track stays pinned). */
+/** Drag a queue row (by its ≡ handle) up/down to reorder. The row lifts and follows the finger
+    while the other upcoming rows slide to open a gap at the drop target, so it's clear where it
+    will land. On release the DOM reorders to match, then MA's move_item + a refresh reconcile.
+    Only upcoming rows are draggable (the current track stays pinned). */
 function wireQueueDrag(handle: HTMLElement, row: HTMLElement, playerId: string, itemId: string): void {
   handle.addEventListener('click', (e) => e.stopPropagation()); // a tap on the handle isn't a jump
   handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     const startY = e.clientY;
+    const siblings = [...queueListEl.querySelectorAll('.q-row:not(.q-current)')] as HTMLElement[]; // draggable rows, incl. this
+    const startIdx = siblings.indexOf(row);
     const rowH = row.offsetHeight + (parseFloat(getComputedStyle(queueListEl).rowGap) || 0);
     let dy = 0;
+    let targetIdx = startIdx;
+    queueDragActive = true;
     row.classList.add('q-dragging');
     try {
       handle.setPointerCapture(e.pointerId);
@@ -2522,26 +2529,30 @@ function wireQueueDrag(handle: HTMLElement, row: HTMLElement, playerId: string, 
     const onMove = (ev: PointerEvent): void => {
       dy = ev.clientY - startY;
       row.style.transform = `translateY(${dy}px)`;
+      targetIdx = rowH > 0 ? Math.max(0, Math.min(siblings.length - 1, startIdx + Math.round(dy / rowH))) : startIdx;
+      // Slide the rows between origin and target to open a gap where it'll land ("part ways").
+      siblings.forEach((s, i) => {
+        if (s === row) return;
+        let shift = 0;
+        if (targetIdx > startIdx && i > startIdx && i <= targetIdx) shift = -rowH; // rows below fill upward
+        else if (targetIdx < startIdx && i >= targetIdx && i < startIdx) shift = rowH; // rows above make way downward
+        s.style.transform = shift ? `translateY(${shift}px)` : '';
+      });
     };
     const onUp = (): void => {
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onUp);
       handle.removeEventListener('pointercancel', onUp);
+      queueDragActive = false;
       row.classList.remove('q-dragging');
+      siblings.forEach((s) => (s.style.transform = ''));
       row.style.transform = '';
-      const shift = rowH > 0 ? Math.round(dy / rowH) : 0;
-      if (shift === 0) return;
-      // Optimistic DOM reorder among the draggable (non-current) rows for instant feedback.
-      const rows = [...queueListEl.querySelectorAll('.q-row:not(.q-current)')] as HTMLElement[];
-      const idx = rows.indexOf(row);
-      const target = Math.max(0, Math.min(rows.length - 1, idx + shift));
-      const ref = rows[target];
-      if (target !== idx && ref) {
-        if (target > idx) ref.after(row);
-        else ref.before(row);
-      }
+      if (targetIdx === startIdx) return;
+      // Commit: move the row to targetIdx among the draggable rows, then tell MA + reconcile.
+      const others = siblings.filter((s) => s !== row);
+      queueListEl.insertBefore(row, others[targetIdx] ?? null);
       void client
-        .queueMove(playerId, itemId, shift)
+        .queueMove(playerId, itemId, targetIdx - startIdx)
         .then(() => setTimeout(() => void refreshQueue(), 500))
         .catch(() => {
           showToast('Could not reorder');

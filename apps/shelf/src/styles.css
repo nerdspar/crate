@@ -817,7 +817,9 @@ body.idle #queue-grip::after { opacity: 0; }
   display: flex; align-items: center; gap: 1.2vw; width: 100%; text-align: left; cursor: pointer;
   padding: 0.9vh 1vw; border-radius: 1vh; color: var(--ink);
   background: rgba(236,231,221,0.04); border: 1px solid transparent;
+  transition: transform 0.16s ease; /* other rows slide to part ways during a drag */
 }
+.q-row.q-dragging { transition: none; } /* the dragged row must track the finger 1:1 */
 .q-row:active { background: rgba(236,231,221,0.1); }
 .q-row.q-current { border-color: var(--brass); background: rgba(236,231,221,0.09); }
 .q-art { flex-shrink: 0; width: 5.6vh; height: 5.6vh; border-radius: 0.6vh; background: rgba(236,231,221,0.08) center/cover no-repeat; }
