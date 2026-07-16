@@ -39,8 +39,9 @@ body {
   display: flex;
   align-items: flex-end;
   height: 100%;
-  padding: 3.5vh 2vw 3.5vh 1vw; /* tight margins so the first/last spine sits near the edge; left is
-                                   halved (1vw) so the shelf starts closer in — the queue grip narrows to match */
+  padding: 3.5vh 1vw; /* symmetric 1vw side margins so the first AND last spine sit equally near the
+                         edge; the right no longer over-reserves — an opened album makes its own room
+                         via openWidth (a closed card's .panel collapses to 0, adding no trailing space) */
   gap: 3px;
 }
 
@@ -243,16 +244,21 @@ body {
 /* meta panel: shown when expanded */
 .panel {
   position: absolute; top: 0; bottom: 0;
-  left: calc(var(--spine-w) + var(--cover-w));
-  width: var(--panel-w);
+  /* Collapsed to zero width at the spine's own left edge when closed, so a closed card adds NO
+     trailing scroll space (an absolute panel at left:spine+cover would extend the shelf's
+     scrollWidth — the last spine's would leave a big right-side gap). The extended card only
+     claims its room (left + width below) once .expanded. left/width aren't transitioned, so they
+     snap instantly while opacity:0 hides it; opacity/transform still fade it in (display stays flex). */
+  left: 0;
+  width: 0;
   /* Own opaque backdrop so the glow doesn't wash over the card content. */
   background: linear-gradient(90deg, rgba(19,17,20,0.9), rgba(19,17,20,0.97));
   display: flex; flex-direction: column; justify-content: safe center;
   gap: 1.4vh;
-  padding: 2vh 2.8vh; /* symmetric left/right margins (was 3.2 left / 2.4 right) */
-  /* On short screens (e.g. iPad) a long title/track list would otherwise be pushed off the
-     bottom by justify-center; safe-center + panel scroll keeps everything reachable. */
-  overflow-y: auto; scrollbar-width: none;
+  /* No horizontal padding while collapsed — with border-box, width:0 + side padding would leave a
+     ~padding-wide box that a thin last spine could poke past. Restored on .expanded below. */
+  padding: 2vh 0;
+  overflow: hidden; scrollbar-width: none;
   opacity: 0;
   transform: translateX(-16px);
   transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
@@ -261,6 +267,12 @@ body {
 }
 .panel::-webkit-scrollbar { display: none; }
 .spine.expanded .panel {
+  left: calc(var(--spine-w) + var(--cover-w));
+  width: var(--panel-w);
+  padding: 2vh 2.8vh; /* symmetric left/right margins (was 3.2 left / 2.4 right) */
+  /* On short screens (e.g. iPad) a long title/track list would otherwise be pushed off the
+     bottom by justify-center; safe-center + panel scroll keeps everything reachable. */
+  overflow-y: auto;
   opacity: 1; transform: translateX(0);
   pointer-events: auto;
   transition-delay: 0.18s;
