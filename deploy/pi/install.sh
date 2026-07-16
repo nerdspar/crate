@@ -160,7 +160,10 @@ MemoryMax=75%
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now crate.service
+systemctl enable crate.service
+# restart (not just enable --now): a reinstall must (re)start the running service so unit changes
+# like WatchdogSec/MemoryMax actually take effect — daemon-reload alone won't re-apply them.
+systemctl restart crate.service
 
 # ---- Optional: fullscreen kiosk browser ----
 if [[ $WITH_KIOSK -eq 1 ]]; then
