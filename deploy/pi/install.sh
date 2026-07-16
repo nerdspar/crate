@@ -182,7 +182,13 @@ PAMName=login
 TTYPath=/dev/tty1
 Environment=XDG_RUNTIME_DIR=/run/user/%U
 ExecStartPre=/bin/sh -c 'until curl -sf http://localhost/wall/ >/dev/null; do sleep 1; done'
-ExecStart=/usr/bin/cage -- $CHROMIUM --kiosk --noerrdialogs --disable-infobars --incognito --check-for-update-interval=31536000 http://localhost/wall/
+# GPU flags: the wall leans on a CSS blur (the album glow) that is fill-rate heavy. Pi GPUs sit on
+# Chromium's default blocklist, so without these the blur falls back to SOFTWARE rasterization on the
+# CPU and janks on open (invisible on a fast dev machine, brutal on a Pi). --ignore-gpu-blocklist +
+# --enable-gpu-rasterization move it onto the VideoCore GPU; --enable-zero-copy trims GPU<->CPU copies.
+# These don't touch the display backend (cage's Wayland surface still comes up the same way), so they
+# won't blank the screen. If a given Pi still can't get GPU raster, add --use-gl=egl (or angle) here.
+ExecStart=/usr/bin/cage -- $CHROMIUM --kiosk --noerrdialogs --disable-infobars --incognito --check-for-update-interval=31536000 --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy http://localhost/wall/
 Restart=always
 RestartSec=3
 

@@ -319,7 +319,9 @@ function positionGlow(i: number): void {
   // #shelf-viewport clips vertically (overflow-y:hidden for the horizontal scroller), so the
   // short wall has only a small vertical gap above/below the cover while the sides have room.
   const clip = shelf.parentElement ?? shelf;
-  const place = (): string => {
+  // Measure only — no DOM writes here, so a frame where the cover hasn't moved stays free of the
+  // reflow-and-re-blur that writing left/top/width/height would trigger (see step()).
+  const measure = (): { key: string; left: number; top: number; w: number; h: number } => {
     const sr = shelf.getBoundingClientRect();
     const clr = clip.getBoundingClientRect();
     const cr = (cover ?? el).getBoundingClientRect();
@@ -330,17 +332,30 @@ function positionGlow(i: number): void {
     const d = Math.max(0, Math.min(rad.spread * cr.height, room));
     // The glow's offsetParent is #shelf, whose live rect already reflects the viewport scroll —
     // so (cr - sr) is the cover's position within it; no scrollLeft term needed.
-    shelfGlow.style.left = `${cr.left - sr.left - d}px`;
-    shelfGlow.style.top = `${cr.top - sr.top - d}px`;
-    shelfGlow.style.width = `${cr.width + 2 * d}px`;
-    shelfGlow.style.height = `${cr.height + 2 * d}px`;
-    return `${Math.round(cr.left)},${Math.round(cr.top)},${Math.round(cr.width)}`;
+    return {
+      key: `${Math.round(cr.left)},${Math.round(cr.top)},${Math.round(cr.width)}`,
+      left: cr.left - sr.left - d,
+      top: cr.top - sr.top - d,
+      w: cr.width + 2 * d,
+      h: cr.height + 2 * d,
+    };
   };
   cancelAnimationFrame(glowTrackRaf);
   let stable = 0, last = '';
   const step = (): void => {
-    const key = place();
-    if (key === last) stable++; else { stable = 0; last = key; }
+    const m = measure();
+    if (m.key === last) stable++;
+    else {
+      stable = 0;
+      last = m.key;
+      // Resizing a blurred layer forces the GPU (or, on a Pi without GPU raster, the CPU) to re-run
+      // the whole Gaussian — so only write when the cover actually moved. This alone drops the ~10
+      // redundant re-blurs at the tail of every open, and any mid-animation frame that held still.
+      shelfGlow.style.left = `${m.left}px`;
+      shelfGlow.style.top = `${m.top}px`;
+      shelfGlow.style.width = `${m.w}px`;
+      shelfGlow.style.height = `${m.h}px`;
+    }
     // Follow the open + scroll-to-centre animation, then stop once it settles (10 steady frames).
     if (openIdx === i && stable < 10) glowTrackRaf = requestAnimationFrame(step);
   };
