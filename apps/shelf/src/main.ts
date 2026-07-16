@@ -656,6 +656,12 @@ function closeAlbum(): void {
   el.style.width = el.style.getPropertyValue('--spine-w');
   cancelAnimationFrame(glowTrackRaf);
   shelfGlow.classList.remove('on');
+  // Collapse the glow's geometry, not just its opacity. It's absolutely positioned and was sized
+  // + placed over the (possibly right-side) cover, so leaving it at that width/left would keep
+  // extending the shelf's scrollWidth — a phantom right-side gap after closing an album near the end.
+  shelfGlow.style.left = '0';
+  shelfGlow.style.width = '0';
+  shelfGlow.style.height = '0';
   openIdx = null;
   groupSelect = null; // leaving the card exits any in-progress grouping
 }
