@@ -259,12 +259,13 @@ export class Db {
 
   /** A library album with the same title + artist (any release), for dedupe. */
   findLibraryAlbumByTitleArtist(title: string, artist: string): AlbumRow | null {
-    const key = (t: string, a: string): string => `${t} ${a}`.toLowerCase().replace(/\s+/g, ' ').trim();
-    const want = key(title, artist);
+    // Reuse the shared NUL-separated key (this used to reinline it, which read like a forgeable
+    // space join — it isn't — and risked drifting from shelfedTitleArtistKeys/importLibrary).
+    const want = titleArtistKey(title, artist);
     const rows = this.db
       .prepare("SELECT a.* FROM shelf_items s JOIN albums a ON a.id = s.album_id WHERE s.kind = 'album'")
       .all() as AlbumRow[];
-    return rows.find((r) => key(r.title, r.artist) === want) ?? null;
+    return rows.find((r) => titleArtistKey(r.title, r.artist) === want) ?? null;
   }
 
   addToShelf(albumId: string, kind: ShelfKind = 'album'): void {
@@ -470,7 +471,10 @@ export class Db {
     const tx = this.db.transaction((entries: Array<[string, unknown]>) => {
       for (const [k, v] of entries) stmt.run(k, JSON.stringify(v));
     });
-    tx(Object.entries(partial));
+    // Never let a Settings write touch a dotted key — those namespace runtime state + secrets
+    // (auth.hash/secret, ma.token, github.token, system.*) that getSettings deliberately hides;
+    // a crafted PUT body ({"auth.hash":""}) must not be able to reach them through here.
+    tx(Object.entries(partial).filter(([k]) => !k.includes('.')));
     if (partial.defaultPlayerId) this.setDefaultPlayer(partial.defaultPlayerId);
     return this.getSettings();
   }
@@ -537,7 +541,10 @@ export class Db {
       ins('INSERT INTO shelves (id, name, kind, sort_order) VALUES (@id, @name, @kind, @sort_order)', t.shelves);
       ins('INSERT INTO shelf_members (shelf_id, album_id, sort_order) VALUES (@shelf_id, @album_id, @sort_order)', t.shelfMembers);
       ins('INSERT INTO playlist_song_state (shelf_id, track_uri, sort_order, hidden) VALUES (@shelf_id, @track_uri, @sort_order, @hidden)', t.playlistSongState);
-      ins('INSERT INTO settings (key, value) VALUES (@key, @value)', t.settings);
+      // Restore only non-dotted (user Settings) keys. Export already filters dotted keys, but a
+      // hand-tampered backup could carry auth.hash / ma.token etc.; dropping them here stops the
+      // restore from injecting secrets (or aborting on a dotted key the DELETE above didn't clear).
+      ins('INSERT INTO settings (key, value) VALUES (@key, @value)', t.settings?.filter((s) => !s.key.includes('.')));
     });
     run();
   }
