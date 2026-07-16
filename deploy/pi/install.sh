@@ -143,6 +143,13 @@ EnvironmentFile=$ENV_FILE
 ExecStart=/usr/bin/node --import tsx src/index.ts
 Restart=always
 RestartSec=3
+# Watchdog: the server sends a WATCHDOG=1 heartbeat every ~half of this (see apps/server/src/watchdog.ts).
+# If it stops — a wedged event loop or a locked DB — systemd kills + relaunches the wall (Restart=always).
+# 90s leaves ample margin for a slow cold start (tsx transpile + native sqlite load) on a small Pi.
+# NotifyAccess=all accepts the heartbeat from the `systemd-notify` helper the server shells out to,
+# since Node can't write the AF_UNIX notify datagram itself.
+WatchdogSec=90
+NotifyAccess=all
 # Memory ceiling as a share of total RAM, so it adapts to the hardware automatically
 # (systemd computes it per host: ~680M on a 1GB Pi, ~3G on a 4GB Pi, ~6G on an 8GB Pi).
 # A leak/runaway is killed + restarted instead of taking down the whole Pi; it's a cap,

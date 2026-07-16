@@ -9,6 +9,7 @@ import { Db } from './db.js';
 import { Hub } from './hub.js';
 import { registerRoutes } from './routes.js';
 import { Service } from './service.js';
+import { startWatchdog } from './watchdog.js';
 
 // Keep the appliance alive. A stray background rejection (a failed art fetch, an MA blip)
 // must not take down the wall — log and carry on. A truly uncaught exception leaves us in
@@ -65,6 +66,11 @@ app.get('/ws', { websocket: true }, (socket, req) => {
 });
 
 registerRoutes(app, service, auth);
+
+// systemd watchdog: arm BEFORE the (possibly slow) MA connect so heartbeats flow during startup —
+// a slow-but-healthy boot isn't mistaken for a hang. No-op unless the unit sets WatchdogSec=.
+// Health = the DB answers a trivial query; MA being down/slow is not a reason to restart the wall.
+startWatchdog({ healthy: () => (db.ping(), true) });
 
 await service.init();
 

@@ -148,6 +148,12 @@ export class Db {
     this.db.close();
   }
 
+  /** Cheap liveness probe for the systemd watchdog. Throws if SQLite is wedged (a writer holds
+      the lock past busy_timeout), so a stuck DB stops the heartbeat and systemd relaunches. */
+  ping(): void {
+    this.db.prepare('SELECT 1').get();
+  }
+
   /** Additive migrations for DBs created before a column existed. */
   private migrate(): void {
     const cols = this.db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>;
