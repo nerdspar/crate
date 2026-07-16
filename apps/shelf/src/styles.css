@@ -269,7 +269,8 @@ body {
 .spine.expanded .panel {
   left: calc(var(--spine-w) + var(--cover-w));
   width: var(--panel-w);
-  padding: 2vh 2.8vh; /* symmetric left/right margins (was 3.2 left / 2.4 right) */
+  padding: 2vh 1vh 2vh 2.8vh; /* less right than left: on the wall the content reads with extra space
+                                 on the right (a symmetric 2.8vh looked right-heavy), so trim the right */
   /* On short screens (e.g. iPad) a long title/track list would otherwise be pushed off the
      bottom by justify-center; safe-center + panel scroll keeps everything reachable. */
   overflow-y: auto;
