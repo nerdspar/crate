@@ -338,33 +338,31 @@ function positionGlow(i: number): void {
   shelfGlow.style.filter = `blur(${rad.blurVh}vh) saturate(${inten.sat})`;
   shelfGlow.style.setProperty('--glow-op', String(inten.opacity));
   shelfGlow.classList.add('on');
-  // #shelf-viewport clips vertically (overflow-y:hidden for the horizontal scroller), so the
-  // short wall has only a small vertical gap above/below the cover while the sides have room.
-  const clip = shelf.parentElement ?? shelf;
   // Measure only — no DOM writes here, so a frame where the cover hasn't moved stays free of the
   // reflow-and-re-blur that writing left/top/width/height would trigger (see step()).
   const measure = (): { key: string; left: number; top: number; w: number; h: number } => {
     const sr = shelf.getBoundingClientRect();
-    const clr = clip.getBoundingClientRect();
     const cr = (cover ?? el).getBoundingClientRect();
     const blur = (rad.blurVh / 100) * window.innerHeight; // keep in step with the CSS blur
     const spread = rad.spread * cr.height;
-    // Horizontal margin: #shelf-viewport scrolls on x (overflow-x:auto) and does NOT clip there, so
-    // bleed the halo out the full spread on the sides.
-    const dx = Math.max(0, spread);
-    // Vertical margin: the viewport DOES clip on y (overflow-y:hidden, for the horizontal scroller),
-    // and the blur (e.g. 4vh) is TALLER than the shelf's 3.5vh top/bottom padding — so a positive
-    // margin shoves the halo's blur past that clip and it's sliced off as a hard line (the "top glow
-    // disappears"). Clamp to (gap − blur) and let it go NEGATIVE: inset the halo just enough that its
-    // blurred edge lands at the viewport edge, so the vertical bleed is whatever actually fits —
-    // soft, symmetric top/bottom, never hard-clipped. Floor so a full box can't invert.
-    const dy = Math.max(-cr.height / 2 + 1, Math.min(spread, Math.min(cr.top - clr.top, clr.bottom - cr.bottom) - blur));
+    // Horizontal: unlike the top (which fades into the empty background), the sides sit right against
+    // neighbour albums — so a long bleed washes across the next spine instead of reading as an ambient
+    // halo. Keep it within the gap the open card opens up to its neighbours (.spine.open margin, 3vh):
+    // clamp so the box + its blur stay inside that gap and fade out before the neighbour.
+    const sideGap = 0.03 * window.innerHeight; // = .spine.open left/right margin (3vh)
+    const dx = Math.max(-cr.width / 2 + 1, Math.min(spread, sideGap - blur));
+    // Top: bloom UP by the same spread as the sides. #shelf-viewport clips on y (overflow-y:hidden),
+    // so this would hit the screen's top edge hard — the body::before fade blends it into the bg there
+    // so the top halo falls off softly instead, matching the sides.
+    const topBloom = Math.max(0, spread);
+    // Bottom: the album is grounded on the shelf — no glow below it. Inset the box bottom by ~the blur
+    // so the downward blur reaches only the cover's bottom edge and nothing spills past it.
     // The glow's offsetParent is #shelf, whose live rect already reflects the viewport scroll —
     // so (cr - sr) is the cover's position within it; no scrollLeft term needed.
     const left = cr.left - sr.left - dx;
-    const top = cr.top - sr.top - dy;
+    const top = cr.top - sr.top - topBloom;
     const w = cr.width + 2 * dx;
-    const h = cr.height + 2 * dy;
+    const h = Math.max(1, cr.height + topBloom - blur);
     return {
       // Key on the whole computed box so any geometry change triggers a write.
       key: `${Math.round(left)},${Math.round(top)},${Math.round(w)},${Math.round(h)}`,
