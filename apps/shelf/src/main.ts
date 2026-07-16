@@ -296,16 +296,37 @@ const GLOW_INTENSITY: Record<GlowIntensity, { opacity: number; sat: number }> = 
   medium: { opacity: 0.68, sat: 1.5 },
   bold: { opacity: 0.9, sat: 1.9 },
 };
+/** Track for the full open animation — the flip (--flip-t 0.55s) plus the scroll-to-centre
+    (smoothScrollTo, 380ms) that runs alongside it — then place the halo authoritatively. This is
+    wall-clock time, NOT a frame count: on a Pi that drops frames a "settled after N steady frames"
+    test fires mid-flip (consecutive rAFs read the same half-turned cover) and locks the glow to a
+    half-open cover — too small (glow vanishes) or with a stale top (top halo clipped, sides survive).
+    650ms clears the 550ms flip with headroom. */
+const GLOW_TRACK_MS = 650;
+
+/** Hide + fully reset the glow. Collapse its geometry (not just opacity): it's absolutely positioned
+    and may have been sized over a right-side cover, so leaving a width/left behind would both keep
+    extending the shelf's scrollWidth (a phantom right gap) and — if it were left `.on` — leave a
+    stray halo over whatever spine now sits at that spot. */
+function hideGlow(): void {
+  cancelAnimationFrame(glowTrackRaf);
+  shelfGlow.classList.remove('on');
+  shelfGlow.style.left = '0';
+  shelfGlow.style.width = '0';
+  shelfGlow.style.height = '0';
+}
+
 /** A soft square halo centred on the open cover. The cover swings out on a 3D flap (so its
     real position isn't a clean offset) and the shelf scrolls to it — so we read the cover's
     actual rect and track it for the open animation, keeping the halo centred throughout. */
 function positionGlow(i: number): void {
   const a = items[i];
   const el = shelf.children[i] as HTMLElement | undefined;
-  if (!a || !el) return;
-  if (!settings.glowEnabled) {
-    cancelAnimationFrame(glowTrackRaf);
-    shelfGlow.classList.remove('on');
+  // Only ever paint the glow over a spine that is actually open. A re-render (buildShelf) rebuilds
+  // every spine CLOSED while openIdx still points here, so without this guard the end-of-build
+  // positionGlow(openIdx) would strand an `.on` halo over a now-closed spine (a stuck glow).
+  if (!a || !el || !settings.glowEnabled || !el.classList.contains('open')) {
+    hideGlow();
     return;
   }
   const rad = GLOW_RADIUS[settings.glowRadius] ?? GLOW_RADIUS.medium;
@@ -333,31 +354,40 @@ function positionGlow(i: number): void {
     // The glow's offsetParent is #shelf, whose live rect already reflects the viewport scroll —
     // so (cr - sr) is the cover's position within it; no scrollLeft term needed.
     return {
-      key: `${Math.round(cr.left)},${Math.round(cr.top)},${Math.round(cr.width)}`,
+      // Key on the whole computed box (incl. height) so any geometry change triggers a write.
+      key: `${Math.round(cr.left - sr.left - d)},${Math.round(cr.top - sr.top - d)},${Math.round(cr.width + 2 * d)},${Math.round(cr.height + 2 * d)}`,
       left: cr.left - sr.left - d,
       top: cr.top - sr.top - d,
       w: cr.width + 2 * d,
       h: cr.height + 2 * d,
     };
   };
+  const apply = (m: { left: number; top: number; w: number; h: number }): void => {
+    shelfGlow.style.left = `${m.left}px`;
+    shelfGlow.style.top = `${m.top}px`;
+    shelfGlow.style.width = `${m.w}px`;
+    shelfGlow.style.height = `${m.h}px`;
+  };
   cancelAnimationFrame(glowTrackRaf);
-  let stable = 0, last = '';
+  const start = performance.now();
+  let last = '';
   const step = (): void => {
-    const m = measure();
-    if (m.key === last) stable++;
-    else {
-      stable = 0;
-      last = m.key;
-      // Resizing a blurred layer forces the GPU (or, on a Pi without GPU raster, the CPU) to re-run
-      // the whole Gaussian — so only write when the cover actually moved. This alone drops the ~10
-      // redundant re-blurs at the tail of every open, and any mid-animation frame that held still.
-      shelfGlow.style.left = `${m.left}px`;
-      shelfGlow.style.top = `${m.top}px`;
-      shelfGlow.style.width = `${m.w}px`;
-      shelfGlow.style.height = `${m.h}px`;
+    // If the album closed (or another opened) mid-animation, drop the glow instead of chasing a
+    // stale cover — its own open will re-place it.
+    if (openIdx !== i || !el.classList.contains('open')) {
+      hideGlow();
+      return;
     }
-    // Follow the open + scroll-to-centre animation, then stop once it settles (10 steady frames).
-    if (openIdx === i && stable < 10) glowTrackRaf = requestAnimationFrame(step);
+    const m = measure();
+    const done = performance.now() - start >= GLOW_TRACK_MS;
+    // Resizing a blurred layer forces a full re-Gaussian (GPU, or CPU on a Pi without GPU raster),
+    // so only write when the box actually changed — but always write the final, post-animation frame
+    // so the halo is placed from the settled cover, never a mid-flip one.
+    if (m.key !== last || done) {
+      last = m.key;
+      apply(m);
+    }
+    if (!done) glowTrackRaf = requestAnimationFrame(step);
   };
   step();
 }
@@ -570,8 +600,9 @@ function buildShelf(): void {
     shelf.appendChild(el);
   });
   shelf.appendChild(shelfGlow); // last child, but z-index puts it behind the spines
+  // positionGlow self-guards: it only paints when children[openIdx] is really open, else hides.
   if (openIdx !== null) positionGlow(openIdx);
-  else shelfGlow.classList.remove('on');
+  else hideGlow();
   sizeFaces(); // apply the current spine-zoom to the freshly-built spines
   renderChoices();
 }
@@ -660,6 +691,7 @@ function expand(el: HTMLElement, on: boolean): void {
     requestAnimationFrame(() => {
       const target = openScrollTarget(openIdx!); // the now-wider panel may need to scroll into view
       if (Math.abs(target - vp.scrollLeft) > 1) smoothScrollTo(vp, target);
+      positionGlow(openIdx!); // that scroll shifts the cover — re-track so the halo follows it
     });
   }
 }
@@ -669,14 +701,7 @@ function closeAlbum(): void {
   const el = shelf.children[openIdx] as HTMLElement;
   el.classList.remove('open', 'expanded');
   el.style.width = el.style.getPropertyValue('--spine-w');
-  cancelAnimationFrame(glowTrackRaf);
-  shelfGlow.classList.remove('on');
-  // Collapse the glow's geometry, not just its opacity. It's absolutely positioned and was sized
-  // + placed over the (possibly right-side) cover, so leaving it at that width/left would keep
-  // extending the shelf's scrollWidth — a phantom right-side gap after closing an album near the end.
-  shelfGlow.style.left = '0';
-  shelfGlow.style.width = '0';
-  shelfGlow.style.height = '0';
+  hideGlow();
   openIdx = null;
   groupSelect = null; // leaving the card exits any in-progress grouping
 }
