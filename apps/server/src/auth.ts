@@ -33,6 +33,10 @@ export class Auth {
 
   /** Set (or, with an empty value, clear → disable) the admin passphrase. */
   setPassphrase(next: string): void {
+    // Rotate the session-signing secret on ANY passphrase change so every previously-issued cookie
+    // (incl. a captured one) is invalidated — a stateless token can't otherwise be revoked. The
+    // caller re-issues its own cookie right after with the new secret, so it stays signed in.
+    this.db.setRaw('auth.secret', randomBytes(32).toString('hex'));
     if (!next) {
       this.db.setRaw('auth.hash', '');
       return;
@@ -59,9 +63,14 @@ export class Auth {
   validToken(token: string | undefined): boolean {
     if (!token) return false;
     const [exp, sig] = token.split('.');
-    if (!exp || !sig || Number(exp) < Date.now()) return false;
+    const expMs = Number(exp);
+    if (!exp || !sig || !Number.isFinite(expMs) || expMs < Date.now()) return false; // non-numeric exp → treat as invalid
     const want = createHmac('sha256', this.secret()).update(exp).digest('hex');
-    return sig.length === want.length && timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+    // Decode both hex→bytes and compare byte buffers. Comparing the raw strings byte-lengths could
+    // differ from their char-lengths (a crafted multibyte cookie), which throws in timingSafeEqual.
+    const a = Buffer.from(sig, 'hex');
+    const b = Buffer.from(want, 'hex');
+    return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
   }
 
   /** True when the request carries a valid session cookie. */

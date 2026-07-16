@@ -74,24 +74,31 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     enabled: auth.enabled(),
     authed: auth.enabled() ? auth.authed(req.headers.cookie) : true,
   }));
-  // Brute-force + scrypt-CPU-DoS guard: exponential backoff per client IP after failed logins.
-  // During a backoff we 429 BEFORE running the (deliberately slow) scrypt verify.
+  // Brute-force + scrypt-CPU-DoS guard: exponential backoff per client IP around the (deliberately
+  // slow, event-loop-blocking) scrypt verify. Shared by BOTH the login and the unauthenticated
+  // passphrase-change paths — either would otherwise be an unthrottled guessing oracle + DoS.
   const loginFails = new Map<string, { count: number; until: number }>();
+  const inBackoff = (ip: string): boolean => {
+    const rec = loginFails.get(ip || 'unknown');
+    return !!(rec && Date.now() < rec.until);
+  };
+  const recordAttempt = (ip: string, ok: boolean): void => {
+    const key = ip || 'unknown';
+    const now = Date.now();
+    for (const [k, v] of loginFails) if (now - v.until > 10 * 60_000) loginFails.delete(k); // evict aged-out entries
+    if (ok) return void loginFails.delete(key);
+    const rec = loginFails.get(key);
+    const count = (rec && now - rec.until < 10 * 60_000 ? rec.count : 0) + 1;
+    const wait = count <= 2 ? 0 : Math.min(30_000, 2 ** (count - 3) * 1000); // 0,0,1s,2s,4s,…,30s
+    loginFails.set(key, { count, until: now + wait });
+  };
   app.post('/api/auth/login', (req, reply) => {
     const { passphrase } = (req.body ?? {}) as { passphrase?: string };
     if (!auth.enabled()) return { ok: true };
-    const key = req.ip || 'unknown';
-    const now = Date.now();
-    const rec = loginFails.get(key);
-    if (rec && now < rec.until) return reply.code(429).send({ error: 'Too many attempts — try again shortly' });
-    if (!auth.verifyPassphrase(passphrase ?? '')) {
-      // Keep escalating unless the last backoff aged out (>10 min), then reset the streak.
-      const count = (rec && now - rec.until < 10 * 60_000 ? rec.count : 0) + 1;
-      const wait = count <= 2 ? 0 : Math.min(30_000, 2 ** (count - 3) * 1000); // 0,0,1s,2s,4s,…,30s
-      loginFails.set(key, { count, until: now + wait });
-      return reply.code(401).send({ error: 'Wrong passphrase' });
-    }
-    loginFails.delete(key);
+    if (inBackoff(req.ip)) return reply.code(429).send({ error: 'Too many attempts — try again shortly' });
+    const ok = auth.verifyPassphrase(passphrase ?? '');
+    recordAttempt(req.ip, ok);
+    if (!ok) return reply.code(401).send({ error: 'Wrong passphrase' });
     void reply.header('set-cookie', auth.setCookieHeader(auth.issueToken()));
     return { ok: true };
   });
@@ -103,8 +110,14 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   // passphrase OR a live session; re-issues a session so the caller isn't locked out by the change.
   app.post('/api/auth/passphrase', (req, reply) => {
     const { current, next } = (req.body ?? {}) as { current?: string; next?: string };
-    if (auth.enabled() && !auth.authed(req.headers.cookie) && !auth.verifyPassphrase(current ?? '')) {
-      return reply.code(401).send({ error: 'Wrong current passphrase' });
+    // An unauthenticated change must prove the CURRENT passphrase — gate that scrypt verify behind
+    // the same per-IP throttle as login, or it's an unthrottled guessing oracle + event-loop DoS.
+    // A live session skips it (already trusted).
+    if (auth.enabled() && !auth.authed(req.headers.cookie)) {
+      if (inBackoff(req.ip)) return reply.code(429).send({ error: 'Too many attempts — try again shortly' });
+      const ok = auth.verifyPassphrase(current ?? '');
+      recordAttempt(req.ip, ok);
+      if (!ok) return reply.code(401).send({ error: 'Wrong current passphrase' });
     }
     auth.setPassphrase((next ?? '').trim());
     void reply.header('set-cookie', auth.enabled() ? auth.setCookieHeader(auth.issueToken()) : auth.clearCookieHeader());
@@ -133,7 +146,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
 
   // Named shelves (curated collections; albums can belong to several).
   app.post('/api/shelves', (req) => {
-    const b = req.body as CreateShelfRequest;
+    const b = (req.body ?? {}) as CreateShelfRequest;
     return service.createShelf(b.name, b.kind);
   });
   app.put('/api/shelves/:id', (req) => {
@@ -191,7 +204,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   });
 
   app.post('/api/play', async (req) => {
-    const b = req.body as PlayRequest;
+    const b = (req.body ?? {}) as PlayRequest;
     await service.play(b.albumId, b.trackIndex, b.playerId, b.providerUri, b.trackUris, b.position);
     return { ok: true };
   });
@@ -206,31 +219,31 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   });
 
   app.post('/api/transport', async (req) => {
-    const b = req.body as TransportRequest;
+    const b = (req.body ?? {}) as TransportRequest;
     await service.transport(b.playerId, b.cmd, b.position);
     return { ok: true };
   });
 
   app.post('/api/volume', async (req) => {
-    const b = req.body as VolumeRequest;
+    const b = (req.body ?? {}) as VolumeRequest;
     await service.setVolume(b.playerId, b.level);
     return { ok: true };
   });
 
   app.post('/api/shuffle', async (req) => {
-    const b = req.body as ShuffleRequest;
+    const b = (req.body ?? {}) as ShuffleRequest;
     await service.setShuffle(b.playerId, b.enabled);
     return { ok: true };
   });
 
   app.post('/api/repeat', async (req) => {
-    const b = req.body as RepeatRequest;
+    const b = (req.body ?? {}) as RepeatRequest;
     await service.setRepeat(b.playerId, b.mode);
     return { ok: true };
   });
 
   app.post('/api/group', async (req) => {
-    const b = req.body as GroupRequest;
+    const b = (req.body ?? {}) as GroupRequest;
     await service.group(b.playerIds);
     return { ok: true };
   });
@@ -241,33 +254,33 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return player ? service.queue(player) : { items: [], currentIndex: null };
   });
   app.post('/api/queue/play', async (req) => {
-    const b = req.body as { player: string; index: number };
+    const b = (req.body ?? {}) as{ player: string; index: number };
     await service.queuePlay(b.player, b.index);
     return { ok: true };
   });
   app.post('/api/queue/move', async (req) => {
-    const b = req.body as { player: string; itemId: string; posShift: number };
+    const b = (req.body ?? {}) as{ player: string; itemId: string; posShift: number };
     await service.queueMove(b.player, b.itemId, b.posShift);
     return { ok: true };
   });
   app.post('/api/queue/remove', async (req) => {
-    const b = req.body as { player: string; itemId: string };
+    const b = (req.body ?? {}) as{ player: string; itemId: string };
     await service.queueRemove(b.player, b.itemId);
     return { ok: true };
   });
   app.post('/api/queue/clear', async (req) => {
-    const b = req.body as { player: string };
+    const b = (req.body ?? {}) as{ player: string };
     await service.queueClear(b.player);
     return { ok: true };
   });
   app.post('/api/queue/enqueue', async (req) => {
-    const b = req.body as { player: string; uri: string };
+    const b = (req.body ?? {}) as{ player: string; uri: string };
     await service.queueEnqueue(b.player, b.uri);
     return { ok: true };
   });
 
   app.post('/api/shelf/add', async (req) => {
-    const b = req.body as AddToShelfRequest;
+    const b = (req.body ?? {}) as AddToShelfRequest;
     const res = await service.addToShelf(b.providerUri, b.shelfId);
     return { ok: true, ...res };
   });
@@ -280,7 +293,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
 
   // Manual ordering: reorder the library, or a crate when `shelf` is given.
   app.post('/api/shelf/reorder', (req) => {
-    const b = req.body as { albumIds: string[]; shelf?: string };
+    const b = (req.body ?? {}) as{ albumIds: string[]; shelf?: string };
     service.reorder(b.albumIds ?? [], b.shelf);
     return { ok: true };
   });
@@ -312,25 +325,25 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return q ? service.searchPlaylists(q) : [];
   });
   app.post('/api/playlists', async (req) => {
-    const b = req.body as AddPlaylistRequest;
+    const b = (req.body ?? {}) as AddPlaylistRequest;
     await service.addPlaylist(b.providerUri);
     return { ok: true };
   });
   // Fire-and-forget: start resolving a playlist's track art before its shelf opens.
   app.post('/api/playlists/prewarm', (req) => {
-    void service.prewarmPlaylist((req.body as { providerUri: string }).providerUri);
+    void service.prewarmPlaylist(((req.body ?? {}) as { providerUri?: string }).providerUri ?? '');
     return { ok: true };
   });
   // Crate-local song curation within a playlist shelf (never edits the source playlist).
   app.post('/api/playlists/:shelfId/songs/reorder', (req) => {
     const { shelfId } = req.params as { shelfId: string };
-    const b = req.body as { trackUris?: string[] };
+    const b = (req.body ?? {}) as{ trackUris?: string[] };
     service.reorderPlaylistSongs(shelfId, b.trackUris ?? []);
     return { ok: true };
   });
   app.post('/api/playlists/:shelfId/songs/hide', (req) => {
     const { shelfId } = req.params as { shelfId: string };
-    const b = req.body as { trackUri: string; hidden?: boolean };
+    const b = (req.body ?? {}) as{ trackUri: string; hidden?: boolean };
     service.setPlaylistSongHidden(shelfId, b.trackUri, b.hidden !== false);
     return { ok: true };
   });
@@ -427,7 +440,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   });
 
   app.post('/api/system/brightness', (req) => {
-    const b = req.body as BrightnessRequest;
+    const b = (req.body ?? {}) as BrightnessRequest;
     return service.setBrightness(b.level);
   });
 
@@ -465,19 +478,19 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.get('/api/admin/ma/status', () => service.maStatus());
   app.get('/api/admin/ma/connection', () => service.getMaConnection());
   app.put('/api/admin/ma/connection', (req, reply) => {
-    const b = req.body as { url?: string; token?: string };
+    const b = (req.body ?? {}) as{ url?: string; token?: string };
     return maCall(reply, () => service.setMaConnection(b));
   });
   app.post('/api/admin/ma/connection/test', (req, reply) => {
-    const b = req.body as { url?: string; token?: string };
+    const b = (req.body ?? {}) as{ url?: string; token?: string };
     return maCall(reply, () => service.testMaConnection(b));
   });
   app.post('/api/admin/ma/connection/mint', (req, reply) => {
-    const b = req.body as { url?: string; username?: string; password?: string };
+    const b = (req.body ?? {}) as{ url?: string; username?: string; password?: string };
     return maCall(reply, () => service.mintMaConnection(b));
   });
   app.post('/api/admin/ma/connection/needs-setup', (req, reply) => {
-    const b = req.body as { url?: string };
+    const b = (req.body ?? {}) as{ url?: string };
     return maCall(reply, () => service.maSetupState(b.url));
   });
 
@@ -487,13 +500,13 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.get('/api/admin/ma/sources', (_req, reply) => maCall(reply, () => service.maSources()));
   app.get('/api/admin/ma/providers', (_req, reply) => maCall(reply, () => service.maAvailableProviders()));
   app.post('/api/admin/ma/sources/entries', (req, reply) => {
-    const b = req.body as { domain: string; instanceId?: string; action?: string; values?: Record<string, MaConfigValue> };
+    const b = (req.body ?? {}) as{ domain: string; instanceId?: string; action?: string; values?: Record<string, MaConfigValue> };
     return maCall(reply, () => service.maSourceEntries(b.domain, { instanceId: b.instanceId, action: b.action, values: b.values }));
   });
   // Poll for the authorize URL MA emits after an OAuth/MusicKit auth action is started.
   app.get('/api/admin/ma/auth-url', (req) => service.maAuthUrl(((req.query as { session?: string }).session ?? '')));
   app.post('/api/admin/ma/sources', (req, reply) => {
-    const b = req.body as { domain: string; values?: Record<string, MaConfigValue>; instanceId?: string };
+    const b = (req.body ?? {}) as{ domain: string; values?: Record<string, MaConfigValue>; instanceId?: string };
     return maCall(reply, () => service.maSaveSource(b.domain, b.values ?? {}, b.instanceId));
   });
   app.delete('/api/admin/ma/sources/:instanceId', (req, reply) => {
