@@ -2960,7 +2960,9 @@ function syncVol(vol: HTMLElement | null): void {
   const caret = vol.querySelector('.vol-caret') as HTMLElement | null;
   const membersEl = vol.querySelector('.vol-members') as HTMLElement | null;
   const isGroup = activeGroupMembers().length >= 2;
-  if (slider) slider.value = String(activeVol());
+  // Don't fight the user's own drag: skip the echo while they're touching a slider (same guard as
+  // syncCCVolumes) — an MA volume frame arriving mid-drag would otherwise snap the thumb back.
+  if (slider && performance.now() >= volTouchUntil && slider !== document.activeElement) slider.value = String(activeVol());
   if (caret) caret.hidden = !isGroup;
   if (membersEl && !membersEl.hidden) {
     if (!isGroup) {
@@ -4954,6 +4956,11 @@ document.querySelectorAll<HTMLElement>('.find-shelf-tab').forEach((tab) => {
     if (filterQuery) {
       artistView = null;
       resetSearchPaging();
+      // Drop the previous kind's results (mediaResults is shared across radio/podcast/audiobook) so
+      // the loading scaffold doesn't flash the old tab's matches for a frame before runSearch lands.
+      globalResults = null;
+      playlistResults = null;
+      mediaResults = null;
       searchSource = defaultSourceFor(shelfTab);
       searchSourceUserSet = false;
       renderSearch(true); // loading scaffold in the new scope
@@ -5802,6 +5809,7 @@ vp.addEventListener('pointerdown', (e) => {
   startY = e.clientY;
   scrollStart = vp.scrollLeft;
   if (raf !== null) cancelAnimationFrame(raf);
+  scrollToken++; // also cancel an in-flight open/expand smoothScrollTo, so it can't fight this drag
   vel = 0;
   downTarget = (e.target as HTMLElement).closest('.spine');
 
@@ -5916,7 +5924,22 @@ function releasePointer(e: PointerEvent): void {
     pDown = false; // the remaining finger (if any) shouldn't resume scroll/tap
   }
 }
-window.addEventListener('pointercancel', releasePointer);
+// A cancelled touch (OS gesture takeover, palm rejection, a 2nd pointer arriving) must reset the
+// same single-finger gesture state pointerup does — else the pending hold-timer still fires and
+// flips an album open after the finger is gone, or the next drag scrolls from a stale origin.
+window.addEventListener('pointercancel', (e) => {
+  const wasPinching = pinching;
+  releasePointer(e);
+  if (wasPinching || !pDown) return;
+  pDown = false;
+  moved = false;
+  stepping = false;
+  heldOpen = false;
+  openSwipeDone = false;
+  vSwipe = 0;
+  vSwipeDone = false;
+  if (holdTimer) clearTimeout(holdTimer);
+});
 
 window.addEventListener('pointerup', (e) => {
   const wasPinching = pinching;
@@ -5992,6 +6015,15 @@ function handleState(states: PlayerState[]): void {
   let pool = states;
   if (pauseGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state === 'playing'));
   if (resumeGuard) pool = pool.filter((s) => !(s.playerId === now.playerId && s.state !== 'playing'));
+
+  // Release a STALE user-pause: if the room we're holding paused is actually playing again — a
+  // different album started externally / from another app, or it was resumed elsewhere — the pause
+  // is no longer real, so clear it and let the candidate logic below follow reality instead of
+  // sticking on the old paused album forever. (Uses the guard-filtered pool, so a not-yet-propagated
+  // pre-pause 'playing' frame during pauseGuard doesn't spuriously trip it.)
+  if (userPaused && now.playerId && pool.some((s) => s.playerId === now.playerId && s.state === 'playing' && s.nowPlaying)) {
+    userPaused = false;
+  }
 
   const openAlbumId = openIdx !== null ? (items[openIdx]?.albumId ?? null) : null;
   // Don't let another room steal the now-playing focus while (a) the user paused an
@@ -6362,7 +6394,9 @@ function handleProgress(playerId: string, elapsed: number): void {
   if (performance.now() < resumeGuardUntil && Math.abs(elapsed - liveElapsed()) > 8) return;
   now.elapsed = elapsed;
   now.at = performance.now();
-  if (now.state === 'idle') now.state = 'playing';
+  // A progress tick implies playback — but only flip idle→playing when an album is actually loaded,
+  // so a stray/late tick can't resurrect a genuinely-empty idle state (and spin the smooth-tick rAF).
+  if (now.state === 'idle' && now.albumId) now.state = 'playing';
 }
 
 /** The seek bar only advances while actually playing with a seek view visible. */
