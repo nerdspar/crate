@@ -296,13 +296,14 @@ const GLOW_INTENSITY: Record<GlowIntensity, { opacity: number; sat: number }> = 
   medium: { opacity: 0.68, sat: 1.5 },
   bold: { opacity: 0.9, sat: 1.9 },
 };
-/** Track for the full open animation — the flip (--flip-t 0.55s) plus the scroll-to-centre
-    (smoothScrollTo, 380ms) that runs alongside it — then place the halo authoritatively. This is
-    wall-clock time, NOT a frame count: on a Pi that drops frames a "settled after N steady frames"
-    test fires mid-flip (consecutive rAFs read the same half-turned cover) and locks the glow to a
-    half-open cover — too small (glow vanishes) or with a stale top (top halo clipped, sides survive).
-    650ms clears the 550ms flip with headroom. */
-const GLOW_TRACK_MS = 650;
+/** Glow tracking window. The cover opens on a 3D flip (--flip-t 0.55s) whose PROJECTED width grows
+    0→full as it turns to face you, plus a scroll-to-centre alongside it. We follow that and only
+    settle once the cover's box has held steady for a few frames — but never before GLOW_MIN_MS, so a
+    momentary stall mid-flip (a Pi dropping frames, or a throttled tab where the transition runs slow)
+    can't false-settle and lock the halo to a half-turned, too-narrow cover. GLOW_MAX_MS caps it. */
+const GLOW_MIN_MS = 560; // ≥ the 0.55s flip: never settle while the cover is still turning
+const GLOW_MAX_MS = 2500; // hard cap so a stuck transition can't loop forever
+const GLOW_STABLE_FRAMES = 3; // consecutive steady frames (after MIN) that count as settled
 
 /** Hide + fully reset the glow. Collapse its geometry (not just opacity): it's absolutely positioned
     and may have been sized over a right-side cover, so leaving a width/left behind would both keep
@@ -382,6 +383,7 @@ function positionGlow(i: number): void {
   cancelAnimationFrame(glowTrackRaf);
   const start = performance.now();
   let last = '';
+  let stable = 0;
   const step = (): void => {
     // If the album closed (or another opened) mid-animation, drop the glow instead of chasing a
     // stale cover — its own open will re-place it.
@@ -390,15 +392,21 @@ function positionGlow(i: number): void {
       return;
     }
     const m = measure();
-    const done = performance.now() - start >= GLOW_TRACK_MS;
     // Resizing a blurred layer forces a full re-Gaussian (GPU, or CPU on a Pi without GPU raster),
-    // so only write when the box actually changed — but always write the final, post-animation frame
-    // so the halo is placed from the settled cover, never a mid-flip one.
-    if (m.key !== last || done) {
+    // so only write when the box actually changed. Count steady frames to detect the settle.
+    if (m.key !== last) {
       last = m.key;
+      stable = 0;
       apply(m);
+    } else {
+      stable++;
     }
-    if (!done) glowTrackRaf = requestAnimationFrame(step);
+    const elapsed = performance.now() - start;
+    // Settle only once the cover has stopped moving AND the flip window has fully elapsed, so a
+    // mid-flip stall can't lock a half-open cover; cap it so a stuck transition can't loop forever.
+    const done = (elapsed >= GLOW_MIN_MS && stable >= GLOW_STABLE_FRAMES) || elapsed >= GLOW_MAX_MS;
+    if (done) apply(m); // final authoritative placement from the settled cover
+    else glowTrackRaf = requestAnimationFrame(step);
   };
   step();
 }
