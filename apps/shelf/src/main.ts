@@ -346,20 +346,31 @@ function positionGlow(i: number): void {
     const sr = shelf.getBoundingClientRect();
     const clr = clip.getBoundingClientRect();
     const cr = (cover ?? el).getBoundingClientRect();
-    // A uniform square margin on every side, but clamped so the halo (plus its blur) never spills
-    // past the shelf's top/bottom edges — that keeps the top bleed equal to the sides on the wall.
     const blur = (rad.blurVh / 100) * window.innerHeight; // keep in step with the CSS blur
-    const room = Math.min(cr.top - clr.top, clr.bottom - cr.bottom) - blur;
-    const d = Math.max(0, Math.min(rad.spread * cr.height, room));
+    const spread = rad.spread * cr.height;
+    // Horizontal margin: #shelf-viewport scrolls on x (overflow-x:auto) and does NOT clip there, so
+    // bleed the halo out the full spread on the sides.
+    const dx = Math.max(0, spread);
+    // Vertical margin: the viewport DOES clip on y (overflow-y:hidden, for the horizontal scroller),
+    // and the blur (e.g. 4vh) is TALLER than the shelf's 3.5vh top/bottom padding — so a positive
+    // margin shoves the halo's blur past that clip and it's sliced off as a hard line (the "top glow
+    // disappears"). Clamp to (gap − blur) and let it go NEGATIVE: inset the halo just enough that its
+    // blurred edge lands at the viewport edge, so the vertical bleed is whatever actually fits —
+    // soft, symmetric top/bottom, never hard-clipped. Floor so a full box can't invert.
+    const dy = Math.max(-cr.height / 2 + 1, Math.min(spread, Math.min(cr.top - clr.top, clr.bottom - cr.bottom) - blur));
     // The glow's offsetParent is #shelf, whose live rect already reflects the viewport scroll —
     // so (cr - sr) is the cover's position within it; no scrollLeft term needed.
+    const left = cr.left - sr.left - dx;
+    const top = cr.top - sr.top - dy;
+    const w = cr.width + 2 * dx;
+    const h = cr.height + 2 * dy;
     return {
-      // Key on the whole computed box (incl. height) so any geometry change triggers a write.
-      key: `${Math.round(cr.left - sr.left - d)},${Math.round(cr.top - sr.top - d)},${Math.round(cr.width + 2 * d)},${Math.round(cr.height + 2 * d)}`,
-      left: cr.left - sr.left - d,
-      top: cr.top - sr.top - d,
-      w: cr.width + 2 * d,
-      h: cr.height + 2 * d,
+      // Key on the whole computed box so any geometry change triggers a write.
+      key: `${Math.round(left)},${Math.round(top)},${Math.round(w)},${Math.round(h)}`,
+      left,
+      top,
+      w,
+      h,
     };
   };
   const apply = (m: { left: number; top: number; w: number; h: number }): void => {
