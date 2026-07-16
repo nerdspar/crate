@@ -16,7 +16,6 @@ import type {
   ShelfKind,
   SourceKinds,
   SpineMode,
-  Stack,
   Track,
   YearDisplay,
 } from './domain.js';
@@ -42,7 +41,6 @@ export interface OverrideRequest {
 
 export interface ShelfResponse {
   items: ShelfItem[];
-  stacks: Stack[];
   shelves: Shelf[];
   /** Which extra media kinds a connected source can serve (radio/podcast/audiobook) — the
       front-ends reveal each tab only when its kind is true (and not hidden in settings). */

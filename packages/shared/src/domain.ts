@@ -136,7 +136,6 @@ export interface ShelfItem {
   /** Release year, for the spine catalog imprint. Null when unknown. */
   year: number | null;
   order: number;
-  stackId: string | null;
   /** ISO timestamp the album was shelved (for the 'added' sort). */
   addedAt: string;
   /** Lifetime play count (for the 'played' sort). */
@@ -175,12 +174,6 @@ export interface ShelfItem {
       Absent on album spines and playlist-case spines. */
   albumUri?: string | null;
   trackIndex?: number | null;
-}
-
-export interface Stack {
-  id: string;
-  name: string;
-  order: number;
 }
 
 /** A shelf holds albums, playlists, or radio stations (never mixed). "All" is the

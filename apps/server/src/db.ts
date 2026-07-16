@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DEFAULT_SETTINGS, EXTRA_MEDIA, type Album, type AlbumOverride, type CrateBackupTables, type Palette, type Player, type Settings, type Shelf, type ShelfKind, type Stack } from '@crate/shared';
+import { DEFAULT_SETTINGS, EXTRA_MEDIA, type Album, type AlbumOverride, type CrateBackupTables, type Palette, type Player, type Settings, type Shelf, type ShelfKind } from '@crate/shared';
 
 export interface AlbumRow {
   id: string;
@@ -23,7 +23,6 @@ export interface AlbumRow {
 export interface ShelfRow extends AlbumRow {
   kind: string;
   sort_order: number;
-  stack_id: string | null;
 }
 
 export interface SongCacheRow {
@@ -56,12 +55,6 @@ CREATE TABLE IF NOT EXISTS albums (
 CREATE TABLE IF NOT EXISTS shelf_items (
   album_id TEXT PRIMARY KEY REFERENCES albums(id) ON DELETE CASCADE,
   kind TEXT NOT NULL DEFAULT 'album',
-  sort_order INTEGER NOT NULL,
-  stack_id TEXT
-);
-CREATE TABLE IF NOT EXISTS stacks (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
   sort_order INTEGER NOT NULL
 );
 -- Named curated shelves (kind 'album'|'playlist'). "All"/"Radio" are virtual.
@@ -231,7 +224,7 @@ export class Db {
   listShelf(kind: ShelfKind = 'album'): ShelfRow[] {
     return this.db
       .prepare(
-        `SELECT a.*, s.kind, s.sort_order, s.stack_id
+        `SELECT a.*, s.kind, s.sort_order
          FROM shelf_items s JOIN albums a ON a.id = s.album_id
          WHERE s.kind = ?
          ORDER BY s.sort_order ASC`,
@@ -268,11 +261,11 @@ export class Db {
     return rows.find((r) => key(r.title, r.artist) === want) ?? null;
   }
 
-  addToShelf(albumId: string, kind: ShelfKind = 'album', stackId: string | null = null): void {
+  addToShelf(albumId: string, kind: ShelfKind = 'album'): void {
     const max = (this.db.prepare('SELECT MAX(sort_order) AS m FROM shelf_items').get() as { m: number | null }).m ?? 0;
     this.db
-      .prepare('INSERT OR IGNORE INTO shelf_items (album_id, kind, sort_order, stack_id) VALUES (?, ?, ?, ?)')
-      .run(albumId, kind, max + 1, stackId);
+      .prepare('INSERT OR IGNORE INTO shelf_items (album_id, kind, sort_order) VALUES (?, ?, ?)')
+      .run(albumId, kind, max + 1);
   }
 
   removeFromShelf(albumId: string): void {
@@ -346,7 +339,7 @@ export class Db {
   listShelfMembers(shelfId: string): ShelfRow[] {
     return this.db
       .prepare(
-        `SELECT a.*, 'album' AS kind, m.sort_order AS sort_order, NULL AS stack_id
+        `SELECT a.*, 'album' AS kind, m.sort_order AS sort_order
          FROM shelf_members m JOIN albums a ON a.id = m.album_id
          WHERE m.shelf_id = ? ORDER BY m.sort_order ASC`,
       )
@@ -396,15 +389,6 @@ export class Db {
          ON CONFLICT(shelf_id, track_uri) DO UPDATE SET hidden = excluded.hidden`,
       )
       .run(shelfId, trackUri, hidden ? 1 : 0);
-  }
-
-  listStacks(): Stack[] {
-    const rows = this.db.prepare('SELECT id, name, sort_order FROM stacks ORDER BY sort_order').all() as Array<{
-      id: string;
-      name: string;
-      sort_order: number;
-    }>;
-    return rows.map((r) => ({ id: r.id, name: r.name, order: r.sort_order }));
   }
 
   // --- Players ------------------------------------------------------------
@@ -516,8 +500,7 @@ export class Db {
                 spine_width, total_duration, added_at, play_count, overrides
          FROM albums`,
       ),
-      shelfItems: all('SELECT album_id, kind, sort_order, stack_id FROM shelf_items'),
-      stacks: all('SELECT id, name, sort_order FROM stacks'),
+      shelfItems: all('SELECT album_id, kind, sort_order FROM shelf_items'),
       shelves: all('SELECT id, name, kind, sort_order FROM shelves'),
       shelfMembers: all('SELECT shelf_id, album_id, sort_order FROM shelf_members'),
       playlistSongState: all('SELECT shelf_id, track_uri, sort_order, hidden FROM playlist_song_state'),
@@ -534,7 +517,7 @@ export class Db {
     const run = this.db.transaction(() => {
       this.db.exec(
         'DELETE FROM playlist_song_state; DELETE FROM shelf_members; DELETE FROM shelf_items;' +
-          ' DELETE FROM shelves; DELETE FROM stacks; DELETE FROM albums;',
+          ' DELETE FROM shelves; DELETE FROM albums;',
       );
       this.db.prepare("DELETE FROM settings WHERE key NOT LIKE '%.%'").run();
       ins(
@@ -544,8 +527,7 @@ export class Db {
            @spine_width, @total_duration, @added_at, @play_count, @overrides)`,
         t.albums,
       );
-      ins('INSERT INTO stacks (id, name, sort_order) VALUES (@id, @name, @sort_order)', t.stacks);
-      ins('INSERT INTO shelf_items (album_id, kind, sort_order, stack_id) VALUES (@album_id, @kind, @sort_order, @stack_id)', t.shelfItems);
+      ins('INSERT INTO shelf_items (album_id, kind, sort_order) VALUES (@album_id, @kind, @sort_order)', t.shelfItems);
       ins('INSERT INTO shelves (id, name, kind, sort_order) VALUES (@id, @name, @kind, @sort_order)', t.shelves);
       ins('INSERT INTO shelf_members (shelf_id, album_id, sort_order) VALUES (@shelf_id, @album_id, @sort_order)', t.shelfMembers);
       ins('INSERT INTO playlist_song_state (shelf_id, track_uri, sort_order, hidden) VALUES (@shelf_id, @track_uri, @sort_order, @hidden)', t.playlistSongState);

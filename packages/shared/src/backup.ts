@@ -2,7 +2,7 @@
  * Crate config backup format (Phase 5).
  *
  * A portable snapshot of the *user-authored* configuration — settings, the library
- * (albums + order + stacks), curated shelves and their members, and playlist song
+ * (albums + order), curated shelves and their members, and playlist song
  * curation. It deliberately omits the regenerable art cache (local artwork/spine
  * paths + palette), the song-metadata cache, and discovered players, plus any
  * device-local / secret runtime state (dotted settings keys like `system.*`).
@@ -31,8 +31,7 @@ export interface CrateBackupTables {
   /** Typed settings only (dotted/namespaced keys are excluded). */
   settings: Array<{ key: string; value: string }>;
   albums: CrateBackupAlbum[];
-  shelfItems: Array<{ album_id: string; kind: string; sort_order: number; stack_id: string | null }>;
-  stacks: Array<{ id: string; name: string; sort_order: number }>;
+  shelfItems: Array<{ album_id: string; kind: string; sort_order: number }>;
   shelves: Array<{ id: string; name: string; kind: string; sort_order: number }>;
   shelfMembers: Array<{ shelf_id: string; album_id: string; sort_order: number }>;
   playlistSongState: Array<{ shelf_id: string; track_uri: string; sort_order: number | null; hidden: number }>;

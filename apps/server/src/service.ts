@@ -285,7 +285,7 @@ export class Service {
     const shelf = shelfId ? shelves.find((s) => s.id === shelfId) : undefined;
     // A named playlist shelf holds ONE playlist, shown as its songs (spines).
     if (shelf && shelf.kind === 'playlist' && shelf.id !== 'playlists') {
-      return { items: await this.songItems(shelf.id), stacks: this.db.listStacks(), shelves, sourceKinds };
+      return { items: await this.songItems(shelf.id), shelves, sourceKinds };
     }
     // The extra-media virtual shelves (radio/podcasts/audiobooks) list every saved item of that kind.
     const extra = EXTRA_MEDIA.find((m) => m.shelfId === shelfId);
@@ -299,7 +299,6 @@ export class Service {
             : this.db.listShelfMembers(shelfId);
     return {
       items: rows.map((r) => buildShelfItem(r, ART_BASE, this.cfg.artDir)),
-      stacks: this.db.listStacks(),
       shelves,
       sourceKinds,
     };

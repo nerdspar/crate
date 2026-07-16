@@ -2278,7 +2278,7 @@ function relTime(iso: string | null): string {
 function renderBackupCat(body: HTMLElement): void {
   const intro = document.createElement('p');
   intro.className = 'hint';
-  intro.textContent = 'Save or restore your Crate configuration — settings, your library and its order, shelves, stacks, and playlist curation. Album artwork re-downloads after a restore.';
+  intro.textContent = 'Save or restore your Crate configuration — settings, your library and its order, shelves, and playlist curation. Album artwork re-downloads after a restore.';
   body.appendChild(intro);
 
   const head = document.createElement('div');

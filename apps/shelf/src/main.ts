@@ -6702,7 +6702,7 @@ window.addEventListener('scroll', () => {
 /* ---------- Boot ---------- */
 async function boot(): Promise<void> {
   const [shelfRes, playersRes, settingsRes] = await Promise.all([
-    client.getShelf().catch(() => ({ items: [], stacks: [], shelves: [], sourceKinds: { radio: false, podcast: false, audiobook: false } })),
+    client.getShelf().catch(() => ({ items: [], shelves: [], sourceKinds: { radio: false, podcast: false, audiobook: false } })),
     client.getPlayers().catch(() => ({ players: [], state: [] })),
     client.getSettings().catch(() => settings),
   ]);
