@@ -45,6 +45,57 @@ if [[ -f "$ENV_FILE" ]] && grep -q '^CRATE_MANAGES_MA=1' "$ENV_FILE"; then
   MANAGES_MA=1
 fi
 
+# ---- resilience helpers ---------------------------------------------------
+# Retry a flaky command. On a 1GB Pi the native better-sqlite3 rebuild in `npm ci` and the Vite build
+# can be OOM-killed transiently; a warm retry usually succeeds — this automates the manual "just run
+# update again" recovery so one hiccup doesn't leave the wall down.
+retry() {
+  local tries="$1"; shift
+  local n=1
+  until "$@"; do
+    [[ $n -ge $tries ]] && return 1
+    echo "    ...attempt $n failed; retrying ($((n+1))/$tries) in a moment" >&2
+    n=$((n+1)); sleep 3
+  done
+}
+
+# Temporary swap for the build. `npm ci` deletes node_modules FIRST, so if a low-RAM Pi is OOM-killed
+# mid-install the wall can't start at all — swap prevents the kill. Only when RAM is low and no swap
+# already exists; torn down afterwards, including on any failure (trap).
+TMP_SWAP=""
+maybe_add_swap() {
+  if [[ "$(grep -c '^/' /proc/swaps 2>/dev/null || echo 0)" -gt 0 ]]; then return 0; fi  # swap already present
+  local kb; kb="$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [[ "$kb" -eq 0 || "$kb" -gt 2000000 ]]; then return 0; fi                            # unknown or >~2GB → skip
+  local sf=/var/tmp/crate-update-swap.img
+  echo "    Low RAM + no swap — mounting a temporary 1G swapfile for the build"
+  rm -f "$sf"
+  if fallocate -l 1G "$sf" 2>/dev/null || dd if=/dev/zero of="$sf" bs=1M count=1024 status=none 2>/dev/null; then
+    chmod 600 "$sf"
+    mkswap "$sf" >/dev/null 2>&1 && swapon "$sf" 2>/dev/null && TMP_SWAP="$sf"
+  fi
+  [[ -n "$TMP_SWAP" ]] || { echo "    (couldn't add swap — continuing without it)" >&2; rm -f "$sf"; }
+}
+remove_swap() {
+  [[ -n "$TMP_SWAP" ]] || return 0
+  swapoff "$TMP_SWAP" 2>/dev/null || true
+  rm -f "$TMP_SWAP" 2>/dev/null || true
+  TMP_SWAP=""
+}
+trap remove_swap EXIT
+
+# Poll the wall after a restart so a crash-loop (e.g. a bad native module) fails LOUD instead of this
+# script reporting success. Same endpoint the kiosk waits on; honour a custom CRATE_PORT.
+CRATE_PORT_VAL="$( { [[ -f "$ENV_FILE" ]] && grep -E '^CRATE_PORT=' "$ENV_FILE" | tail -1 | cut -d= -f2; } || true )"
+CRATE_PORT_VAL="${CRATE_PORT_VAL:-80}"
+wait_healthy() {
+  local deadline=$(( SECONDS + 90 ))
+  until curl -sf -o /dev/null "http://localhost:${CRATE_PORT_VAL}/wall/"; do
+    [[ $SECONDS -ge $deadline ]] && return 1
+    sleep 2
+  done
+}
+
 echo "==> Crate update"
 echo "    repo:  $REPO_DIR"
 echo "    user:  $RUN_USER"
@@ -73,10 +124,30 @@ if [[ $DO_CRATE -eq 1 ]]; then
 
   if [[ "$BEFORE" != "$AFTER" || $FORCE -eq 1 ]]; then
     echo "    ${BEFORE:0:7} -> ${AFTER:0:7}; installing deps + building"
-    as_user bash -lc "cd '$REPO_DIR' && npm ci && npm run build"
+    maybe_add_swap
+    # npm ci wipes node_modules first, so a failure here can leave the service unable to start until a
+    # re-run — retry rather than bail on the first transient OOM.
+    if ! retry 3 as_user bash -lc "cd '$REPO_DIR' && npm ci"; then
+      echo "    npm ci failed after retries — node_modules may be incomplete." >&2
+      echo "    Free some memory/disk (check 'free -h' / 'df -h'), then re-run this script." >&2
+      exit 1
+    fi
+    if ! retry 3 as_user bash -lc "cd '$REPO_DIR' && npm run build"; then
+      echo "    Build failed after retries — NOT restarting (the running Crate keeps serving)." >&2
+      exit 1
+    fi
+    remove_swap  # free it before the restart so the wall boots with full RAM
     echo "    Restarting crate.service"
     systemctl restart crate.service
-    echo "    Crate updated."
+    # Confirm it actually came back — don't declare success on a silent crash-loop.
+    if wait_healthy; then
+      echo "    Crate updated and serving (${AFTER:0:7})."
+    else
+      echo "    ERROR: crate.service did not answer /wall/ within 90s after restart." >&2
+      systemctl status crate.service --no-pager -l 2>/dev/null | head -20 >&2 || true
+      journalctl -u crate.service -n 30 --no-pager 2>/dev/null >&2 || true
+      exit 1
+    fi
   else
     echo "    Already up to date (${AFTER:0:7})."
   fi
