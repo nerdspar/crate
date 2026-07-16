@@ -31,13 +31,9 @@ export function loadConfig(): Config {
   const artDir = resolve(dataDir, 'art');
   mkdirSync(artDir, { recursive: true });
 
+  // The token may instead live in the DB (set via onboarding / admin — that override wins over env),
+  // so we can't tell here whether one is configured; the effective-token check happens in Service.init().
   const maToken = process.env.MA_TOKEN ?? '';
-  if (!maToken) {
-    process.stderr.write(
-      '[crate] WARNING: MA_TOKEN is not set — Music Assistant calls will fail auth.\n' +
-        '        Create a long-lived token in the MA web UI and set MA_TOKEN.\n',
-    );
-  }
 
   return {
     maUrl: (process.env.MA_URL ?? 'http://homeassistant.local:8095').replace(/\/+$/, ''),
