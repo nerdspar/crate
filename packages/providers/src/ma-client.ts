@@ -58,9 +58,10 @@ export class MaClient {
     this.backoff = opts.minBackoffMs ?? 1000;
   }
 
-  /** True while the MA websocket is open and authenticated. */
+  /** True while the MA websocket is open AND authenticated (connectedAt is set after the auth
+      handshake and cleared on close) — not merely socket-open, during which MA rejects commands. */
   get connected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.ws?.readyState === WebSocket.OPEN && this.connectedAt !== undefined;
   }
 
   /** Drop the live socket so the auto-reconnect immediately re-establishes it (the

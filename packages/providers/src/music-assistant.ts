@@ -180,7 +180,9 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     this.maBaseUrl = opts.url.replace(/\/+$/, '');
     this.client.onEvent((e) => {
       if (e.event === 'auth_session' && typeof e.object_id === 'string' && typeof e.data === 'string') {
-        this.authUrls.set(e.object_id, { url: e.data, at: Date.now() });
+        const now = Date.now();
+        for (const [k, v] of this.authUrls) if (now - v.at >= 120_000) this.authUrls.delete(k); // drop expired (never-consumed) entries
+        this.authUrls.set(e.object_id, { url: e.data, at: now });
       }
     });
   }
@@ -311,7 +313,9 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       return { title: str(r['title']) ?? '', value: r['value'] as string | number | boolean };
     });
     const rng = arr(e['range']);
-    const range = rng.length === 2 ? ([Number(rng[0]), Number(rng[1])] as [number, number]) : null;
+    const lo = Number(rng[0]);
+    const hi = Number(rng[1]);
+    const range = rng.length === 2 && Number.isFinite(lo) && Number.isFinite(hi) ? ([lo, hi] as [number, number]) : null;
     return {
       key: str(e['key']) ?? '',
       type: str(e['type']) ?? 'string',
@@ -725,7 +729,16 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     );
     const albumUri = str(rec(full['album'])['uri']);
     const trackNumber = num(full['track_number']) ?? 0;
-    return albumUri ? { albumUri, trackIndex: trackNumber > 0 ? trackNumber - 1 : -1 } : null;
+    return albumUri ? { albumUri, trackIndex: await this.albumTrackIndex(albumUri, trackUri, trackNumber) } : null;
+  }
+
+  /** A track's true 0-based position in its album's play order, matched by uri against the album's
+      track list — correct for multi-disc / gap-numbered albums, where `track_number - 1` (per-disc
+      numbering) would resolve to the wrong row. Falls back to track_number-1 if the uri isn't found. */
+  private async albumTrackIndex(albumUri: string, trackUri: string, trackNumber: number): Promise<number> {
+    const tracks = await this.getTracks(albumUri).catch((): Track[] => []); // cached per album
+    const i = tracks.findIndex((t) => t.uri === trackUri);
+    return i >= 0 ? i : trackNumber > 0 ? trackNumber - 1 : -1;
   }
 
   /** Resolve one playlist track's real metadata (playlist_tracks omits artists and
@@ -743,16 +756,19 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     );
     const album = rec(full['album']);
     const trackNumber = num(full['track_number']) ?? 0;
+    const albumUri = str(album['uri']) ?? null;
     return {
       artist: firstArtistName(full),
-      albumUri: str(album['uri']) ?? null,
+      albumUri,
       artworkUrl: this.artworkUrl(full) ?? this.artworkUrl(album),
-      albumIndex: trackNumber > 0 ? trackNumber - 1 : -1,
+      albumIndex: albumUri ? await this.albumTrackIndex(albumUri, trackUri, trackNumber) : trackNumber > 0 ? trackNumber - 1 : -1,
     };
   }
 
   async listLibraryPlaylists(limit = 200): Promise<ProviderPlaylist[]> {
-    const raw = await this.client.command('music/playlists/library_items', { limit, favorite: false });
+    // NB: omit the `favorite` filter — MA reads `favorite:false` as "non-favorites ONLY", which
+    // hides every favorited/starred library playlist (same gotcha as listLibraryMedia).
+    const raw = await this.client.command('music/playlists/library_items', { limit });
     const items = Array.isArray(raw) ? raw : arr(rec(raw)['items']);
     return items.map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null);
   }
@@ -993,11 +1009,22 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     // page (current_index out of range) and the overlay would read empty. `index` stays absolute
     // (offset + i) so play-index jumps and the "Now playing" match keep working.
     const offset = Math.max(0, currentIndex ?? 0);
-    const raw = await this.client.command('player_queues/items', { queue_id: playerId, limit, offset });
+    // For a grouped FOLLOWER the active queue is the LEADER's (queue_id !== player_id), so fetch
+    // items from that queue_id — not the follower's own (empty) queue — else the overlay reads
+    // empty or misaligned against the leader's current_index. Solo players: queue_id === player_id.
+    const queueId = str(active['queue_id']) ?? playerId;
+    const raw = await this.client.command('player_queues/items', { queue_id: queueId, limit, offset });
     const items = (Array.isArray(raw) ? raw : arr(rec(raw)['items']))
       .map((r, i) => this.toQueueTrack(rec(r), offset + i))
       .filter((x): x is ProviderQueueTrack => x !== null);
     return { items, currentIndex };
+  }
+
+  /** The active queue's id for a player — the leader's for a grouped follower — so queue edits land
+      on the same queue getQueue() read from (its item ids belong to that queue). */
+  private async activeQueueId(playerId: string): Promise<string> {
+    const active = rec(await this.client.command('player_queues/get_active_queue', { player_id: playerId }));
+    return str(active['queue_id']) ?? playerId;
   }
 
   private toQueueTrack(item: Record<string, unknown>, index: number): ProviderQueueTrack | null {
@@ -1017,16 +1044,20 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   }
 
   async playQueueIndex(playerId: string, index: number): Promise<void> {
-    await this.client.command('player_queues/play_index', { queue_id: playerId, index });
+    await this.client.command('player_queues/play_index', { queue_id: await this.activeQueueId(playerId), index });
   }
   async moveQueueItem(playerId: string, queueItemId: string, posShift: number): Promise<void> {
-    await this.client.command('player_queues/move_item', { queue_id: playerId, queue_item_id: queueItemId, pos_shift: posShift });
+    await this.client.command('player_queues/move_item', {
+      queue_id: await this.activeQueueId(playerId),
+      queue_item_id: queueItemId,
+      pos_shift: posShift,
+    });
   }
   async removeQueueItem(playerId: string, itemIdOrIndex: string | number): Promise<void> {
-    await this.client.command('player_queues/delete_item', { queue_id: playerId, item_id_or_index: itemIdOrIndex });
+    await this.client.command('player_queues/delete_item', { queue_id: await this.activeQueueId(playerId), item_id_or_index: itemIdOrIndex });
   }
   async clearQueue(playerId: string): Promise<void> {
-    await this.client.command('player_queues/clear', { queue_id: playerId });
+    await this.client.command('player_queues/clear', { queue_id: await this.activeQueueId(playerId) });
   }
   /** Append a media item (album/playlist/track uri) to the end of the player's queue. */
   async enqueue(playerId: string, providerUri: string): Promise<void> {
@@ -1067,7 +1098,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     // The player's OWN state + active source + current media — carries external sources
     // (TV, line-in, AirPlay) that live outside MA's queue, so we can still show what a
     // speaker is playing even when its queue is empty or holds a stale (paused) track.
-    const playerById = new Map<string, { state: string; activeSource: string | null; media: Record<string, unknown> | null }>();
+    const playerById = new Map<string, { state: string; activeSource: string | null; media: Record<string, unknown> | null; elapsed: number | null }>();
     for (const p of arr(playersRaw)) {
       const item = rec(p);
       const id = str(item['player_id']);
@@ -1076,12 +1107,13 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       // MA: `synced_to` = the leader this player follows; `group_childs` = members
       // when this player IS the leader. Solo players lead themselves.
       const syncedTo = str(item['synced_to']);
-      const childs = arr(item['group_childs']);
-      groupLeaderById.set(id, syncedTo ?? (childs.length ? id : id));
+      groupLeaderById.set(id, syncedTo ?? id); // leader = who we're synced to, else ourselves
       playerById.set(id, {
         state: str(item['state']) ?? str(item['playback_state']) ?? 'idle',
         activeSource: str(item['active_source']) ?? null,
         media: item['current_media'] ? rec(item['current_media']) : null,
+        // Elapsed lives on the PLAYER (external sources have no queue elapsed), not on current_media.
+        elapsed: num(item['corrected_elapsed_time']) ?? num(item['elapsed_time']) ?? null,
       });
     }
     // A player's active_source is a queue id (its own, or its group leader's) when it's
@@ -1127,7 +1159,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
                 trackIndex: null,
                 trackUri: null,
                 duration: (m && num(m['duration'])) ?? null,
-                elapsed: (m && num(m['elapsed_time'])) ?? null,
+                elapsed: pi.elapsed, // from the player, not current_media (which carries no elapsed)
                 artworkUrl: (m && str(m['image_url'])) ?? null,
                 mediaKind: null, // external source (TV/line-in/AirPlay) — kind unknown
               },
@@ -1182,11 +1214,15 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   onPlayersChanged(cb: () => void): () => void {
     let deb: ReturnType<typeof setTimeout> | undefined;
     const relevant = new Set(['player_added', 'player_removed', 'player_updated']);
-    return this.client.onEvent((e: MaEvent) => {
+    const off = this.client.onEvent((e: MaEvent) => {
       if (!relevant.has(e.event)) return;
       if (deb) clearTimeout(deb);
       deb = setTimeout(cb, 800);
     });
+    return () => {
+      off();
+      if (deb) clearTimeout(deb); // don't let an already-scheduled tick fire after unsubscribe
+    };
   }
 
   onState(cb: (states: PlayerState[]) => void): () => void {
@@ -1201,8 +1237,12 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       }, 400);
     };
     const relevant = new Set(['queue_updated', 'player_updated', 'player_added', 'player_removed']);
-    return this.client.onEvent((e: MaEvent) => {
+    const off = this.client.onEvent((e: MaEvent) => {
       if (relevant.has(e.event)) refetch();
     });
+    return () => {
+      off();
+      if (this.stateDebounce) clearTimeout(this.stateDebounce);
+    };
   }
 }
