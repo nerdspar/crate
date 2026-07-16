@@ -337,7 +337,7 @@ export class Service {
       })
       .map((x) => x.t);
     const misses = tracks.filter((t) => t.uri && !this.db.getSongCache(t.uri));
-    if (misses.length) void this.enrichSongsInBackground(misses);
+    if (misses.length) void this.enrichSongsInBackground(misses).catch(() => {});
     return tracks.map((t, i) => {
       const c = t.uri ? this.db.getSongCache(t.uri) : undefined;
       return songShelfItem(t, i, playlist.id, c ? { artist: c.artist, artworkUrl: c.artwork_url } : undefined);
@@ -363,18 +363,23 @@ export class Service {
     let done = 0;
     await runLimited(todo, 6, async (t) => {
       const uri = t.uri as string;
-      const e = await this.ma.enrichTrack(uri).catch(() => null);
-      if (e) {
-        this.db.upsertSongCache({
-          track_uri: uri,
-          artist: e.artist,
-          album_uri: e.albumUri,
-          artwork_url: e.artworkUrl,
-          album_index: e.albumIndex,
-        });
+      try {
+        const e = await this.ma.enrichTrack(uri).catch(() => null);
+        if (e) {
+          this.db.upsertSongCache({
+            track_uri: uri,
+            artist: e.artist,
+            album_uri: e.albumUri,
+            artwork_url: e.artworkUrl,
+            album_index: e.albumIndex,
+          });
+        }
+        if (++done % 12 === 0) this.hub.broadcast({ type: 'shelf' }); // stream progress in
+      } catch {
+        /* a cache write failed (e.g. SQLITE_BUSY / disk full) — skip this one, keep enriching the rest */
+      } finally {
+        this.enriching.delete(uri); // ALWAYS release, so a failed track isn't stuck un-re-enrichable
       }
-      this.enriching.delete(uri);
-      if (++done % 12 === 0) this.hub.broadcast({ type: 'shelf' }); // stream progress in
     });
     this.hub.broadcast({ type: 'shelf' });
   }
@@ -792,7 +797,7 @@ export class Service {
   async prewarmPlaylist(providerUri: string): Promise<void> {
     const tracks = await this.ma.getTracks(providerUri).catch((): Track[] => []);
     const misses = tracks.filter((t) => t.uri && !this.db.getSongCache(t.uri));
-    if (misses.length) void this.enrichSongsInBackground(misses);
+    if (misses.length) void this.enrichSongsInBackground(misses).catch(() => {});
   }
 
   /** Ingest a playlist as a `kind='playlist'` media row (reuses the album store
@@ -1033,8 +1038,10 @@ export class Service {
         });
       }
     }
-    // Most-progressed first (closest to finishing), capped.
-    out.sort((a, b) => (b.resumeMs ?? 0) - (a.resumeMs ?? 0));
+    // Most-progressed first (closest to finishing) by FRACTION, not absolute ms — else a 3-hour
+    // audiobook 5 min in outranks a 20-min episode nearly done. Unknown duration → sinks to 0.
+    const frac = (m: MediaBrowseItem): number => (m.durationSec && m.durationSec > 0 ? (m.resumeMs ?? 0) / (m.durationSec * 1000) : 0);
+    out.sort((a, b) => frac(b) - frac(a));
     return out.slice(0, limit);
   }
 
@@ -1392,6 +1399,10 @@ export class Service {
       throw new Error(`This backup is from a newer version of Crate (format v${data.version}).`);
     }
     this.db.importConfig(data.tables);
+    // Backups omit the local artwork cache (paths/palette/spine renditions), so restored albums
+    // have only a provider artwork_url — often an expiring one. Regenerate the local renditions in
+    // the background so spines aren't left on a soon-dead URL until a manual "refresh artwork".
+    void this.refreshArtwork().catch(() => {});
     // The restored library/settings only take effect once the front-ends reload.
     this.hub.broadcast({ type: 'reload', app: 'shelf' });
     this.hub.broadcast({ type: 'reload', app: 'admin' });
@@ -1489,35 +1500,44 @@ export class Service {
   /** Push a backup, skipping when the config hasn't changed since the last push (no empty
       commits). Records a history entry. `lastAt` marks the attempt time (any status) so the
       schedule advances even on a skip. */
+  private backupRunning = false;
   async runBackup(auto: boolean): Promise<BackupRunResult> {
-    const t = this.githubTarget();
-    if (!t) throw new Error('Set a GitHub repository first.');
-    if (!t.token) throw new Error('Add a GitHub token first.');
-    const at = new Date().toISOString();
-    this.db.setRaw('backup.github.lastAt', at);
-    const tables = this.db.exportConfig();
-    const hash = createHash('sha256').update(JSON.stringify(tables)).digest('hex');
-    if (hash === this.db.getRaw<string>('backup.github.lastHash', '')) {
-      this.recordBackupHistory({ at, status: 'skipped', commit: null, url: null, message: 'No changes', auto });
-      return { status: 'skipped', commit: null, url: null, at, message: 'No changes' };
-    }
-    const backup: CrateBackup = {
-      crate: 'crate-backup',
-      version: BACKUP_VERSION,
-      exportedAt: at,
-      crateVersion: this.cfg.version,
-      tables,
-    };
+    // One backup at a time: a manual "Back up now" and an in-flight scheduled push to the same
+    // branch would otherwise race into a non-fast-forward 409 + a spurious error-history entry.
+    if (this.backupRunning) throw new Error('A backup is already in progress.');
+    this.backupRunning = true;
     try {
-      const { url, commit } = await githubPush(t, JSON.stringify(backup, null, 2), `Crate backup ${at}`);
-      const short = commit ? commit.slice(0, 7) : null;
-      this.db.setRaw('backup.github.lastHash', hash);
-      this.recordBackupHistory({ at, status: 'success', commit: short, url, message: null, auto });
-      return { status: 'success', commit: short, url, at, message: null };
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Push failed';
-      this.recordBackupHistory({ at, status: 'error', commit: null, url: null, message, auto });
-      throw e;
+      const t = this.githubTarget();
+      if (!t) throw new Error('Set a GitHub repository first.');
+      if (!t.token) throw new Error('Add a GitHub token first.');
+      const at = new Date().toISOString();
+      this.db.setRaw('backup.github.lastAt', at);
+      const tables = this.db.exportConfig();
+      const hash = createHash('sha256').update(JSON.stringify(tables)).digest('hex');
+      if (hash === this.db.getRaw<string>('backup.github.lastHash', '')) {
+        this.recordBackupHistory({ at, status: 'skipped', commit: null, url: null, message: 'No changes', auto });
+        return { status: 'skipped', commit: null, url: null, at, message: 'No changes' };
+      }
+      const backup: CrateBackup = {
+        crate: 'crate-backup',
+        version: BACKUP_VERSION,
+        exportedAt: at,
+        crateVersion: this.cfg.version,
+        tables,
+      };
+      try {
+        const { url, commit } = await githubPush(t, JSON.stringify(backup, null, 2), `Crate backup ${at}`);
+        const short = commit ? commit.slice(0, 7) : null;
+        this.db.setRaw('backup.github.lastHash', hash);
+        this.recordBackupHistory({ at, status: 'success', commit: short, url, message: null, auto });
+        return { status: 'success', commit: short, url, at, message: null };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Push failed';
+        this.recordBackupHistory({ at, status: 'error', commit: null, url: null, message, auto });
+        throw e;
+      }
+    } finally {
+      this.backupRunning = false;
     }
   }
 
@@ -1527,23 +1547,17 @@ export class Service {
   }
 
   /** Called by the scheduler: run a backup if auto is enabled and one is due. */
-  private autoBackupRunning = false;
   async maybeAutoBackup(): Promise<void> {
-    if (this.autoBackupRunning) return;
+    if (this.backupRunning) return; // a manual or prior auto backup is mid-flight
     const cfg = this.db.getRaw<{ repo?: string; interval?: BackupInterval }>('backup.github', {});
     const interval = cfg.interval ?? 'off';
     if (interval === 'off' || !cfg.repo || !this.db.getRaw<string>('backup.github.token', '')) return;
     const ms = this.intervalMs(interval);
     const lastAt = this.db.getRaw<string | null>('backup.github.lastAt', null);
     if (lastAt && Date.now() - new Date(lastAt).getTime() < ms) return; // not due yet
-    this.autoBackupRunning = true;
-    try {
-      await this.runBackup(true);
-    } catch {
-      /* the failure is recorded in history */
-    } finally {
-      this.autoBackupRunning = false;
-    }
+    await this.runBackup(true).catch(() => {
+      /* failure recorded in history (or a benign 'already in progress' race) */
+    });
   }
 
   async restoreGithubBackup(): Promise<BackupImportResult> {
@@ -1681,6 +1695,7 @@ export class Service {
   /** Called by the 60s scheduler: if auto-update is due, check GitHub and (in install mode)
       launch the updater. Appliance-only; Crate only (MA stays manual). */
   private autoUpdateRunning = false;
+  private lastUpdateAttempt = 0;
   async maybeAutoUpdate(): Promise<void> {
     if (this.autoUpdateRunning || !this.cfg.appliance) return;
     const cfg = this.db.getRaw<{ mode?: AutoUpdateConfig['mode']; frequency?: AutoUpdateFrequency; hour?: number }>('update.auto', {});
@@ -1689,12 +1704,20 @@ export class Service {
     const lastCheckAt = this.db.getRaw<string | null>('update.lastCheckAt', null);
     const next = this.autoUpdateNextRun(lastCheckAt, cfg.frequency ?? 'daily', this.clampHour(cfg.hour ?? 3));
     if (Date.now() < next.getTime()) return; // not due yet
+    if (Date.now() - this.lastUpdateAttempt < 3_600_000) return; // a recent attempt failed → cool down ~1h before retrying
     this.autoUpdateRunning = true;
+    this.lastUpdateAttempt = Date.now();
     try {
-      this.db.setRaw('update.lastCheckAt', new Date().toISOString()); // advance the schedule up front
       const status = await this.checkUpdate();
-      if (status.error || !status.updateAvailable) {
-        this.db.setRaw('update.lastStatus', status.error ? `Check failed: ${status.error}` : 'Up to date');
+      if (status.error) {
+        // Transient failure: DON'T advance update.lastCheckAt (leave it due so it retries), but the
+        // hourly cooldown above keeps it from re-checking every 60s tick instead of a full window later.
+        this.db.setRaw('update.lastStatus', `Check failed: ${status.error}`);
+        return;
+      }
+      this.db.setRaw('update.lastCheckAt', new Date().toISOString()); // advance the schedule only after a real check
+      if (!status.updateAvailable) {
+        this.db.setRaw('update.lastStatus', 'Up to date');
         this.db.setRaw('update.pending', false);
         return;
       }
