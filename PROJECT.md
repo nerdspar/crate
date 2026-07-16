@@ -137,11 +137,14 @@ Everything below is implemented and on `main`.
 - **Playback** — play an album or a track via MA (plays the track uri + appends the album in the
   background), speaker grouping, shuffle/repeat, after-album behavior, and playlists (all-playlists
   view + single-playlist song view + song→album).
-- **Radio** — TuneIn (and other MA radio-provider) stations as a third media kind on a dedicated
-  virtual **Radio** shelf. A station is a `kind='radio'` media row (station logo → spine); it opens
-  to a live-stream view (no track list, no seek) and plays by uri through the normal play path.
-  Admin: search stations, add them, or **Sync saved** to import every station saved in MA.
-- **Admin** — search + add albums/playlists (Apple Music + library), shelves / stacks / ordering /
+- **Radio, podcasts & audiobooks** — three extra MA-sourced media kinds, each a toggleable tab +
+  dedicated virtual shelf (a tab shows only when a capable source is connected **and** the user hasn't
+  hidden it). **Radio** stations (TuneIn etc.) open to a live-stream view and play by uri; admin can
+  search, add, or **Sync saved** to import every station saved in MA. **Podcasts** open to an episode
+  list with a per-episode progress fill, a ✓ on finished episodes, and "N min left"; **audiobooks**
+  open to a chapter list with resume / start-over. Both resume from where you left off (progress read
+  from MA), expose an optional **mark-as-played** toggle, and surface a **Continue listening** strip.
+- **Admin** — search + add albums/playlists (Apple Music + library), shelves / ordering /
   per-album spine overrides, player defaults + exposure subset, group presets, MA **sources**
   (incl. the Apple Music MusicKit auth), and all settings. iOS-style bottom tabs (Search / Shelves /
   Settings).
@@ -152,15 +155,20 @@ Everything below is implemented and on `main`.
   the host's RAM) and a Docker Compose path (`docker-compose.yml`, cohosted profile).
 - **Updates** — in-place `deploy/pi/update.sh` (updates Crate, and the co-hosted MA image only if
   newer, always preserving MA's data volume) + an admin **Update** button with a **live progress
-  log** and a version-vs-GitHub readout for both Crate and MA.
+  log** and a version-vs-GitHub readout for both Crate and MA, plus an optional **scheduled
+  auto-update** (off / notify / install, at a chosen hour). The updater retries the build, mounts
+  temporary swap on a low-RAM Pi, and health-checks `/wall/` after the restart so a failed update
+  can't leave the wall offline.
 - **Backups** — file export/import + **GitHub backup** (token-first flow: apply the token, pick the
   repo, save; manual + scheduled/automated commits, with history).
 - **Security** — admin passphrase gate (scrypt + signed cookie, wall endpoints stay open) + login
-  rate-limiting.
-- **Hardening / perf** — process crash handlers + graceful SIGTERM shutdown, timeouts + size caps
-  on all outbound `fetch`, DB indexes + state/lookup caches, throttled progress broadcasts, the
-  wall's idle rAF stopped + `shelf` rebuilds coalesced, artwork mtime cache, and a dead-code sweep
-  with `noUnusedLocals` on.
+  rate-limiting; the session secret rotates on any passphrase change and tokens compare timing-safe.
+- **Self-healing & hardening** — a **systemd watchdog** (a `WATCHDOG` heartbeat gated on a live DB
+  ping; systemd kills + relaunches a wedged wall), process crash handlers + graceful SIGTERM
+  shutdown, timeouts + size caps on all outbound `fetch`, DB indexes + state/lookup caches, throttled
+  progress broadcasts, the wall's idle rAF stopped + `shelf` rebuilds coalesced, artwork mtime cache,
+  and a dead-code sweep with `noUnusedLocals` on. A later full-app audit pass further hardened the
+  auth/API, DB, service layer, MA provider, and the wall's gesture/state machine.
 
 ---
 
@@ -168,16 +176,15 @@ Everything below is implemented and on `main`.
 
 None of this is required — it's the menu for later.
 
-- **systemd watchdog** — deferred. Lower value now that all hang-prone fetches have timeouts, and
-  it needs app-side `sd_notify` + live on-Pi testing (misconfig = restart loop).
 - **Wall-render polish** — the drag-gesture full-card-rebuild-per-step optimization (held back as
   too feel-risky without a real touchscreen), plus minor items (`sizeFaces` NodeList cache,
-  `handleState` early-out, `spineAtX` arithmetic).
-- **Features (not started)** — Apple Music `Library.xml` import with match-review, stacks polish, an
-  iOS Shortcut push endpoint, a night schedule / auto-brightness sensor daemon, Home Assistant
-  webhooks.
-- **Open-source polish** — README with photos, hardware guide (BOM / STLs / wiring — see
-  `hardware/`), CONTRIBUTING, a provider-plugin authoring guide, GitHub Actions CI, and a demo GIF.
+  `handleState` early-out, `spineAtX` arithmetic). The open-album glow's software-blur rendering on a
+  1GB Pi is a known rough edge — parked pending a higher-RAM Pi and/or GPU-rasterization kiosk flags.
+- **Features (not started)** — Apple Music `Library.xml` import with match-review, an iOS Shortcut
+  push endpoint, a night schedule / auto-brightness sensor daemon, Home Assistant webhooks, and a
+  Queue "Up Next" overlay.
+- **Open-source polish** — README photos, a hardware guide (BOM / STLs / wiring — see `hardware/`),
+  CONTRIBUTING, a provider-plugin authoring guide, GitHub Actions CI, and a demo GIF.
 
 ---
 

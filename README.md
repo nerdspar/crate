@@ -17,9 +17,12 @@ See [`PROJECT.md`](./PROJECT.md) for the architecture, design, and current state
 
 - **Spine shelf** — your library as CD-jewel-case spines on an ultrawide display; tap to
   flip a case open, hit play, and it streams to your Sonos. Real or generated spine art,
-  duration-scaled widths, per-album typography.
+  duration-scaled widths, deterministic per-artist typography, a signature 3D hinge flip.
 - **Shelves** — curated, reorderable collections (albums and playlists), each with its own
   sort. Playlists render as song shelves you can view, reorder, and hide tracks in.
+- **Radio, podcasts & audiobooks** — TuneIn stations, podcasts (episode lists with a progress
+  fill and a ✓ on finished episodes), and audiobooks (chapter lists with resume / start-over),
+  each a toggleable tab with a *Continue listening* strip that picks up where you left off.
 - **Search** — one box across your sources, tiered *On your shelf → In your library → From
   your sources*, plus artists (→ their albums + top songs) and songs (→ open the album cued).
   Explicit tags, recent searches.
@@ -28,33 +31,54 @@ See [`PROJECT.md`](./PROJECT.md) for the architecture, design, and current state
   group volume that tracks external (Sonos-app) changes live.
 - **Playback feedback** — a "connecting" spinner and frozen seek until the room actually
   reports playing, so nothing animates before audio starts.
-- **Pinch to zoom** the shelf (spine density or a magnifier loupe), idle/attract modes, a
-  sleep schedule, and brightness/display control.
-- **Admin app** — a phone/desktop companion (iOS-style) to import & curate the library,
-  build shelves, edit spines, manage speakers/presets, and configure everything.
+- **Kiosk polish** — pinch-to-zoom the shelf (spine density or a magnifier loupe), a swipe-down
+  control center (transport, volume, grouping, brightness, display sleep, restart), idle/attract
+  modes, and a sleep schedule.
+- **Admin app** — a phone/desktop companion (iOS-style tabs) to import & curate the library,
+  build shelves, edit spines, and manage speakers, presets, and sources — with a guided first-run
+  **onboarding wizard** and config backup (file or GitHub).
+- **Appliance-grade** — one-command Raspberry Pi install (systemd + Chromium kiosk, optionally
+  co-hosting Music Assistant in Docker), an admin passphrase gate, scheduled + in-place updates,
+  and a systemd watchdog that self-heals a wedged wall.
 
-## Playback architecture (Phase 0 outcome)
+## Why Music Assistant
 
-Phase 0 proved that node-sonos-http-api **cannot** reliably start arbitrary Apple
-Music albums on a real Sonos household (it hard-codes account metadata that S2
-firmware won't let us reconstruct — see [`PROJECT.md`](./PROJECT.md)).
-Crate therefore drives playback through **Music Assistant**, which streams Apple
-Music to Sonos with the operator's real credentials and exposes search, metadata,
-artwork, playback, and live state over one WebSocket.
+Early prototyping proved that talking to Sonos directly (via node-sonos-http-api)
+**cannot** reliably start arbitrary Apple Music albums on a real Sonos household —
+it hard-codes account metadata that S2 firmware won't let us reconstruct (see
+[`PROJECT.md`](./PROJECT.md)). Crate therefore drives playback through **Music
+Assistant**, which streams Apple Music (and other sources) to Sonos with the
+operator's real credentials and exposes search, metadata, artwork, playback, and
+live state over one WebSocket.
 
-## Monorepo (§2)
+## Monorepo
 
 ```
 apps/
-  shelf/     Kiosk frontend — the wall UI (Vite + vanilla TS), ported from spine-shelf.html
-  admin/     Admin web app (Vite + vanilla TS) — search + add to shelf
+  shelf/     Kiosk frontend — the wall UI (Vite + vanilla TS), touch/gesture engine
+  admin/     Management web app (Vite + vanilla TS) — curate, shelves, settings, sources
   server/    Device service (Fastify) — REST + WS, SQLite, artwork pipeline, MA provider
 packages/
   shared/    Domain types, REST/WS contract, typed client
   providers/ MusicSource/PlayerTarget interfaces + Music Assistant adapter
-hardware/    STLs, wiring, BOM (Phase 5+)
-deploy/      systemd units, kiosk setup, install.sh (Phase 5)
+hardware/    STLs, wiring, BOM
+deploy/      Pi installer + in-place updater, systemd units, Docker Compose, TrueNAS
 ```
+
+## Install
+
+Two supported ways to run Crate for real — full steps in **[`INSTALL.md`](./INSTALL.md)**:
+
+- **Raspberry Pi appliance** — `sudo bash deploy/pi/install.sh` installs the server under systemd
+  and (optionally) a Chromium kiosk that drives the touchscreen, with brightness/sleep/reboot
+  control and an option to co-host Music Assistant in Docker on the same Pi.
+- **Docker Compose** — `docker compose up -d --build` for a NAS/mini-PC/server, against an existing
+  Music Assistant or with one brought up alongside (`--profile cohosted`). TrueNAS SCALE: see
+  [`deploy/truenas/`](./deploy/truenas).
+
+Either way, open the admin and the built-in **setup wizard** connects Music Assistant (it can
+create the account and mint its own token when co-hosted), adds your sources, and sets an admin
+passphrase. Update later with `sudo bash deploy/pi/update.sh` or the admin's **Update** button.
 
 ## Prerequisites
 
