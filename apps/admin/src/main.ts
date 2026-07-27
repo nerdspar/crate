@@ -761,6 +761,20 @@ addClearBtn.addEventListener('click', () => {
 });
 importBtn.addEventListener('click', () => void (isExtraKind(addType) ? syncSavedMedia(addType) : addType === 'playlist' ? addAllPlaylists() : importAll()));
 addMoreBtn.addEventListener('click', () => void reloadAdd(false));
+// Auto-load the next page as you scroll near the bottom (the page/window scrolls, so root:null).
+// Only the album library paginates (offset); other kinds load their full set at once, so there's
+// nothing more to fetch — the guard on addType/addHasMore keeps this a no-op for them. The button
+// above stays as a manual fallback.
+const addSentinel = document.createElement('div');
+addSentinel.setAttribute('aria-hidden', 'true');
+addSentinel.style.height = '1px';
+addMoreBtn.after(addSentinel);
+new IntersectionObserver(
+  (entries) => {
+    if (entries.some((e) => e.isIntersecting) && addType === 'album' && addHasMore && !addLoading) void reloadAdd(false);
+  },
+  { rootMargin: '0px 0px 600px 0px' },
+).observe(addSentinel);
 
 /* ================= Shelves — index ================= */
 const shelvesIndexEl = document.getElementById('shelves-index') as HTMLElement;

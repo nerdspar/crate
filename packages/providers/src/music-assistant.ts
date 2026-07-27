@@ -451,7 +451,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
 
   // --- MusicSource --------------------------------------------------------
 
-  async search(query: string, limit = 20, providerInstance?: string): Promise<ProviderAlbum[]> {
+  async search(query: string, limit = 50, providerInstance?: string): Promise<ProviderAlbum[]> {
     const result = rec(
       await this.client.command('music/search', {
         search_query: query,
@@ -773,7 +773,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return items.map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null);
   }
 
-  async searchPlaylists(query: string, limit = 20): Promise<ProviderPlaylist[]> {
+  async searchPlaylists(query: string, limit = 50): Promise<ProviderPlaylist[]> {
     const result = rec(
       await this.client.command('music/search', {
         search_query: query,
@@ -857,7 +857,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   }
 
   /** Search one extra media kind (across all capable providers, or one when scoped). */
-  async searchMedia(kind: ExtraMediaKind, query: string, limit = 20, providerInstance?: string): Promise<ProviderMediaItem[]> {
+  async searchMedia(kind: ExtraMediaKind, query: string, limit = 50, providerInstance?: string): Promise<ProviderMediaItem[]> {
     const m = MusicAssistantProvider.MEDIA_MA[kind];
     const result = rec(
       await this.client.command('music/search', {
