@@ -3604,7 +3604,10 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
   pass.autocomplete = 'current-password';
   const creds = document.createElement('div');
   creds.className = 'ob-form';
-  creds.append(obField('Username', user), obField('Password', pass));
+  const credsHint = document.createElement('p');
+  credsHint.className = 'ob-help';
+  credsHint.textContent = 'Signing in uses a local Music Assistant account. If your MA runs under Home Assistant, this won’t work — switch to Access token instead.';
+  creds.append(obField('Username', user), obField('Password', pass), credsHint);
   const token = obInput('password', conn.hasToken ? 'saved — leave blank to keep it' : 'long-lived token');
   const help = document.createElement('p');
   help.className = 'ob-help';
@@ -3637,9 +3640,10 @@ async function obConnect(body: HTMLElement, ctx: ObCtx): Promise<ObNext> {
     const r =
       mode === 'signin'
         ? await client.mintMaConnection({ url: url.value, username: user.value, password: pass.value }).catch((e) => { statusEl.textContent = '✕ ' + obErr(e); return null; })
-        : await client.setMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) }).catch(() => null);
+        : await client.setMaConnection({ url: url.value, ...(token.value ? { token: token.value } : {}) }).catch((e) => { statusEl.textContent = '✕ ' + obErr(e); return null; });
     if (r?.connected) return true;
-    if (statusEl.textContent === 'Signing in…' || statusEl.textContent === 'Connecting…') statusEl.textContent = '✕ Couldn’t connect — check the details.';
+    if (r?.error) statusEl.textContent = '✕ ' + r.error; // reached-but-rejected vs. unreachable
+    else if (statusEl.textContent === 'Signing in…' || statusEl.textContent === 'Connecting…') statusEl.textContent = '✕ Couldn’t connect — check the details.';
     return false;
   };
 }

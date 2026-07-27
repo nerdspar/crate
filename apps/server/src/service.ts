@@ -187,14 +187,23 @@ export class Service {
     this.ma.close();
     this.ma = new MusicAssistantProvider(this.maOpts());
     this.wireMa();
+    let reason: string | undefined;
     try {
       await this.ma.start();
       await this.refreshPlayers();
       await this.pushState();
     } catch {
-      /* not reachable — getMaConnection() reflects connected:false */
+      // Distinguish "reached MA but it rejected the token" from "couldn't reach MA at all" — a bad
+      // token connects the socket then fails the `auth` step, which otherwise looks like a network
+      // failure. A quick reachability probe tells them apart so the admin can say what's actually wrong.
+      const u = this.db.getRaw<string>('ma.url', this.cfg.maUrl);
+      const reachable = await maSetupState(u).then((s) => s.reachable).catch(() => false);
+      reason = reachable
+        ? 'Reached Music Assistant, but it rejected the token. Create a fresh long-lived token (MA → your profile → Long-lived tokens) and paste it again.'
+        : `Couldn’t reach Music Assistant at ${u}. Check it’s running and the URL/port are right.`;
     }
-    return this.getMaConnection();
+    const conn = this.getMaConnection();
+    return reason && !conn.connected ? { ...conn, error: reason } : conn;
   }
 
   /** First-run onboarding flag. */

@@ -86,6 +86,9 @@ export interface MaConnection {
   hasToken: boolean;
   connected: boolean;
   serverVersion: string | null;
+  /** When `connected` is false, a human reason for it — reached-but-token-rejected vs. unreachable —
+      so the UI can point at the real problem instead of a generic "couldn't connect". */
+  error?: string;
 }
 
 /** MA connection status for the Settings status card. */
