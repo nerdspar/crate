@@ -65,7 +65,7 @@ docker compose down              # stop (keeps volumes/data)
 
 ## Raspberry Pi appliance
 
-For a Pi that drives the wall touchscreen. Runs the server **natively** (not Docker) so it can control the display's brightness/sleep and reboot. Targets Raspberry Pi OS Bookworm.
+For a Pi that drives the wall touchscreen. Runs the server **natively** (not Docker) so it can control the display's brightness/sleep and reboot. Targets **Raspberry Pi OS Bookworm — Lite, 64-bit recommended** (the kiosk runs under `cage`, its own compositor, so no desktop is needed; leaner and no display-manager to fight for the screen). A Pi 4 or Pi 5 is recommended for a 2560×720 panel + the album glow; a Pi 3 can't drive that resolution and lacks the GPU for the blur.
 
 ```sh
 git clone https://github.com/<you>/crate.git

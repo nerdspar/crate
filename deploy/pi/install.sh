@@ -170,11 +170,17 @@ if [[ $WITH_KIOSK -eq 1 ]]; then
   echo "==> Setting up the kiosk browser (best-effort; Wayland/labwc on Pi OS Bookworm)"
   apt-get install -y cage chromium || apt-get install -y cage chromium-browser
   CHROMIUM="$(command -v chromium || command -v chromium-browser)"
+  # cage (wlroots) needs DRM/KMS + input access. Pi OS' first user is usually already in these groups,
+  # but a fresh Lite image or a custom user may not be — add them so the kiosk can open the display.
+  usermod -aG video,render,input "$RUN_USER" 2>/dev/null || true
   cat > /etc/systemd/system/crate-kiosk.service <<EOF
 [Unit]
 Description=Crate kiosk (fullscreen Chromium)
-After=crate.service systemd-user-sessions.service
+After=crate.service systemd-user-sessions.service getty@tty1.service
 Wants=crate.service
+# Own tty1: take it from the login prompt (getty) so cage can grab that seat/VT on boot. Without this
+# the getty holds tty1 and the kiosk can't start there.
+Conflicts=getty@tty1.service
 
 [Service]
 User=$RUN_USER
@@ -193,12 +199,16 @@ Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=graphical.target
+# multi-user.target, NOT graphical.target: a Pi OS Lite / console boot never reaches graphical.target,
+# so that would leave the kiosk enabled-but-never-started (the classic "screen sits at a login prompt").
+# cage is its own compositor and needs no desktop, so wire it to the normal boot target and let the
+# getty conflict above hand it the screen.
+WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable crate-kiosk.service
-  echo "    Kiosk installed. If the screen stays blank, this Pi's display stack may differ —"
-  echo "    see the notes in INSTALL.md (X11 vs Wayland, seat/DRM access)."
+  echo "    Kiosk installed — it launches on boot (takes over tty1 from the login prompt)."
+  echo "    If the screen stays blank, this Pi's display stack may differ — see INSTALL.md (seat/DRM access)."
 fi
 
 echo
