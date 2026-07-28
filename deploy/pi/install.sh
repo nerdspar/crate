@@ -173,6 +173,24 @@ if [[ $WITH_KIOSK -eq 1 ]]; then
   # cage (wlroots) needs DRM/KMS + input access. Pi OS' first user is usually already in these groups,
   # but a fresh Lite image or a custom user may not be — add them so the kiosk can open the display.
   usermod -aG video,render,input "$RUN_USER" 2>/dev/null || true
+  # Transparent cursor theme so cage draws no visible pointer: with a touchscreen, cage detects it as
+  # a mouse and parks a cursor mid-screen, and it has no flag to hide it — so we point XCURSOR at a
+  # theme whose cursor images are fully transparent (env in the unit below).
+  if command -v python3 >/dev/null; then
+    CURSOR_THEME=/usr/share/icons/crate-blank
+    mkdir -p "$CURSOR_THEME/cursors"
+    printf '[Icon Theme]\nName=crate-blank\n' > "$CURSOR_THEME/index.theme"
+    python3 - "$CURSOR_THEME/cursors/left_ptr" <<'PY' || true
+import struct, sys
+fh  = struct.pack('<4sIII', b'Xcur', 16, 0x10000, 1)          # file header: magic, hdr=16, ver, ntoc=1
+toc = struct.pack('<III', 0xfffd0002, 1, 28)                  # image type, nominal size 1, offset 28
+img = struct.pack('<IIIIIIIII', 36, 0xfffd0002, 1, 1, 1, 1, 0, 0, 0) + struct.pack('<I', 0)  # 1x1 transparent
+open(sys.argv[1], 'wb').write(fh + toc + img)
+PY
+    for n in default arrow top_left_arrow xterm hand1 hand2 pointer watch; do
+      cp -f "$CURSOR_THEME/cursors/left_ptr" "$CURSOR_THEME/cursors/$n" 2>/dev/null || true
+    done
+  fi
   cat > /etc/systemd/system/crate-kiosk.service <<EOF
 [Unit]
 Description=Crate kiosk (fullscreen Chromium)
@@ -187,6 +205,9 @@ User=$RUN_USER
 PAMName=login
 TTYPath=/dev/tty1
 Environment=XDG_RUNTIME_DIR=/run/user/%U
+# Hide the mouse cursor via the transparent theme created above (cage has no hide-cursor option).
+Environment=XCURSOR_THEME=crate-blank
+Environment=XCURSOR_PATH=/usr/share/icons
 ExecStartPre=/bin/sh -c 'until curl -sf http://localhost/wall/ >/dev/null; do sleep 1; done'
 # GPU flags: the wall leans on a CSS blur (the album glow) that is fill-rate heavy. Pi GPUs sit on
 # Chromium's default blocklist, so without these the blur falls back to SOFTWARE rasterization on the
