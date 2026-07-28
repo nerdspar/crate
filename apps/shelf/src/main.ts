@@ -23,6 +23,8 @@ import '@fontsource/oswald/600.css';
 import '@fontsource/oswald/700.css';
 import '@fontsource-variable/newsreader/standard.css';
 import '@fontsource-variable/newsreader/standard-italic.css';
+import Keyboard from 'simple-keyboard';
+import 'simple-keyboard/build/css/index.css';
 import './styles.css';
 
 const client = new CrateClient('');
@@ -3459,6 +3461,7 @@ const find = document.getElementById('find') as HTMLElement;
 const findGrip = document.getElementById('find-grip') as HTMLElement;
 const findHandle = find.querySelector('.cc-handle') as HTMLElement;
 const findSearch = document.getElementById('find-search') as HTMLInputElement;
+let osKeyboard: Keyboard | undefined; // on-screen keyboard (simple-keyboard), built lazily below
 
 function openFind(): void {
   find.classList.add('open');
@@ -3479,6 +3482,7 @@ function closeFind(): void {
   filterQuery = '';
   findClear.hidden = true;
   find.classList.remove('osk-on'); // hide the on-screen keyboard
+  osKeyboard?.clearInput(); // keep the keyboard's internal buffer in sync with the cleared field
   clearFindResults();
 }
 
@@ -3503,54 +3507,40 @@ function reflectShelfFilter(): void {
 function openFindWithQuery(q: string): void {
   openFind();
   findSearch.value = q;
+  osKeyboard?.setInput(q); // seed the on-screen keyboard's buffer so edits continue from here
   findSearch.dispatchEvent(new Event('input', { bubbles: true })); // sets filterQuery + runs search
   findSearch.focus();
 }
 
 /* On-screen keyboard — the wall runs fullscreen Chromium under cage (Wayland), which has no system
-   virtual keyboard, so tapping the search field would pop nothing. Build one into the find sheet: it
-   shows while #find-search is focused and drives it directly (dispatching `input` so the normal search
-   path runs). Keys preventDefault on pointerdown to keep focus, so tapping a key never blurs the field
-   out from under itself. */
+   virtual keyboard, so tapping the search field would pop nothing. Use simple-keyboard (open-source,
+   themeable) mounted in the find sheet; it shows while #find-search is focused/tapped and drives the
+   field directly (its onChange → the field's `input` event → the normal search path). */
 {
-  const OSK_ROWS = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const osk = document.createElement('div');
   osk.id = 'osk';
-  osk.setAttribute('aria-hidden', 'true');
-  const press = (code: string): void => {
-    if (code === 'bksp') findSearch.value = findSearch.value.slice(0, -1);
-    else if (code === 'space') findSearch.value += ' ';
-    else if (code === 'done') {
-      find.classList.remove('osk-on');
-      findSearch.blur();
-      return;
-    } else findSearch.value += code;
-    findSearch.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-  const key = (label: string, code: string, cls = ''): HTMLButtonElement => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'osk-key' + (cls ? ' ' + cls : '');
-    b.textContent = label;
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); // keep focus on the field — don't let the tap blur the keyboard away
-      press(code);
-    });
-    return b;
-  };
-  for (const row of OSK_ROWS) {
-    const r = document.createElement('div');
-    r.className = 'osk-row';
-    for (const ch of row) r.appendChild(key(ch, ch));
-    if (row === 'zxcvbnm') r.appendChild(key('⌫', 'bksp', 'osk-act'));
-    osk.appendChild(r);
-  }
-  const last = document.createElement('div');
-  last.className = 'osk-row';
-  last.appendChild(key('space', 'space', 'osk-wide'));
-  last.appendChild(key('Done', 'done', 'osk-act'));
-  osk.appendChild(last);
+  const mount = document.createElement('div');
+  mount.className = 'simple-keyboard';
+  osk.appendChild(mount);
   find.appendChild(osk);
+  osKeyboard = new Keyboard(mount, {
+    onChange: (input: string) => {
+      findSearch.value = input;
+      findSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    onKeyPress: (button: string) => {
+      if (button === '{done}') {
+        find.classList.remove('osk-on');
+        findSearch.blur();
+      }
+    },
+    layout: {
+      default: ['1 2 3 4 5 6 7 8 9 0', 'q w e r t y u i o p', 'a s d f g h j k l', 'z x c v b n m {bksp}', '{space} {done}'],
+    },
+    display: { '{bksp}': '⌫', '{space}': 'space', '{done}': 'Done' },
+    theme: 'hg-theme-default crate-osk',
+    preventMouseDownDefault: true, // keep focus on the field — a key tap must not blur the keyboard away
+  });
   // Show on focus, and also on a direct tap (a second tap on an already-focused field fires no
   // `focus`, and some kiosk stacks are finicky about it); hide when focus leaves the field.
   const showOsk = (): void => find.classList.add('osk-on');
@@ -3780,6 +3770,7 @@ findSearch.addEventListener('focus', () => {
 });
 findClear.addEventListener('click', () => {
   findSearch.value = '';
+  osKeyboard?.clearInput();
   findClear.hidden = true;
   findSearch.dispatchEvent(new Event('input', { bubbles: true }));
   findSearch.focus();

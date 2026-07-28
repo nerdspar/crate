@@ -1154,28 +1154,33 @@ body.idle #queue-grip::after { opacity: 0; }
 }
 .find-clear[hidden] { display: none; }
 
-/* On-screen keyboard — no system OSK exists under cage/Wayland, so the wall provides its own. A
-   fixed overlay pinned to the bottom of the screen (inside #find, which has no transform), shown only
-   while the search field is focused; the find sheet lifts above it so nothing is covered. */
+/* On-screen keyboard — no system OSK exists under cage/Wayland, so the wall renders its own
+   (simple-keyboard, themed dark). Fixed overlay pinned to the bottom of the screen (inside #find,
+   which has no transform); shown only while the search field is focused; the find sheet lifts above
+   it so nothing is covered. */
 #osk {
   display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 40vh; z-index: 18;
-  flex-direction: column; gap: 0.8vh; padding: 1vh 4vw 1.6vh;
+  padding: 1.4vh 3vw; box-sizing: border-box;
   background: linear-gradient(0deg, rgba(27,24,28,0.99), rgba(19,17,20,0.99));
   border-top: 1px solid rgba(255,255,255,0.08); box-shadow: 0 -18px 40px rgba(0,0,0,0.5);
 }
-#find.osk-on #osk { display: flex; }
+#find.osk-on #osk { display: block; }
 #find.osk-on #find-bar { bottom: 40vh; max-height: 60vh; }
-.osk-row { display: flex; gap: 0.7vw; flex: 1 1 0; min-height: 0; }
-.osk-key {
-  flex: 1 1 0; min-width: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.08); color: var(--ink);
-  border: 1px solid rgba(255,255,255,0.07); border-radius: 1vh;
-  font-size: 2.6vh; cursor: pointer; touch-action: manipulation;
+/* simple-keyboard dark theme */
+#osk .simple-keyboard { max-width: 100%; }
+.crate-osk.hg-theme-default { background: transparent; padding: 0; border-radius: 0; }
+.crate-osk .hg-row { margin-bottom: 1vh; }
+.crate-osk .hg-row:last-child { margin-bottom: 0; }
+.crate-osk .hg-button {
+  height: 6vh; background: rgba(255,255,255,0.09); color: var(--ink);
+  border: 1px solid rgba(255,255,255,0.08); border-bottom-width: 1px; border-radius: 1vh;
+  font-size: 2.6vh; box-shadow: none; touch-action: manipulation;
 }
-.osk-key:active { background: var(--brass); color: #131114; border-color: var(--brass); }
-.osk-key.osk-wide { flex: 4 1 0; }
-.osk-key.osk-act { flex: 1.6 1 0; background: rgba(255,255,255,0.14); font-size: 2.1vh; }
+.crate-osk .hg-button:active,
+.crate-osk .hg-button.hg-activeButton { background: var(--brass); color: #131114; border-color: var(--brass); }
+.crate-osk .hg-button.hg-functionBtn { background: rgba(255,255,255,0.15); font-size: 2.1vh; }
+.crate-osk .hg-button[data-skbtn='{space}'] { flex-grow: 5; }
+.crate-osk .hg-button[data-skbtn='{done}'] { flex-grow: 2; }
 .find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
 .find-row .choices { flex: 1 1 auto; }
 /* Sort buttons match the Settings button's size (smaller than the default .choice) to free space. */
