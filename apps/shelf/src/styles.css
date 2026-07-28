@@ -13,6 +13,9 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; background: var(--bg); }
+/* Touch kiosk: never show a mouse cursor (cage parks one in the middle of the screen). Gated to
+   touch/no-hover devices so a dev machine with a mouse still shows its cursor. */
+@media (hover: none), (pointer: coarse) { * { cursor: none !important; } }
 /* Top glow fade. The viewport must clip vertically (overflow-y:hidden, for the horizontal scroller),
    so the open cover's upward glow would otherwise hit the screen's top edge and be sliced FLAT — a
    hard line (worse on the Pi, whose software blur carries more opacity to that edge). This blends the

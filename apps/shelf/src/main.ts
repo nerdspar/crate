@@ -3541,11 +3541,11 @@ function openFindWithQuery(q: string): void {
     theme: 'hg-theme-default crate-osk',
     preventMouseDownDefault: true, // keep focus on the field — a key tap must not blur the keyboard away
   });
-  // Show on focus, and also on a direct tap (a second tap on an already-focused field fires no
-  // `focus`, and some kiosk stacks are finicky about it); hide when focus leaves the field.
-  const showOsk = (): void => find.classList.add('osk-on');
-  findSearch.addEventListener('focus', showOsk);
-  findSearch.addEventListener('click', showOsk);
+  // Show the keyboard on a TAP (click), NOT on focus. focus fires during pointerdown; adding osk-on
+  // then lifts the sheet mid-tap, so the pointerup lands where the field used to be and the click
+  // bubbles to #find as a background tap → the overlay closes. click fires after the tap completes,
+  // so the sheet only moves once the tap is done. Hide when focus leaves the field.
+  findSearch.addEventListener('click', () => find.classList.add('osk-on'));
   findSearch.addEventListener('blur', () => find.classList.remove('osk-on'));
 }
 // Tap the exposed shelf area (outside the bar) to dismiss.
