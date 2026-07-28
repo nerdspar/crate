@@ -3560,11 +3560,14 @@ function openFindWithQuery(q: string): void {
     theme: 'hg-theme-default crate-osk',
     preventMouseDownDefault: true, // keep focus on the field — a key tap must not blur the keyboard away
   });
-  // Show the keyboard on a TAP (click), NOT on focus. focus fires during pointerdown; adding osk-on
-  // then lifts the sheet mid-tap, so the pointerup lands where the field used to be and the click
-  // bubbles to #find as a background tap → the overlay closes. click fires after the tap completes,
-  // so the sheet only moves once the tap is done. Hide when focus leaves the field.
-  findSearch.addEventListener('click', () => find.classList.add('osk-on'));
+  // Show the keyboard on pointerup, NOT on focus or click. focus fires during pointerdown; adding
+  // osk-on then lifts the sheet mid-tap, so the pointerup lands where the field used to be and bubbles
+  // to #find as a background tap → the overlay closes. click would avoid that, but a synthesized click
+  // needs pointerdown+up on the same spot — right after the sheet opens it's still settling, so the
+  // field moves between down and up and the FIRST tap fires no click (hence the old "tap once to prime"
+  // bug). pointerup fires reliably on the field (touch implicit capture) and still after the finger is
+  // up, so the sheet only lifts once the tap is done. Hide when focus leaves the field.
+  findSearch.addEventListener('pointerup', () => find.classList.add('osk-on'));
   findSearch.addEventListener('blur', () => find.classList.remove('osk-on'));
 }
 // Tap the exposed shelf area (outside the bar) to dismiss.
@@ -5817,12 +5820,26 @@ function showLoupe(p: Pt): void {
 function moveLoupe(p: Pt): void {
   if (!loupeClone) return;
   const r = vp.getBoundingClientRect();
-  loupeClone.scrollLeft = vp.scrollLeft;
-  loupeClone.style.transformOrigin = `${p.x - r.left}px ${p.y - r.top}px`;
-  loupeClone.style.transform = `scale(${LOUPE_MAG})`;
   const d = loupeD();
-  loupe.style.clipPath = `circle(${d / 2}px at ${p.x}px ${p.y}px)`;
-  loupeRing.style.cssText = `left:${p.x - d / 2}px; top:${p.y - d / 2}px; width:${d}px; height:${d}px;`;
+  const rad = d / 2;
+  const gap = 18; // clearance between the fingertip and the glass edge
+  const w = window.innerWidth,
+    h = window.innerHeight;
+  // Draw the glass ABOVE the finger by default so the finger never covers what it's magnifying;
+  // if there's no room up top (finger near the top edge) drop it below. Keep the whole circle on-screen.
+  const cx = Math.min(Math.max(p.x, rad + 8), w - rad - 8);
+  let cy = p.y - (rad + gap);
+  if (cy - rad < 8) cy = p.y + (rad + gap); // clips the top → flip below the finger
+  cy = Math.min(Math.max(cy, rad + 8), h - rad - 8);
+  // Solve the scale origin O so the content under the finger (p) still lands at the glass centre
+  // (cx,cy): a point X maps to O + (X-O)*MAG, so C = O + (p-O)*MAG ⇒ O = (MAG*p - C)/(MAG-1).
+  const ox = (LOUPE_MAG * p.x - cx) / (LOUPE_MAG - 1);
+  const oy = (LOUPE_MAG * p.y - cy) / (LOUPE_MAG - 1);
+  loupeClone.scrollLeft = vp.scrollLeft;
+  loupeClone.style.transformOrigin = `${ox - r.left}px ${oy - r.top}px`;
+  loupeClone.style.transform = `scale(${LOUPE_MAG})`;
+  loupe.style.clipPath = `circle(${rad}px at ${cx}px ${cy}px)`;
+  loupeRing.style.cssText = `left:${cx - rad}px; top:${cy - rad}px; width:${d}px; height:${d}px;`;
 }
 function hideLoupe(): void {
   loupe.hidden = true;
@@ -5873,7 +5890,7 @@ function edgeLoop(t: number): void {
   }
   edgeRaf = requestAnimationFrame(edgeLoop);
 }
-function updateEdgeStep(clientX: number): void {
+function updateEdgeStep(clientX: number, dxi = 0): void {
   const w = window.innerWidth;
   const zone = Math.max(140, w * 0.12);
   const dl = clientX,
@@ -5889,6 +5906,16 @@ function updateEdgeStep(clientX: number): void {
   }
   if (dir === 0) {
     edgeDir = 0; // out of the edge zone — edgeLoop will self-stop
+    return;
+  }
+  // Don't fight a deliberate swipe AWAY from the edge. Edge-hold is for a finger that ran out of room
+  // and is pushing into (or resting at) the edge; the left edge steps forward and the right edge back.
+  // If the finger is actively moving the OTHER way, the manual step already handles it — auto-stepping
+  // the opposite direction just flip-flops the open album (the "double flip" you get swiping right off
+  // the open album's left cover, which sits near the left edge).
+  const MOVE = 6;
+  if ((dir === 1 && dxi > MOVE) || (dir === -1 && dxi < -MOVE)) {
+    edgeDir = 0;
     return;
   }
   edgeCadence = 150 - depth * 110; // ~150ms/album at the zone's inner lip → ~40ms at the very edge
@@ -5996,7 +6023,8 @@ window.addEventListener('pointermove', (e) => {
         return; // consumed as a vertical swipe, don't step
       }
     }
-    stepAccum += e.clientX - lastX;
+    const dxi = e.clientX - lastX; // instantaneous move; edge-hold uses it to not fight a swipe-away
+    stepAccum += dxi;
     lastX = e.clientX;
     const step = stepPx();
     while (stepAccum <= -step) {
@@ -6007,7 +6035,7 @@ window.addEventListener('pointermove', (e) => {
       stepAlbum(-1);
       stepAccum -= step;
     }
-    updateEdgeStep(e.clientX); // finger resting near a screen edge → keep stepping through the shelf
+    updateEdgeStep(e.clientX, dxi); // finger resting near a screen edge → keep stepping through the shelf
     return;
   }
 
