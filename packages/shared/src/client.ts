@@ -426,6 +426,10 @@ export class CrateClient {
   saveMaSource(domain: string, values: Record<string, MaConfigValue>, instanceId?: string): Promise<MaSource> {
     return this.post('/api/admin/ma/sources', { domain, values, ...(instanceId ? { instanceId } : {}) });
   }
+  /** Enable/disable a source in MA without removing it (keeps its login). */
+  setMaSourceEnabled(domain: string, instanceId: string, enabled: boolean): Promise<MaSource> {
+    return this.post('/api/admin/ma/sources/enabled', { domain, instanceId, enabled });
+  }
   /** Remove a source, incl. MA's default `builtin` source. */
   removeMaSource(instanceId: string): Promise<{ ok: true }> {
     return this.req(`/api/admin/ma/sources/${encodeURIComponent(instanceId)}`, { method: 'DELETE' });

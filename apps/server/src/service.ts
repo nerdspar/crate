@@ -1372,6 +1372,11 @@ export class Service {
     return this.ma.saveSource(domain, values, instanceId);
   }
 
+  /** Enable/disable a source in MA without removing it (preserves its login). */
+  maSetSourceEnabled(domain: string, instanceId: string, enabled: boolean): Promise<MaSource> {
+    return this.ma.setSourceEnabled(domain, instanceId, enabled);
+  }
+
   /** Remove a source, incl. MA's default source. */
   maRemoveSource(instanceId: string): Promise<void> {
     return this.ma.removeSource(instanceId);

@@ -355,6 +355,19 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return this.toSource(rec(raw));
   }
 
+  /** Enable or disable a provider instance without removing it. MA treats `enabled` as a ROOT config
+      value that `config.update()` merges in place — so saving just that flag flips it while preserving
+      the stored login and every other value (the same thing MA's own Disable button does). */
+  async setSourceEnabled(domain: string, instanceId: string, enabled: boolean): Promise<MaSource> {
+    const raw = await this.client.command<Record<string, unknown>>('config/providers/save', {
+      provider_domain: domain,
+      values: { enabled },
+      instance_id: instanceId,
+    });
+    this.providersCache = null; // a disabled provider unloads → drop the cached "connected providers" list
+    return this.toSource(rec(raw));
+  }
+
   /** Remove a provider instance, incl. MA's default source (`config/providers/remove`). */
   async removeSource(instanceId: string): Promise<void> {
     await this.client.command('config/providers/remove', { instance_id: instanceId });

@@ -509,6 +509,10 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     const b = (req.body ?? {}) as{ domain: string; values?: Record<string, MaConfigValue>; instanceId?: string };
     return maCall(reply, () => service.maSaveSource(b.domain, b.values ?? {}, b.instanceId));
   });
+  app.post('/api/admin/ma/sources/enabled', (req, reply) => {
+    const b = (req.body ?? {}) as { domain: string; instanceId: string; enabled: boolean };
+    return maCall(reply, () => service.maSetSourceEnabled(b.domain, b.instanceId, b.enabled));
+  });
   app.delete('/api/admin/ma/sources/:instanceId', (req, reply) => {
     const { instanceId } = req.params as { instanceId: string };
     return maCall(reply, async () => {

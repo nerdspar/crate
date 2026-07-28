@@ -2690,10 +2690,29 @@ function drawMaSources(list: HTMLElement, sources: MaSource[], reload: () => voi
     const label = settings?.sourceLabels?.[s.instanceId];
     row.innerHTML =
       `<span class="svc-dot ${ok ? 'up' : 'down'}"></span>` +
-      `<span class="svc-name">${esc(label || s.name)}${s.domain === 'builtin' ? '<span class="ma-tag">default</span>' : ''}</span>` +
+      `<span class="svc-name">${esc(label || s.name)}${s.domain === 'builtin' ? '<span class="ma-tag">default</span>' : ''}${!s.builtin && !s.enabled ? '<span class="ma-tag">disabled</span>' : ''}</span>` +
       `<span class="svc-detail">${esc(s.lastError ?? s.domain)}</span>`;
     const acts = document.createElement('span');
     acts.className = 'ma-row-actions';
+    // Enable/disable toggle (not the builtin, which can't be disabled). Disabling flips MA's `enabled`
+    // flag — it stops searching/playing the source but keeps its login, so it re-enables cleanly.
+    // A disabled source drops out of the connected-providers list, so its "Show in search" rows below
+    // vanish on their own.
+    if (!s.builtin) {
+      const powerBtn = document.createElement('button');
+      powerBtn.className = 'ma-iconbtn' + (s.enabled ? '' : ' danger');
+      powerBtn.title = s.enabled ? 'Disable this source (keeps its login)' : 'Enable this source';
+      powerBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>';
+      powerBtn.addEventListener('click', () => {
+        powerBtn.disabled = true;
+        void client
+          .setMaSourceEnabled(s.domain, s.instanceId, !s.enabled)
+          .then(() => { showToast(s.enabled ? 'Disabled' : 'Enabled'); reload(); })
+          .catch((e) => { powerBtn.disabled = false; maErr(e); });
+      });
+      acts.appendChild(powerBtn);
+    }
     // Rename = set a custom label (stored in Crate), so two accounts of the same service are
     // distinguishable in results + the filter. Not offered for the built-in aggregate provider.
     if (!s.builtin) {
