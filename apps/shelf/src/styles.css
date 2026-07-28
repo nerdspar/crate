@@ -10,6 +10,11 @@
   --year-gutter: 2rem; /* = the year stamp's footprint (≈24px tall + 8px lip) so the label's
                           content box ends right at the year — centering then gives an equal gap
                           above the text and between the text and the year. */
+  /* Minimum touch-target height, in PX (not vh). The wall's 2560×720 panel is only ~3.9" tall, so
+     vh-sized pills come out physically tiny (a 1.5vh button ≈ 3mm — well under the ~7mm touch
+     guidelines). Small pill buttons floor their box height here while keeping their text size, so
+     the tap area grows without inflating the type. */
+  --tap-min: 44px;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; background: var(--bg); }
@@ -1031,6 +1036,7 @@ body.idle #queue-grip::after { opacity: 0; }
   flex-shrink: 0; background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
   font-size: 1.5vh; font-weight: 600; padding: 0.5vh 1.6vw; letter-spacing: 0.04em;
+  min-height: var(--tap-min); display: inline-flex; align-items: center; justify-content: center;
 }
 /* "Add" affordance (a room is armed; tap to drop it here). */
 .cc-room .cc-room-join.is-add { color: var(--brass); border-color: var(--brass); }
@@ -1088,6 +1094,7 @@ body.idle #queue-grip::after { opacity: 0; }
   background: transparent; color: var(--ink-dim);
   border: 1px solid rgba(236,231,221,0.25); border-radius: 999px;
   font-size: 1.9vh; font-weight: 600; padding: 1vh 3vw; letter-spacing: 0.04em;
+  min-height: var(--tap-min); display: inline-flex; align-items: center; justify-content: center;
 }
 .cc-sysbtn:active { color: var(--ink); border-color: var(--ink); }
 .cc-sysbtn:disabled { opacity: 0.35; }
@@ -1195,7 +1202,10 @@ body.idle #queue-grip::after { opacity: 0; }
 .find-row { display: flex; align-items: center; justify-content: space-between; gap: 2vw; flex-wrap: wrap; }
 .find-row .choices { flex: 1 1 auto; }
 /* Sort buttons match the Settings button's size (smaller than the default .choice) to free space. */
-.find-row .choices .choice { font-size: 1.9vh; padding: 1vh 3vw; border-radius: 999px; }
+.find-row .choices .choice {
+  font-size: 1.9vh; padding: 1vh 3vw; border-radius: 999px;
+  min-height: var(--tap-min); display: inline-flex; align-items: center; justify-content: center;
+}
 
 /* Shelf switcher (top of the Find bar): horizontal Albums/Playlists tabs + a list of shelves. */
 #find-shelves { display: flex; flex-direction: column; gap: 1.2vh; }
@@ -1205,6 +1215,7 @@ body.idle #queue-grip::after { opacity: 0; }
   margin-bottom: -1px; color: var(--ink-dim);
   font-family: 'Newsreader Variable', serif; font-size: 2.8vh; font-weight: 500;
   padding: 0 0.5vw 1vh;
+  min-height: var(--tap-min); display: inline-flex; align-items: flex-end; justify-content: center;
 }
 .find-shelf-tab.on { color: var(--ink); border-bottom-color: var(--brass); }
 #find-shelf-list { display: flex; flex-wrap: wrap; gap: 1vh 1.2vw; }
