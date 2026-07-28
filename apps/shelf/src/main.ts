@@ -5851,11 +5851,13 @@ function moveLoupe(p: Pt): void {
   // doubling. Float it to the LEFT of the finger, not above: a vertical offset made the bottom of the
   // shelf unreachable — to magnify a row the finger had to sit that far below it, so the bottom rows
   // needed the finger off the screen. A horizontal offset keeps the glass at the finger's own height,
-  // so it tracks the full vertical range (the bottom of a spine included) while staying clear of the
-  // finger. It reads the strip ~one spine to the left, so aim the finger just right of what you want.
-  // Clamp on-screen (no flip → no jump).
-  const cx = Math.min(Math.max(p.x - (rad + gap), rad + 8), w - rad - 8);
-  const cy = Math.min(Math.max(p.y, rad + 8), h - rad - 8);
+  // so it tracks the full vertical range while staying clear of the finger. It reads the strip ~one
+  // spine to the left, so aim the finger just right of what you want.
+  // Clamp the CENTRE to the screen rect (not the whole circle), so the glass may run up to HALFWAY off
+  // any edge. That's what lets the magnified band reach the extreme top/bottom of a spine — the year
+  // stamp included — and the far left/right; past half-off the clone has no content to show anyway.
+  const cx = Math.min(Math.max(p.x - (rad + gap), 0), w);
+  const cy = Math.min(Math.max(p.y, 0), h);
   loupeClone.scrollLeft = vp.scrollLeft;
   loupeClone.style.transformOrigin = `${cx - r.left}px ${cy - r.top}px`;
   loupeClone.style.transform = `scale(${LOUPE_MAG})`;
