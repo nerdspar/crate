@@ -5825,18 +5825,17 @@ function moveLoupe(p: Pt): void {
   const gap = 18; // clearance between the fingertip and the glass edge
   const w = window.innerWidth,
     h = window.innerHeight;
-  // Draw the glass ABOVE the finger by default so the finger never covers what it's magnifying;
-  // if there's no room up top (finger near the top edge) drop it below. Keep the whole circle on-screen.
+  // A TRUE in-place magnifier (scale origin == glass centre) so it reads as a seamless lens with no
+  // doubling — just floated ABOVE the finger so the finger doesn't cover it. Spines are uniform
+  // top-to-bottom, so magnifying the strip just above the finger still shows the spine under it.
+  // (Mapping the finger's own point up to the centre instead made near-edge content mismatch the
+  // shelf behind it — that was the "double image".)
   const cx = Math.min(Math.max(p.x, rad + 8), w - rad - 8);
-  let cy = p.y - (rad + gap);
-  if (cy - rad < 8) cy = p.y + (rad + gap); // clips the top → flip below the finger
-  cy = Math.min(Math.max(cy, rad + 8), h - rad - 8);
-  // Solve the scale origin O so the content under the finger (p) still lands at the glass centre
-  // (cx,cy): a point X maps to O + (X-O)*MAG, so C = O + (p-O)*MAG ⇒ O = (MAG*p - C)/(MAG-1).
-  const ox = (LOUPE_MAG * p.x - cx) / (LOUPE_MAG - 1);
-  const oy = (LOUPE_MAG * p.y - cy) / (LOUPE_MAG - 1);
+  // Clamp on-screen rather than flipping below the finger: a flip jumps the glass across the finger
+  // (the "bounce"). Near the top it just stops at the edge and the finger slides up toward it.
+  const cy = Math.min(Math.max(p.y - (rad + gap), rad + 8), h - rad - 8);
   loupeClone.scrollLeft = vp.scrollLeft;
-  loupeClone.style.transformOrigin = `${ox - r.left}px ${oy - r.top}px`;
+  loupeClone.style.transformOrigin = `${cx - r.left}px ${cy - r.top}px`;
   loupeClone.style.transform = `scale(${LOUPE_MAG})`;
   loupe.style.clipPath = `circle(${rad}px at ${cx}px ${cy}px)`;
   loupeRing.style.cssText = `left:${cx - rad}px; top:${cy - rad}px; width:${d}px; height:${d}px;`;
