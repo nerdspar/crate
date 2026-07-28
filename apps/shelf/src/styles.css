@@ -1101,6 +1101,18 @@ body.idle #queue-grip::after { opacity: 0; }
 /* Armed (awaiting the second confirming tap), e.g. "Reset admin login". */
 .cc-sysbtn.arm { color: #e0674f; border-color: #e0674f; }
 
+/* Software update (on-screen System settings). */
+.cc-sw { display: flex; flex-direction: column; gap: 0.8vh; align-items: flex-start; }
+.cc-sw-status.has-update { color: var(--brass); }
+.cc-sw-status.sw-fail { color: #e0674f; }
+.cc-sysbtn.upd { color: var(--brass); border-color: var(--brass); } /* highlight when an update is waiting */
+.cc-sw-log {
+  margin: 0; max-height: 12vh; overflow-y: auto; overflow-x: hidden;
+  font-size: 1.4vh; line-height: 1.5; color: var(--ink-dim);
+  white-space: pre-wrap; word-break: break-word; scrollbar-width: none;
+}
+.cc-sw-log::-webkit-scrollbar { display: none; }
+
 /* Software brightness dim — a black veil whose opacity tracks 100−brightness.
    Above the shelf/settings, below the control center so you can still adjust it. */
 #dim {

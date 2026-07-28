@@ -57,6 +57,10 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
     ['POST', /^\/api\/system\/display\/(sleep|wake)$/],
     ['POST', /^\/api\/system\/services\/restart$/],
+    // Software update from the on-screen System settings: a read-only check + the update trigger. Same
+    // physical-access trust as reboot above (both need someone standing at the touchscreen).
+    ['GET', /^\/api\/system\/update(\/progress)?$/],
+    ['POST', /^\/api\/system\/update$/],
   ];
   const isOpen = (method: string, path: string): boolean => OPEN.some(([m, re]) => m === method && re.test(path));
 
@@ -450,8 +454,9 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.post('/api/system/restart', () => service.restart());
   app.post('/api/system/reboot', () => service.reboot());
 
-  // Software update (admin-only, so kept out of the wall's OPEN allowlist). The check is a
-  // read-only git fetch; the POST launches deploy/pi/update.sh and only runs on the appliance.
+  // Software update. The check/progress + trigger are on the wall's OPEN allowlist (on-screen System
+  // settings); the auto-update config below stays admin-only. The check is a read-only git fetch; the
+  // POST launches deploy/pi/update.sh and only runs on the appliance.
   app.get('/api/system/update', () => service.checkUpdate());
   app.post('/api/system/update', (req) => {
     const t = (req.body as { target?: string } | undefined)?.target;

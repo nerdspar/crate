@@ -1761,6 +1761,7 @@ document.querySelectorAll<HTMLElement>('.set-tab').forEach((tab) => {
     document
       .querySelectorAll<HTMLElement>('.set-pane')
       .forEach((p) => p.classList.toggle('on', p.dataset['pane'] === pane));
+    if (pane === 'system') refreshUpdate(); // check for a newer Crate when the System tab is opened
   });
 });
 
@@ -5851,6 +5852,113 @@ ccResetAuth.addEventListener('click', () => {
     })
     .catch(() => showToast('Could not reset admin login'));
 });
+
+/* ---- Software update, from the on-screen System settings. The check is a read-only git fetch;
+   "Update now" launches deploy/pi/update.sh on the appliance (rebuild + restart), and the wall reloads
+   onto the new build. Mirrors the admin's Crate-update flow, sized for touch. ---- */
+const ccSw = document.getElementById('cc-sw') as HTMLElement;
+let updateChecking = false;
+let updateArmed = false;
+let updateArmTimer: ReturnType<typeof setTimeout> | undefined;
+function refreshUpdate(): void {
+  if (updateChecking) return;
+  updateChecking = true;
+  updateArmed = false;
+  if (updateArmTimer) clearTimeout(updateArmTimer);
+  ccSw.innerHTML = '<span class="cc-sub">Checking…</span>';
+  void client
+    .checkUpdate()
+    .then((u) => {
+      let line: string;
+      if (u.error === 'not-a-git-checkout') line = 'Container deploy — update the image';
+      else if (u.error) line = "Couldn't check for updates";
+      else if (u.updateAvailable) line = `Update available — ${u.behind} commit${u.behind === 1 ? '' : 's'} behind`;
+      else line = 'Up to date';
+      // Offer the button on the appliance (not a non-git container). Enable on a known update OR when
+      // the check errored — don't let a flaky root-side git check block the updater, which runs as the
+      // repo owner. A confirmed up-to-date checkout leaves it disabled.
+      const canUpdate = u.appliance && u.error !== 'not-a-git-checkout' && (u.updateAvailable || !!u.error);
+      ccSw.innerHTML = `<div class="cc-sub cc-sw-status${u.updateAvailable ? ' has-update' : ''}">${escapeHtml(line)}</div>`;
+      if (canUpdate) {
+        const btn = document.createElement('button');
+        btn.className = 'cc-sysbtn' + (u.updateAvailable ? ' upd' : '');
+        btn.textContent = 'Update now';
+        btn.addEventListener('click', () => armUpdate(btn));
+        ccSw.appendChild(btn);
+      }
+    })
+    .catch(() => (ccSw.innerHTML = '<span class="cc-sub">Update check unavailable</span>'))
+    .finally(() => (updateChecking = false));
+}
+/** Two-tap confirm (like "Reset admin login"): first tap arms, a second within 4s runs it. */
+function armUpdate(btn: HTMLButtonElement): void {
+  if (!updateArmed) {
+    updateArmed = true;
+    btn.textContent = 'Tap again to update';
+    btn.classList.add('arm');
+    updateArmTimer = setTimeout(() => {
+      updateArmed = false;
+      btn.textContent = 'Update now';
+      btn.classList.remove('arm');
+    }, 4000);
+    return;
+  }
+  if (updateArmTimer) clearTimeout(updateArmTimer);
+  updateArmed = false;
+  runWallUpdate();
+}
+function runWallUpdate(): void {
+  ccSw.innerHTML = '<div class="cc-sub cc-sw-status">Starting update…</div><pre class="cc-sw-log" aria-live="polite"></pre>';
+  const statusEl = ccSw.querySelector('.cc-sw-status') as HTMLElement;
+  const logEl = ccSw.querySelector('.cc-sw-log') as HTMLElement;
+  void client
+    .runUpdate('crate')
+    .then((r) => {
+      if (!r.started) {
+        statusEl.textContent = 'Updates run on the appliance';
+        return;
+      }
+      let restarting = false;
+      let tries = 0;
+      const poll = (): void => {
+        if (++tries > 180) {
+          statusEl.textContent = 'Still running — check the Pi.';
+          return;
+        }
+        void client
+          .updateProgress()
+          .then((prog) => {
+            // Server reachable again after we lost it → the Crate restart finished. Reload onto the new build.
+            if (restarting) {
+              statusEl.textContent = 'Updated — reloading…';
+              setTimeout(() => location.reload(), 1800);
+              return;
+            }
+            if (prog.log.length) logEl.textContent = prog.log.slice(-10).join('\n');
+            if (prog.active) {
+              statusEl.textContent = 'Updating…';
+              setTimeout(poll, 2000);
+              return;
+            }
+            if (/failed|fatal:|EACCES|error:/i.test(prog.log.slice(-6).join('\n'))) {
+              statusEl.textContent = 'Update failed — the old version is still running. See the log.';
+              statusEl.classList.add('sw-fail');
+              return;
+            }
+            statusEl.textContent = 'Already up to date.';
+            setTimeout(refreshUpdate, 1500);
+          })
+          .catch(() => {
+            // Unreachable → almost certainly the Crate restart; note it and keep waiting.
+            restarting = true;
+            statusEl.textContent = 'Restarting…';
+            setTimeout(poll, 2000);
+          });
+      };
+      poll();
+    })
+    .catch(() => (statusEl.textContent = 'Failed to start the update.'));
+}
 
 /* =====================================================================
    Gesture engine (verbatim from the prototype — do not rework)
