@@ -143,8 +143,12 @@ export class Service {
   }
 
   async init(): Promise<void> {
-    // Restore the panel to the last-set brightness (no-op under 'software').
-    void applyBrightness(this.db.getRaw<number>('system.brightness', 100));
+    // Always boot to full brightness. Idle-dim (client) lowers brightness and persists it via
+    // setBrightness, so restoring the stored value would boot the wall dim after any reboot that
+    // happened while it was idle-dimmed. Start at 100% — the user adjusts down from there, and the
+    // client re-applies idle-dim on its own if the wall really is idle. (No-op under 'software'.)
+    this.db.setRaw('system.brightness', 100);
+    void applyBrightness(100);
     // Warn only when NO token is configured anywhere. The real one is usually the DB override set
     // during onboarding (which wins over env), so a wall set up through the wizard stays quiet even
     // with an empty MA_TOKEN env var — the old env-only check cried wolf on every boot.
