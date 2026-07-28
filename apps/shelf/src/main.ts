@@ -27,6 +27,15 @@ import Keyboard from 'simple-keyboard';
 import 'simple-keyboard/build/css/index.css';
 import './styles.css';
 
+// Kiosk: the cursor is hidden by default (html.hide-cursor). Reveal it only if a REAL mouse moves —
+// the touch-only wall never fires a mouse pointermove, so it stays hidden; a dev machine gets it back.
+const revealCursor = (e: PointerEvent): void => {
+  if (e.pointerType !== 'mouse') return;
+  document.documentElement.classList.remove('hide-cursor');
+  window.removeEventListener('pointermove', revealCursor);
+};
+window.addEventListener('pointermove', revealCursor, { passive: true });
+
 const client = new CrateClient('');
 
 // --- Live data (was CONFIG + LIBRARY) --------------------------------------
