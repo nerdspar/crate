@@ -210,6 +210,11 @@ let lastTouchAt = 0;
 let selfPlayUntil = 0;
 /** The album+target we last started, watched so 'afterAlbum' can act when it ends. */
 let afterAlbumWatch: { albumId: string; playerId: string | null } | null = null;
+/** Last playing track's progress (from handleProgress), so maybeAfterAlbum can tell a NATURAL
+    album-end (last track ran to ~the end) from an external stop mid-track — a TV/HDMI takeover on a
+    home-theatre Sonos, a stop/pause from the Sonos app or MA — which must NOT trigger auto-advance. */
+let lastEndElapsed = 0;
+let lastEndDur = 0;
 const AUTO_OPEN_TOUCH_GRACE_MS = 20000; // don't auto-open if the wall was touched this recently
 
 const trackCache = new Map<string, Track[]>();
@@ -1447,6 +1452,8 @@ async function play(i: number, trackIndex?: number, opts?: { autoAdvance?: boole
   showToast(`Sent to ${roomName(activePlayerId)}…`);
   // Watch for this album ending so we can roll on to the next spine (afterAlbum='next').
   afterAlbumWatch = { albumId: item.albumId, playerId: activePlayerId };
+  lastEndElapsed = 0; // reset end-detection; a new album mustn't inherit the last one's "finished" value
+  lastEndDur = 0;
   playPendingUri = providerUri ?? item.providerUri ?? null; // to confirm the room really started
   playPendingAlbum = item.title; // name fallback when MA reports a normalized uri
   client
@@ -6248,9 +6255,13 @@ function maybeAfterAlbum(): void {
   if (performance.now() < selfPlayUntil) return; // ignore transient idle during the queue load
   const stillOn = lastStates.some((s) => (s.state === 'playing' || s.state === 'paused') && s.nowPlaying?.albumId === w.albumId);
   if (stillOn) return;
-  // The album stopped on its own (a user pause is excluded above; a new play would have
-  // reset the watch).
   afterAlbumWatch = null;
+  // Only ACT when the album truly finished — the last track ran to (near) its end. If it stopped
+  // mid-track (a TV/HDMI takeover on a home-theatre Sonos, or an external stop/pause the player
+  // reports as idle rather than paused), do NOT advance or close: re-starting music the user just
+  // stopped — then advancing again on their next pause — is an unstoppable loop that also jumps albums.
+  const endedNaturally = lastEndDur > 0 && (lastEndDur - lastEndElapsed <= 12 || lastEndElapsed / lastEndDur >= 0.8);
+  if (!endedNaturally) return;
   const endedIsOpen = openCardAlbumId() === w.albumId;
   if (settings.afterAlbum === 'stop') {
     if (endedIsOpen) closeAlbum(); // return to the shelf
@@ -6504,6 +6515,10 @@ function handleProgress(playerId: string, elapsed: number): void {
   if (performance.now() < resumeGuardUntil && Math.abs(elapsed - liveElapsed()) > 8) return;
   now.elapsed = elapsed;
   now.at = performance.now();
+  if (now.duration > 0) {
+    lastEndElapsed = elapsed;
+    lastEndDur = now.duration; // remember how far into the last track we got, for maybeAfterAlbum
+  }
   // A progress tick implies playback — but only flip idle→playing when an album is actually loaded,
   // so a stray/late tick can't resurrect a genuinely-empty idle state (and spin the smooth-tick rAF).
   if (now.state === 'idle' && now.albumId) now.state = 'playing';
