@@ -3777,22 +3777,59 @@ function resetSearchPaging(): void {
   searchGrew.albums = searchGrew.playlists = searchGrew.songs = true;
 }
 let preserveSearchScroll = false; // keep each column where it is across a Load-more re-render (not the top)
+let prefetchTimer: ReturnType<typeof setTimeout> | null = null;
 function loadMoreSection(key: 'albums' | 'playlists' | 'songs', btn?: HTMLButtonElement): void {
   searchShown[key] += SEARCH_PAGE;
   const need = Math.max(searchShown.albums, searchShown.playlists, searchShown.songs);
   preserveSearchScroll = true;
   if (need > searchLimit) {
+    // The prefetch hasn't landed yet (or the user got ahead of it) → fetch now. The whole search
+    // re-runs, a few seconds on a slow MA — show it on the button so the tap doesn't feel dead.
     searchLimit = need;
-    // The whole search re-runs (a page or two more), which is a few seconds on a slow MA — show it on
-    // the button so the tap doesn't feel dead, and the re-render (below) keeps the list scrolled here.
     if (btn) {
       btn.textContent = 'Loading…';
       btn.disabled = true;
     }
-    void runSearch();
+    void runSearch(); // renders, then schedules the next prefetch on the way out
   } else {
-    renderSearch(false); // already fetched — just reveal more (instant)
+    // Already fetched one page ahead → instant reveal, then quietly fetch the page after this.
+    renderSearch(false);
+    schedulePrefetch();
   }
+}
+/** After results settle, quietly fetch the NEXT page into globalResults WITHOUT revealing it (the
+    display stays capped at searchShown), so the following "Load more" is an instant reveal instead of
+    another multi-second MA round-trip. Kept to one page ahead; album tab only. */
+function schedulePrefetch(): void {
+  if (prefetchTimer) clearTimeout(prefetchTimer);
+  prefetchTimer = null;
+  if (shelfTab !== 'album' || artistView || !filterQuery) return;
+  const more = globalResults?.hasMore ?? searchGrew;
+  if (!(more.albums || more.playlists || more.songs)) return; // hit the end — nothing more to prefetch
+  const shown = Math.max(searchShown.albums, searchShown.playlists, searchShown.songs);
+  if (searchLimit >= shown + SEARCH_PAGE) return; // already a page ahead — nothing to do
+  const q = filterQuery;
+  const fromLimit = searchLimit;
+  const nextLimit = fromLimit + SEARCH_PAGE;
+  // Small delay so a fresh search right after cancels this instead of stacking onto the one MA link.
+  prefetchTimer = setTimeout(() => {
+    prefetchTimer = null;
+    void client
+      .globalSearch(q, undefined, nextLimit)
+      .then((res) => {
+        // Apply only if nothing moved underneath us while it was in flight.
+        if (q !== filterQuery || shelfTab !== 'album' || artistView || searchLimit !== fromLimit) return;
+        globalResults = res;
+        searchLimit = nextLimit;
+        const counts = { albums: res.albums.length, playlists: res.playlists.length, songs: res.songs.length };
+        (['albums', 'playlists', 'songs'] as const).forEach((k) => {
+          searchGrew[k] = counts[k] > lastFetchCount[k];
+          lastFetchCount[k] = counts[k];
+        });
+        // No re-render: the visible count is unchanged; Load more reveals what's now in hand.
+      })
+      .catch(() => {});
+  }, 400);
 }
 
 const findClear = document.getElementById('find-clear') as HTMLButtonElement;
@@ -3822,6 +3859,7 @@ function renderSearchPrompt(): void {
 function triggerSearch(): void {
   filterQuery = findSearch.value.trim();
   if (filterQuery.length < 2) return;
+  if (prefetchTimer) clearTimeout(prefetchTimer); // drop any pending prefetch for the previous query
   resetSearchPaging(); // a new query starts back at the first page
   renderSearch(true); // loading scaffold; runSearch fills it
   void runSearch();
@@ -3889,6 +3927,7 @@ async function runSearch(): Promise<void> {
     else mediaResults = null;
   }
   renderSearch(false);
+  schedulePrefetch(); // fetch the next page in the background so the next Load more is instant
 }
 
 /** Render the results for the ACTIVE tab. Every tab leads with an "On your shelf" column
