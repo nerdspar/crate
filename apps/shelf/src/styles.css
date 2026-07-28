@@ -45,6 +45,12 @@ body {
   overflow-x: auto; overflow-y: hidden;
   scrollbar-width: none;
   display: flex; align-items: stretch;
+  /* pan-y, NOT the default auto: the JS gesture engine owns every horizontal drag (scroll,
+     open-album stepping, edge-hold). Without this the browser treats a horizontal finger-drag on
+     this overflow-x:auto container as native panning and fires pointercancel mid-gesture, so on a
+     real touchscreen the stepping dies and only "works" in whichever direction has no overflow to
+     grab. pan-y (not none) still lets the open album's .panel scroll vertically. */
+  touch-action: pan-y;
 }
 #shelf-viewport::-webkit-scrollbar { display: none; }
 

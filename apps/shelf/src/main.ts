@@ -647,7 +647,10 @@ function escapeHtml(s: string): string {
 /** Spine-density zoom factor (pinch, when pinchZoom==='spines'): scales spine widths
     and — via the --zoom CSS var — their labels. Covers stay height-fit. */
 let spineZoom = 1;
-const SPINE_ZOOM_MIN = 0.55;
+// Floor at 1 = the configured default spine size: pinching smaller stops exactly at default so the
+// user can always get back to normal. (Below default there was no way to return precisely.) Pinch
+// only ever grows spines from here; to go denser than default, change the spine size in settings.
+const SPINE_ZOOM_MIN = 1;
 const SPINE_ZOOM_MAX = 2.2;
 
 function sizeFaces(): void {
@@ -5769,12 +5772,14 @@ function beginPinch(): void {
 }
 function updatePinch(): void {
   const pts = [...pointers.values()];
-  if (pts.length < 2) return;
-  const mid = midpoint(pts[0]!, pts[1]!);
   if (settings.pinchZoom === 'loupe') {
-    moveLoupe(mid);
+    if (pts.length === 0) return;
+    // Two fingers → track their midpoint; after one lifts, follow the single remaining finger so the
+    // glass can be dragged one-handed.
+    moveLoupe(pts.length >= 2 ? midpoint(pts[0]!, pts[1]!) : pts[0]!);
     return;
   }
+  if (pts.length < 2) return;
   const ratio = dist(pts[0]!, pts[1]!) / pinchStartDist;
   spineZoom = Math.max(SPINE_ZOOM_MIN, Math.min(SPINE_ZOOM_MAX, pinchStartZoom * ratio));
   sizeFaces();
@@ -6036,7 +6041,15 @@ window.addEventListener('pointermove', (e) => {
 function releasePointer(e: PointerEvent): void {
   pointers.delete(e.pointerId);
   stopEdgeStep(); // lifting (or cancel) ends any edge-hold auto-stepping
-  if (pinching && pointers.size < 2) {
+  if (!pinching) return;
+  // Loupe: keep the glass up while at least one finger is still down, so you can lift one finger and
+  // drag it one-handed — only the LAST finger lifting closes it. (Resize needs two fingers for a
+  // distance, so it ends as soon as one lifts.)
+  if (settings.pinchZoom === 'loupe' && pointers.size >= 1) {
+    updatePinch(); // re-center the glass on the finger that's still down
+    return;
+  }
+  if (pointers.size < 2) {
     endPinch();
     pDown = false; // the remaining finger (if any) shouldn't resume scroll/tap
   }
