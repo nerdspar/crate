@@ -3776,14 +3776,22 @@ function resetSearchPaging(): void {
   lastFetchCount.albums = lastFetchCount.playlists = lastFetchCount.songs = -1;
   searchGrew.albums = searchGrew.playlists = searchGrew.songs = true;
 }
-function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
+let preserveSearchScroll = false; // keep each column where it is across a Load-more re-render (not the top)
+function loadMoreSection(key: 'albums' | 'playlists' | 'songs', btn?: HTMLButtonElement): void {
   searchShown[key] += SEARCH_PAGE;
   const need = Math.max(searchShown.albums, searchShown.playlists, searchShown.songs);
+  preserveSearchScroll = true;
   if (need > searchLimit) {
     searchLimit = need;
-    void runSearch(); // fetch the bigger page, then re-render
+    // The whole search re-runs (a page or two more), which is a few seconds on a slow MA — show it on
+    // the button so the tap doesn't feel dead, and the re-render (below) keeps the list scrolled here.
+    if (btn) {
+      btn.textContent = 'Loading…';
+      btn.disabled = true;
+    }
+    void runSearch();
   } else {
-    renderSearch(false); // already fetched — just reveal more
+    renderSearch(false); // already fetched — just reveal more (instant)
   }
 }
 
@@ -3891,12 +3899,25 @@ function renderSearch(loading: boolean): void {
     clearFindResults();
     return;
   }
+  // Load-more rebuilds the whole results DOM, which snaps every column back to the top. Capture each
+  // column's scroll before the rebuild and restore it after (columns come back in the same order).
+  const keepScroll = preserveSearchScroll
+    ? [...findResults.querySelectorAll('.find-cat-list')].map((el) => (el as HTMLElement).scrollTop)
+    : null;
+  preserveSearchScroll = false;
   findResults.hidden = false;
   find.classList.add('searching'); // grow the sheet to full height for the results
   findResults.innerHTML = '';
   if (shelfTab === 'album') renderAlbumResults(loading);
   else if (shelfTab === 'playlist') renderPlaylistResults(loading);
   else renderMediaResults(shelfTab, loading);
+  if (keepScroll) {
+    const lists = findResults.querySelectorAll('.find-cat-list');
+    keepScroll.forEach((top, i) => {
+      const el = lists[i] as HTMLElement | undefined;
+      if (el) el.scrollTop = top;
+    });
+  }
 }
 
 /** Sources the user hasn't hidden for the active tab (admin › Audio Sources). */
@@ -4160,7 +4181,7 @@ function albumsColumn(lib: SearchAlbum[], catalog: SearchAlbum[], loading: boole
     const moreBtn = document.createElement('button');
     moreBtn.className = 'find-more';
     moreBtn.textContent = 'Load more';
-    moreBtn.onclick = () => loadMoreSection('albums');
+    moreBtn.onclick = () => loadMoreSection('albums', moreBtn);
     list.appendChild(moreBtn);
   }
   col.appendChild(list);
@@ -4275,7 +4296,7 @@ function catColumn(
       const moreBtn = document.createElement('button');
       moreBtn.className = 'find-more';
       moreBtn.textContent = 'Load more';
-      moreBtn.onclick = () => loadMoreSection(key);
+      moreBtn.onclick = () => loadMoreSection(key, moreBtn);
       list.appendChild(moreBtn);
     }
   } else {
