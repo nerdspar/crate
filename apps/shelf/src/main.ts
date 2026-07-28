@@ -3767,7 +3767,10 @@ function renderRecents(): void {
     chip.textContent = q;
     chip.onclick = () => {
       findSearch.value = q;
-      findSearch.dispatchEvent(new Event('input', { bubbles: true }));
+      osKeyboard?.setInput(q); // keep the on-screen keyboard's buffer in sync for edits
+      filterQuery = q;
+      findClear.hidden = false;
+      triggerSearch(); // a tapped recent IS a committed search — run it now (input no longer searches)
     };
     strip.appendChild(chip);
   }
