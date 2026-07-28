@@ -3546,7 +3546,9 @@ function openFindWithQuery(q: string): void {
   openFind();
   findSearch.value = q;
   osKeyboard?.setInput(q); // seed the on-screen keyboard's buffer so edits continue from here
-  findSearch.dispatchEvent(new Event('input', { bubbles: true })); // sets filterQuery + runs search
+  filterQuery = q.trim();
+  findClear.hidden = !q;
+  triggerSearch(); // this entry point IS a committed search (e.g. tapped an artist name), so run it now
   findSearch.focus();
 }
 
@@ -3568,6 +3570,7 @@ function openFindWithQuery(q: string): void {
     },
     onKeyPress: (button: string) => {
       if (button === '{done}') {
+        triggerSearch(); // commit + search only now — never per keystroke (see the input handler)
         find.classList.remove('osk-on');
         findSearch.blur();
       }
@@ -3640,7 +3643,6 @@ window.addEventListener('pointerup', (e) => {
    matches (tap to Add), debounced so you never need Enter. Provider results are
    sequence-guarded so a slow earlier response can't overwrite a newer one. */
 const findResults = document.getElementById('find-results') as HTMLElement;
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchSeq = 0;
 let searchSource = 'all'; // client-side source filter: a source name, or 'all'
 let searchSourceUserSet = false; // did the user pick a source this session? (don't clobber with the default)
@@ -3788,23 +3790,36 @@ function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
 }
 
 const findClear = document.getElementById('find-clear') as HTMLButtonElement;
+// Typing does NOT search. The on-screen keyboard is slower than any debounce, so a search per keystroke
+// fired a catalog query + artist-song prefetches for every partial word ("t", "ta", "tay", …). Those
+// all queue on MA's single connection, and the final query's results end up stuck behind the backlog —
+// the ~15s wait. We commit the search only on Done / Enter (and from a tapped artist link) instead.
 findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
   findClear.hidden = !findSearch.value;
   artistView = null; // typing leaves any open artist detail
-  // Typing no longer filters the shelf (the overlay covers it) — searching is for
-  // playing; the shelf is only filtered when you explicitly hit "Filter shelf".
-  if (searchTimer) clearTimeout(searchTimer);
-  if (filterQuery.length >= 2) {
-    resetSearchPaging(); // a new query starts back at the first page
-    renderSearch(true); // show the loading scaffold immediately
-    searchTimer = setTimeout(() => void runSearch(), 400);
-  } else if (!filterQuery) {
-    renderRecents(); // empty box → offer the last few searches
-  } else {
-    clearFindResults();
-  }
+  if (!filterQuery) renderRecents(); // empty box → offer the last few searches
+  else renderSearchPrompt(); // typed but not committed → nudge toward Done (no MA call yet)
 });
+/** Shown while typing, before the query is committed — so the results area isn't blank or stale. */
+function renderSearchPrompt(): void {
+  if (artistView) return;
+  findResults.hidden = false;
+  find.classList.add('searching'); // keep the sheet at full height
+  findResults.innerHTML = '';
+  const p = document.createElement('div');
+  p.className = 'find-empty find-search-prompt';
+  p.textContent = 'Tap Done to search';
+  findResults.appendChild(p);
+}
+/** Commit the typed query and run the search — from the keyboard's Done, Enter, or a tapped artist. */
+function triggerSearch(): void {
+  filterQuery = findSearch.value.trim();
+  if (filterQuery.length < 2) return;
+  resetSearchPaging(); // a new query starts back at the first page
+  renderSearch(true); // loading scaffold; runSearch fills it
+  void runSearch();
+}
 // Focusing the (empty) box surfaces recent searches.
 findSearch.addEventListener('focus', () => {
   if (!filterQuery) renderRecents();
@@ -3816,12 +3831,9 @@ findClear.addEventListener('click', () => {
   findSearch.dispatchEvent(new Event('input', { bubbles: true }));
   findSearch.focus();
 });
-// Enter (hardware keyboards / the on-screen "Go" key) searches immediately.
+// Enter (hardware keyboard) commits the search, same as the on-screen Done key.
 findSearch.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && filterQuery) {
-    if (searchTimer) clearTimeout(searchTimer);
-    void runSearch();
-  }
+  if (e.key === 'Enter' && filterQuery) triggerSearch();
 });
 
 function clearFindResults(): void {
