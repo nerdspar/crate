@@ -2915,6 +2915,46 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
             })
             .catch(maErr);
         };
+        // Master per-source visibility: one toggle to show/hide a source across ALL tabs at once, so
+        // you don't have to uncheck it in every kind below (turning a slow/unwanted source like Spotify
+        // fully off in one tap). Same source names as the per-kind lists; the built-in library is excluded.
+        const masterNames = [...new Set(srcs.filter((s) => s.domain !== 'builtin' && s.instanceId !== 'builtin').map((s) => s.name))];
+        if (masterNames.length) {
+          const mBlock = document.createElement('div');
+          mBlock.className = 'media-kind media-master';
+          const mHead = document.createElement('div');
+          mHead.className = 'switch-row media-kind-head';
+          mHead.innerHTML = '<span class="switch-label">Show in search</span>';
+          mBlock.appendChild(mHead);
+          const mNote = document.createElement('p');
+          mNote.className = 'field-desc media-tab-note';
+          mNote.textContent = 'Turn a source off everywhere at once. Fine-tune per tab below.';
+          mBlock.appendChild(mNote);
+          const setAll = (name: string, show: boolean): void => {
+            for (const k of MEDIA_KINDS) {
+              const set = new Set(hidden[k] ?? []);
+              if (show) set.delete(name);
+              else set.add(name);
+              hidden[k] = [...set];
+            }
+            save({ hiddenSources: { ...hidden } });
+            // Keep the per-kind checkboxes below in sync with this master toggle.
+            mgr.querySelectorAll<HTMLInputElement>(`input[data-src="${CSS.escape(name)}"]`).forEach((el) => (el.checked = show));
+          };
+          for (const name of masterNames) {
+            const r = document.createElement('label');
+            r.className = 'switch-row media-src-row';
+            const s2 = document.createElement('span');
+            s2.textContent = name;
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = !MEDIA_KINDS.every((k) => (hidden[k] ?? []).includes(name)); // shown if visible in any tab
+            cb.addEventListener('change', () => setAll(name, cb.checked));
+            r.append(s2, cb);
+            mBlock.appendChild(r);
+          }
+          mgr.appendChild(mBlock);
+        }
         for (const kind of MEDIA_KINDS) {
           const feature = KIND_FEATURE[kind];
           const core = kind === 'album' || kind === 'playlist';
@@ -2971,6 +3011,7 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
               s2.textContent = name;
               const cb2 = document.createElement('input');
               cb2.type = 'checkbox';
+              cb2.dataset['src'] = name; // so the master "Show in search" toggle can sync this box
               cb2.checked = !hiddenSet.has(name);
               cb2.addEventListener('change', () => {
                 if (cb2.checked) hiddenSet.delete(name);
