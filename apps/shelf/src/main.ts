@@ -2340,7 +2340,8 @@ function updateConditionalRows(): void {
    Brightness / display / system rows are deferred to the appliance layer.
    ===================================================================== */
 const cc = document.getElementById('cc') as HTMLElement;
-const ccGrip = document.getElementById('cc-grip') as HTMLElement;
+// #cc-grip is still in the DOM (its ::after paints the pull-tab hint); the pull itself is now armed by
+// a window/capture pointerdown keyed on Y (see below), so no direct element listener is needed.
 const ccHandle = cc.querySelector('.cc-handle') as HTMLElement;
 const ccArt = document.getElementById('cc-art') as HTMLElement;
 const ccTitle = document.getElementById('cc-title') as HTMLElement;
@@ -2487,11 +2488,29 @@ swipeToClose(document.getElementById('cc-sheet') as HTMLElement, 'up', closeCC);
 let gripDown = false,
   gripY = 0,
   gripOpened = false;
-ccGrip.addEventListener('pointerdown', (e) => {
-  gripDown = true;
-  gripY = e.clientY;
-  gripOpened = false;
-});
+// Claim the top-edge strip for the control centre at the window/capture level, by Y — not via a
+// listener on #cc-grip. When an album is open, the spine's perspective + preserve-3d projects the
+// flipped cover UP into the grip's zone, so it becomes the hit target there; a plain grip listener
+// never sees the press (it lands on the cover, and a downward drag then collapses the album instead
+// of pulling the CC down). Reading the Y at capture, before the shelf gesture, sidesteps that. Guard
+// so it doesn't fire while another overlay owns the screen. (The shelf gesture ignores the same strip.)
+window.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (
+      e.clientY <= window.innerHeight * 0.032 && // = #cc-grip height (3.2vh)
+      !ccIsOpen() &&
+      !document.getElementById('find')!.classList.contains('open') &&
+      !document.getElementById('queue')!.classList.contains('open') &&
+      !document.getElementById('settings')!.classList.contains('open')
+    ) {
+      gripDown = true;
+      gripY = e.clientY;
+      gripOpened = false;
+    }
+  },
+  true,
+);
 let handleDown = false,
   handleY = 0;
 ccHandle.addEventListener('pointerdown', (e) => {
@@ -5826,14 +5845,14 @@ function moveLoupe(p: Pt): void {
   const w = window.innerWidth,
     h = window.innerHeight;
   // A TRUE in-place magnifier (scale origin == glass centre) so it reads as a seamless lens with no
-  // doubling — just floated ABOVE the finger so the finger doesn't cover it. Spines are uniform
-  // top-to-bottom, so magnifying the strip just above the finger still shows the spine under it.
-  // (Mapping the finger's own point up to the centre instead made near-edge content mismatch the
-  // shelf behind it — that was the "double image".)
-  const cx = Math.min(Math.max(p.x, rad + 8), w - rad - 8);
-  // Clamp on-screen rather than flipping below the finger: a flip jumps the glass across the finger
-  // (the "bounce"). Near the top it just stops at the edge and the finger slides up toward it.
-  const cy = Math.min(Math.max(p.y - (rad + gap), rad + 8), h - rad - 8);
+  // doubling. Float it to the LEFT of the finger, not above: a vertical offset made the bottom of the
+  // shelf unreachable — to magnify a row the finger had to sit that far below it, so the bottom rows
+  // needed the finger off the screen. A horizontal offset keeps the glass at the finger's own height,
+  // so it tracks the full vertical range (the bottom of a spine included) while staying clear of the
+  // finger. It reads the strip ~one spine to the left, so aim the finger just right of what you want.
+  // Clamp on-screen (no flip → no jump).
+  const cx = Math.min(Math.max(p.x - (rad + gap), rad + 8), w - rad - 8);
+  const cy = Math.min(Math.max(p.y, rad + 8), h - rad - 8);
   loupeClone.scrollLeft = vp.scrollLeft;
   loupeClone.style.transformOrigin = `${cx - r.left}px ${cy - r.top}px`;
   loupeClone.style.transform = `scale(${LOUPE_MAG})`;
@@ -5849,9 +5868,9 @@ function hideLoupe(): void {
 
 function followOpen(): void {
   if (openIdx === null) return;
-  // Track the stepped album to ~12% from the left with NO animation. During a drag (and
-  // especially an edge-hold) steps arrive fast; a smooth glide can't keep up on a full shelf
-  // and lags several albums behind, which reads as sluggish. The discrete step IS the motion.
+  // Track the stepped album to ~12% from the left with NO animation. During a fast drag steps
+  // arrive quickly; a smooth glide can't keep up on a full shelf and lags several albums behind,
+  // which reads as sluggish. The discrete step IS the motion.
   vp.scrollLeft = settledLeft(openIdx) - vp.clientWidth * 0.12;
 }
 
@@ -5863,74 +5882,11 @@ function stepAlbum(dir: number): void {
   followOpen();
 }
 
-// Edge-hold auto-stepping. On a full shelf a single drag runs out of screen before you reach
-// the end. While an album is open and the finger rests near a screen edge, keep stepping in
-// that direction so the whole shelf is reachable without lifting — faster the closer to the
-// very edge. The left edge steps forward (+1), the right edge back (-1): the same direction
-// the drag was already carrying (drag left = content moves left = step forward).
-let edgeDir = 0,
-  edgeRaf: number | null = null,
-  edgeLast = 0,
-  edgeCadence = 90;
-function edgeLoop(t: number): void {
-  if (edgeDir === 0) {
-    edgeRaf = null;
-    return;
-  }
-  if (t - edgeLast >= edgeCadence) {
-    edgeLast = t;
-    const before = openIdx;
-    stepAlbum(edgeDir);
-    if (openIdx === before) {
-      edgeDir = 0; // hit an end of the shelf — stop
-      edgeRaf = null;
-      return;
-    }
-  }
-  edgeRaf = requestAnimationFrame(edgeLoop);
-}
-function updateEdgeStep(clientX: number, dxi = 0): void {
-  const w = window.innerWidth;
-  const zone = Math.max(140, w * 0.12);
-  const dl = clientX,
-    dr = w - clientX;
-  let dir = 0,
-    depth = 0;
-  if (dl < zone) {
-    dir = 1;
-    depth = 1 - dl / zone;
-  } else if (dr < zone) {
-    dir = -1;
-    depth = 1 - dr / zone;
-  }
-  if (dir === 0) {
-    edgeDir = 0; // out of the edge zone — edgeLoop will self-stop
-    return;
-  }
-  // Don't fight a deliberate swipe AWAY from the edge. Edge-hold is for a finger that ran out of room
-  // and is pushing into (or resting at) the edge; the left edge steps forward and the right edge back.
-  // If the finger is actively moving the OTHER way, the manual step already handles it — auto-stepping
-  // the opposite direction just flip-flops the open album (the "double flip" you get swiping right off
-  // the open album's left cover, which sits near the left edge).
-  const MOVE = 6;
-  if ((dir === 1 && dxi > MOVE) || (dir === -1 && dxi < -MOVE)) {
-    edgeDir = 0;
-    return;
-  }
-  edgeCadence = 150 - depth * 110; // ~150ms/album at the zone's inner lip → ~40ms at the very edge
-  if (edgeDir !== dir) {
-    edgeDir = dir;
-    edgeLast = 0; // entering the zone (or reversing) steps immediately
-  }
-  if (edgeRaf === null) edgeRaf = requestAnimationFrame(edgeLoop);
-}
-function stopEdgeStep(): void {
-  edgeDir = 0;
-  if (edgeRaf !== null) {
-    cancelAnimationFrame(edgeRaf);
-    edgeRaf = null;
-  }
-}
+// (Edge-hold auto-stepping removed.) The open album's left cover sits near the left screen edge, so
+// any drag there landed in the edge zone and auto-stepped extra albums — fighting or piling onto the
+// manual swipe (the earlier "double flip", then "swipes through multiple albums"). Adaptive stepPx
+// already makes one full-width drag sweep an entire realistic shelf (>~200 albums it floors at 12px
+// and you re-drag), so a swipe now just steps proportionally to how far you drag — nothing automatic.
 
 /** Which spine (by LAYOUT position) sits under this client X. Used for taps while
     an album is open: the open album's flipped-open cover visually overlaps its LEFT
@@ -5946,6 +5902,11 @@ function spineAtX(x: number): number {
 }
 
 vp.addEventListener('pointerdown', (e) => {
+  // The top strip belongs to the control-centre pull (armed in the window/capture handler above), not
+  // the shelf — even when an open album's cover is projected up into it. Ignore presses there so a
+  // top-edge drag pulls the CC down instead of stepping/collapsing the album. Spines start at 3.5vh,
+  // so nothing tappable lives in this 3.2vh band.
+  if (e.clientY <= window.innerHeight * 0.032) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size >= 2 && settings.pinchZoom !== 'off') {
     beginPinch();
@@ -5964,7 +5925,6 @@ vp.addEventListener('pointerdown', (e) => {
   stepping = openIdx !== null;
   stepAccum = 0;
   heldOpen = false;
-  stopEdgeStep(); // clear any lingering edge-hold from a previous gesture
   // A vertical drag that starts on the OPEN album's cover (not its panel, which scrolls)
   // toggles the extended view — a faster trigger than the ⋯ button.
   vSwipe = 0;
@@ -6022,8 +5982,7 @@ window.addEventListener('pointermove', (e) => {
         return; // consumed as a vertical swipe, don't step
       }
     }
-    const dxi = e.clientX - lastX; // instantaneous move; edge-hold uses it to not fight a swipe-away
-    stepAccum += dxi;
+    stepAccum += e.clientX - lastX;
     lastX = e.clientX;
     const step = stepPx();
     while (stepAccum <= -step) {
@@ -6034,7 +5993,6 @@ window.addEventListener('pointermove', (e) => {
       stepAlbum(-1);
       stepAccum -= step;
     }
-    updateEdgeStep(e.clientX, dxi); // finger resting near a screen edge → keep stepping through the shelf
     return;
   }
 
@@ -6067,7 +6025,6 @@ window.addEventListener('pointermove', (e) => {
 
 function releasePointer(e: PointerEvent): void {
   pointers.delete(e.pointerId);
-  stopEdgeStep(); // lifting (or cancel) ends any edge-hold auto-stepping
   if (!pinching) return;
   // Loupe: keep the glass up while at least one finger is still down, so you can lift one finger and
   // drag it one-handed — only the LAST finger lifting closes it. (Resize needs two fingers for a
