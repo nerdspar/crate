@@ -3570,6 +3570,7 @@ function openFindWithQuery(q: string): void {
     },
     onKeyPress: (button: string) => {
       if (button === '{done}') {
+        findClickShieldUntil = performance.now() + 500; // block the tap from bleeding to controls under the sheet
         triggerSearch(); // commit + search only now — never per keystroke (see the input handler)
         find.classList.remove('osk-on');
         findSearch.blur();
@@ -3596,6 +3597,20 @@ function openFindWithQuery(q: string): void {
 find.addEventListener('click', (e) => {
   if (e.target === find) closeFind();
 });
+// Tapping the keyboard's Done key hides the keyboard and drops the sheet, sliding whatever sat under it
+// (Settings, sort chips) up under the finger — so the tap's synthesized click can land on that control.
+// Briefly swallow clicks inside the overlay right after Done so the tap can't bleed through.
+let findClickShieldUntil = 0;
+find.addEventListener(
+  'click',
+  (e) => {
+    if (performance.now() < findClickShieldUntil) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  },
+  true, // capture: run before the target control's own click handler
+);
 // Swipe the bar back down (opposite of the opening swipe) to close.
 swipeToClose(document.getElementById('find-bar') as HTMLElement, 'down', closeFind);
 
@@ -3826,6 +3841,14 @@ function schedulePrefetch(): void {
           searchGrew[k] = counts[k] > lastFetchCount[k];
           lastFetchCount[k] = counts[k];
         });
+        // Warm the next page's ARTWORK too (into the browser cache), not just the data — otherwise
+        // Load more reveals instantly but the covers still crawl in from the CDN. The card's
+        // background-image then hits the warmed cache. Just the fresh slice, albums + songs.
+        const warm = (u: string | null | undefined): void => {
+          if (u) new Image().src = u;
+        };
+        res.albums.slice(fromLimit, nextLimit).forEach((a) => warm(a.artworkUrl));
+        res.songs.slice(fromLimit, nextLimit).forEach((s) => warm(s.artworkUrl));
         // No re-render: the visible count is unchanged; Load more reveals what's now in hand.
       })
       .catch(() => {});

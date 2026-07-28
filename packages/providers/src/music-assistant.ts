@@ -419,7 +419,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       pulls dozens at once. MA usually hands back the provider's own CDN URL (full-res), so rewrite the
       common ones to a smaller variant the CDN serves + caches directly:
         - Apple Music (mzstatic): size is baked into the filename, "/1000x1000bb.jpg" → "/320x320bb.jpg".
-        - Spotify (i.scdn.co): the id prefix encodes size; "0000b273" (640) → "00001e02" (300).
+        - Spotify (i.scdn.co): the id prefix encodes size; album "0000b273" (640) → "00001e02" (300),
+          artist "0000e5eb" (640) → "0000f178" (300, a 12x smaller file).
         - MA imageproxy: ask MA for the resized variant (size=N).
       Anything else passes through untouched. Applied to search results only — the library-sync/cache
       path uses getAlbum art (never thumbed), so shelf covers stay full-res. */
@@ -428,7 +429,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     if (url.includes('/imageproxy?')) return url.replace('size=0', `size=${SEARCH_ART_PX}`);
     if (url.includes('mzstatic.com'))
       return url.replace(/\/\d+x\d+([a-z]*)\.(jpg|jpeg|png|webp)/i, `/${SEARCH_ART_PX}x${SEARCH_ART_PX}$1.$2`);
-    if (url.includes('i.scdn.co')) return url.replace('0000b273', '00001e02'); // Spotify 640 → 300 (album art)
+    if (url.includes('i.scdn.co')) return url.replace('0000b273', '00001e02').replace('0000e5eb', '0000f178'); // Spotify 640 → 300 (album / artist)
     if (url.includes('mosaic.scdn.co/640/')) return url.replace('mosaic.scdn.co/640/', 'mosaic.scdn.co/300/'); // Spotify playlist mosaic 640 → 300
     return url;
   }
