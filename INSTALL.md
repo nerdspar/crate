@@ -65,7 +65,7 @@ docker compose down              # stop (keeps volumes/data)
 
 ## Raspberry Pi appliance
 
-For a Pi that drives the wall touchscreen. Runs the server **natively** (not Docker) so it can control the display's brightness/sleep and reboot. Targets **Raspberry Pi OS Bookworm — Lite, 64-bit recommended** (the kiosk runs under `cage`, its own compositor, so no desktop is needed; leaner and no display-manager to fight for the screen). A Pi 4 or Pi 5 is recommended for a 2560×720 panel + the album glow; a Pi 3 can't drive that resolution and lacks the GPU for the blur.
+For a Pi that drives the wall touchscreen. Runs the server **natively** (not Docker) so it can control the display's brightness/sleep and reboot. Targets **Raspberry Pi OS Bookworm — Lite, 64-bit recommended** (the kiosk runs under `sway`, its own compositor, so no desktop is needed; leaner and no display-manager to fight for the screen). A Pi 4 or Pi 5 is recommended for a 2560×720 panel + the album glow; a Pi 3 can't drive that resolution and lacks the GPU for the blur.
 
 ```sh
 git clone https://github.com/<you>/crate.git
@@ -76,7 +76,7 @@ sudo bash deploy/pi/install.sh            # asks about Music Assistant + the kio
 The script installs Node, builds Crate, and installs a `crate.service` systemd unit with `CRATE_APPLIANCE=1`. Data lives in `/var/lib/crate`. It asks two questions up front:
 
 - **"Will you be using an existing Music Assistant installation?"** — **No** (default) installs MA alongside Crate in Docker (`CRATE_MANAGES_MA=1`); **Yes** points at your existing MA (enter its URL, token optional). Either way the **token can be left blank** — open Crate's admin afterward and the **setup wizard** handles it: for a co-hosted MA it **creates your Music Assistant account and mints its own token** (you never open MA's UI); for an existing MA you can **sign in** (Crate mints the token) or paste a long-lived one. Also available later in **Settings → Music Assistant**.
-- **"Set up the fullscreen kiosk display?"** — installs `cage` + Chromium and a `crate-kiosk.service` that opens `http://localhost/wall/` fullscreen on boot. Preset non-interactively with `--kiosk` / `--no-kiosk`. It's **best-effort** — the display stack varies (Pi OS Bookworm uses Wayland/labwc; older setups use X11); if the screen stays blank, the server still runs and you can point any fullscreen browser at `http://localhost/wall/`.
+- **"Set up the fullscreen kiosk display?"** — installs `sway` + Chromium and a `crate-kiosk.service` that opens `http://localhost/wall/` fullscreen on boot (sway hides the touchscreen's pointer, which cage can't). Preset non-interactively with `--kiosk` / `--no-kiosk`. It's **best-effort** — the display stack varies; if the screen stays blank, the server still runs and you can point any fullscreen browser at `http://localhost/wall/`.
 
 Manage it:
 ```sh

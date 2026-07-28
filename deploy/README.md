@@ -7,7 +7,7 @@ the root `docker-compose.yml`; see `INSTALL.md`.)
 First-run installer for a Pi that drives the touchscreen. Installs Node, builds Crate,
 and runs the server natively under `crate.service` (systemd, `CRATE_APPLIANCE=1`) so it
 can control the display and reboot. Asks whether to use an existing Music Assistant (else
-it co-hosts one in Docker) and whether to set up the `cage` + Chromium kiosk.
+it co-hosts one in Docker) and whether to set up the `sway` + Chromium kiosk.
 
 ```sh
 sudo bash deploy/pi/install.sh            # interactive

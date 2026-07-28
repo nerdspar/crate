@@ -151,7 +151,7 @@ Everything below is implemented and on `main`.
 - **Onboarding wizard** — Welcome → Connect MA (creates the account + token when co-hosted) →
   **Add your music** (sources) → tidy playlists → speakers → security → done; lands on Search.
 - **Appliance & deploy** — Raspberry Pi installer (`deploy/pi/install.sh`: native server under
-  systemd + optional `cage`/Chromium kiosk, co-host-MA option, `MemoryMax=75%` that auto-scales to
+  systemd + optional `sway`/Chromium kiosk, co-host-MA option, `MemoryMax=75%` that auto-scales to
   the host's RAM) and a Docker Compose path (`docker-compose.yml`, cohosted profile).
 - **Updates** — in-place `deploy/pi/update.sh` (updates Crate, and the co-hosted MA image only if
   newer, always preserving MA's data volume) + an admin **Update** button with a **live progress

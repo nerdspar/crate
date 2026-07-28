@@ -142,7 +142,7 @@ if [[ $DO_CRATE -eq 1 ]]; then
     # Confirm it actually came back — don't declare success on a silent crash-loop.
     if wait_healthy; then
       echo "    Crate updated and serving (${AFTER:0:7})."
-      # Reload the on-screen wall too: the kiosk browser (cage/Chromium) is a separate service that
+      # Reload the on-screen wall too: the kiosk browser (sway/Chromium) is a separate service that
       # caches the built frontend, so restarting only the server leaves the OLD page on the screen.
       if systemctl cat crate-kiosk.service >/dev/null 2>&1; then
         echo "    Reloading the kiosk to pick up the new build"
