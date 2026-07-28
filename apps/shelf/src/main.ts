@@ -5827,7 +5827,10 @@ function showLoupe(p: Pt): void {
   const r = vp.getBoundingClientRect();
   const clone = vp.cloneNode(true) as HTMLElement;
   clone.removeAttribute('id');
-  clone.style.cssText = `position:fixed; left:${r.left}px; top:${r.top}px; width:${r.width}px; height:${r.height}px; margin:0; overflow:hidden; pointer-events:none;`;
+  // Opaque background: the shelf's own bg is transparent, so without this the magnified clone shows the
+  // real, unmagnified shelf through the gaps between its spines. Painting the page bg behind the clone
+  // fills those gaps so the glass reads as a solid lens.
+  clone.style.cssText = `position:fixed; left:${r.left}px; top:${r.top}px; width:${r.width}px; height:${r.height}px; margin:0; overflow:hidden; pointer-events:none; background:var(--bg);`;
   loupe.innerHTML = '';
   loupe.appendChild(clone);
   clone.scrollLeft = vp.scrollLeft;
