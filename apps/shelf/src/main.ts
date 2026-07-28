@@ -3478,6 +3478,7 @@ function closeFind(): void {
   findSearch.value = '';
   filterQuery = '';
   findClear.hidden = true;
+  find.classList.remove('osk-on'); // hide the on-screen keyboard
   clearFindResults();
 }
 
@@ -3504,6 +3505,58 @@ function openFindWithQuery(q: string): void {
   findSearch.value = q;
   findSearch.dispatchEvent(new Event('input', { bubbles: true })); // sets filterQuery + runs search
   findSearch.focus();
+}
+
+/* On-screen keyboard — the wall runs fullscreen Chromium under cage (Wayland), which has no system
+   virtual keyboard, so tapping the search field would pop nothing. Build one into the find sheet: it
+   shows while #find-search is focused and drives it directly (dispatching `input` so the normal search
+   path runs). Keys preventDefault on pointerdown to keep focus, so tapping a key never blurs the field
+   out from under itself. */
+{
+  const OSK_ROWS = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  const osk = document.createElement('div');
+  osk.id = 'osk';
+  osk.setAttribute('aria-hidden', 'true');
+  const press = (code: string): void => {
+    if (code === 'bksp') findSearch.value = findSearch.value.slice(0, -1);
+    else if (code === 'space') findSearch.value += ' ';
+    else if (code === 'done') {
+      find.classList.remove('osk-on');
+      findSearch.blur();
+      return;
+    } else findSearch.value += code;
+    findSearch.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const key = (label: string, code: string, cls = ''): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'osk-key' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); // keep focus on the field — don't let the tap blur the keyboard away
+      press(code);
+    });
+    return b;
+  };
+  for (const row of OSK_ROWS) {
+    const r = document.createElement('div');
+    r.className = 'osk-row';
+    for (const ch of row) r.appendChild(key(ch, ch));
+    if (row === 'zxcvbnm') r.appendChild(key('⌫', 'bksp', 'osk-act'));
+    osk.appendChild(r);
+  }
+  const last = document.createElement('div');
+  last.className = 'osk-row';
+  last.appendChild(key('space', 'space', 'osk-wide'));
+  last.appendChild(key('Done', 'done', 'osk-act'));
+  osk.appendChild(last);
+  find.appendChild(osk);
+  // Show on focus, and also on a direct tap (a second tap on an already-focused field fires no
+  // `focus`, and some kiosk stacks are finicky about it); hide when focus leaves the field.
+  const showOsk = (): void => find.classList.add('osk-on');
+  findSearch.addEventListener('focus', showOsk);
+  findSearch.addEventListener('click', showOsk);
+  findSearch.addEventListener('blur', () => find.classList.remove('osk-on'));
 }
 // Tap the exposed shelf area (outside the bar) to dismiss.
 find.addEventListener('click', (e) => {
