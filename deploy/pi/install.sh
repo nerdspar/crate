@@ -182,14 +182,19 @@ if [[ $WITH_KIOSK -eq 1 ]]; then
     printf '[Icon Theme]\nName=crate-blank\n' > "$CURSOR_THEME/index.theme"
     python3 - "$CURSOR_THEME/cursors/left_ptr" <<'PY' || true
 import struct, sys
+W = H = 24                                                     # a real cursor size — a 1x1 gets rejected → a fallback cursor shows
 fh  = struct.pack('<4sIII', b'Xcur', 16, 0x10000, 1)          # file header: magic, hdr=16, ver, ntoc=1
-toc = struct.pack('<III', 0xfffd0002, 1, 28)                  # image type, nominal size 1, offset 28
-img = struct.pack('<IIIIIIIII', 36, 0xfffd0002, 1, 1, 1, 1, 0, 0, 0) + struct.pack('<I', 0)  # 1x1 transparent
+toc = struct.pack('<III', 0xfffd0002, W, 28)                  # image type, nominal size W, offset 28
+img = struct.pack('<IIIIIIIII', 36, 0xfffd0002, W, 1, W, H, 0, 0, 0) + b'\x00\x00\x00\x00' * (W * H)  # fully transparent
 open(sys.argv[1], 'wb').write(fh + toc + img)
 PY
     for n in default arrow top_left_arrow xterm hand1 hand2 pointer watch; do
       cp -f "$CURSOR_THEME/cursors/left_ptr" "$CURSOR_THEME/cursors/$n" 2>/dev/null || true
     done
+    # cage may ignore XCURSOR_THEME and just load the theme named "default" — so register the blank
+    # theme as the system default too. (Kiosk-only box; nothing else needs a cursor.)
+    mkdir -p /usr/share/icons/default
+    printf '[Icon Theme]\nName=Default\nInherits=crate-blank\n' > /usr/share/icons/default/index.theme
   fi
   cat > /etc/systemd/system/crate-kiosk.service <<EOF
 [Unit]
