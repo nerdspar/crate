@@ -4183,8 +4183,8 @@ function artistsColumn(artists: SearchArtist[], loading: boolean): HTMLElement {
 function artistChip(a: SearchArtist): HTMLElement {
   const b = document.createElement('button');
   b.className = 'find-artist';
-  const art = a.artworkUrl ? ` style="background-image:url('${a.artworkUrl}')"` : '';
-  b.innerHTML = `<span class="find-artist-av${a.artworkUrl ? '' : ' none'}"${art}></span><span class="find-artist-name">${escapeHtml(a.name)}</span>`;
+  b.innerHTML = `<span class="find-artist-av${a.artworkUrl ? '' : ' none'}"></span><span class="find-artist-name">${escapeHtml(a.name)}</span>`;
+  lazyBg(b.querySelector('.find-artist-av'), a.artworkUrl);
   b.onclick = () => void openArtist(a);
   return b;
 }
@@ -4726,14 +4726,39 @@ function openAddMenu(anchor: HTMLElement, options: Array<{ label: string; on?: b
   setTimeout(() => document.addEventListener('pointerdown', out, true), 0);
 }
 
+// Lazy-load result artwork. A search returns dozens of cards, most scrolled out of their category list
+// (.find-cat-list is overflow-y:auto), yet a background-image on every card fetches + JPEG-decodes them
+// all at once — brutal on the Pi, and the real reason search art crawled. Set the image only once a
+// card nears the viewport; root=null still honours the list's overflow clip, so one observer covers
+// every category. (Chromium weakly-refs observed nodes, so cleared cards are GC'd — no unobserve dance.)
+const artObserver = new IntersectionObserver(
+  (entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const el = e.target as HTMLElement;
+      const url = el.dataset['art'];
+      if (url) el.style.backgroundImage = `url('${url}')`;
+      delete el.dataset['art'];
+      artObserver.unobserve(el);
+    }
+  },
+  { rootMargin: '300px' }, // begin the fetch a little before the card is actually on screen
+);
+/** Set an element's background image lazily — only once it nears the viewport. */
+function lazyBg(el: Element | null, url: string | null): void {
+  if (!el || !url) return;
+  (el as HTMLElement).dataset['art'] = url;
+  artObserver.observe(el);
+}
+
 function cardShell(title: string, artist: string, artUrl: string | null, action: string, source?: string): HTMLElement {
   const card = document.createElement('div');
   card.className = 'find-card';
-  const art = artUrl ? ` style="background-image:url('${artUrl}')"` : '';
   card.innerHTML =
-    `<div class="find-card-art"${art}>${srcArtIcon(source)}</div>` +
+    `<div class="find-card-art">${srcArtIcon(source)}</div>` +
     `<div class="find-card-meta"><span class="t">${escapeHtml(title)}</span><span class="a">${escapeHtml(artist)}</span></div>` +
     `<button class="find-card-add">${action}</button>`;
+  lazyBg(card.querySelector('.find-card-art'), artUrl); // fetch the cover only when the card scrolls in
   return card;
 }
 
