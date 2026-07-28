@@ -189,7 +189,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     const { q, source, limit } = req.query as { q?: string; source?: string; limit?: string };
     const query = (q ?? '').trim();
     if (!query) return { artists: [], albums: [], playlists: [], songs: [], sources: [] };
-    const n = Math.min(Math.max(Number(limit) || 20, 20), 200); // clamp 20..200
+    const n = Math.min(Math.max(Number(limit) || 20, 8), 200); // clamp 8..200 (smaller = faster on slow MA)
     return service.globalSearch(query, source, n);
   });
 

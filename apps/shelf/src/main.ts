@@ -3762,7 +3762,7 @@ function renderRecents(): void {
 
 /* Search paging: show 20 per section, "Load more" raises the fetch limit + reveals
    the next 20. MA search has no offset, so we re-fetch with a larger per-section cap. */
-const SEARCH_PAGE = 20;
+const SEARCH_PAGE = 12; // fetch fewer per column: a popular catalog search scales hard with limit on a slow MA
 let searchLimit = SEARCH_PAGE;
 const searchShown = { albums: SEARCH_PAGE, playlists: SEARCH_PAGE, songs: SEARCH_PAGE };
 // Growth-based "is there more?" tracking, independent of the server's hasMore hint: a bigger
@@ -3770,13 +3770,11 @@ const searchShown = { albums: SEARCH_PAGE, playlists: SEARCH_PAGE, songs: SEARCH
 // bigger limit stops growing the count, we've hit the source's ceiling and hide "Load more".
 const lastFetchCount = { albums: -1, playlists: -1, songs: -1 };
 const searchGrew = { albums: true, playlists: true, songs: true };
-let albumAutoFills = 0; // bounded auto "Load more" when the catalog column is thin after on-shelf dedup
 function resetSearchPaging(): void {
   searchLimit = SEARCH_PAGE;
   searchShown.albums = searchShown.playlists = searchShown.songs = SEARCH_PAGE;
   lastFetchCount.albums = lastFetchCount.playlists = lastFetchCount.songs = -1;
   searchGrew.albums = searchGrew.playlists = searchGrew.songs = true;
-  albumAutoFills = 0;
 }
 function loadMoreSection(key: 'albums' | 'playlists' | 'songs'): void {
   searchShown[key] += SEARCH_PAGE;
@@ -3954,13 +3952,11 @@ function renderAlbumResults(loading: boolean): void {
   const catalogAlbums = remoteNew.filter((a) => !a.inLibrary && srcOk(a.source));
   const songs = (g?.songs ?? []).filter((s) => srcOk(s.source));
   const more = g?.hasMore ?? searchGrew;
-  // If the on-shelf dedup (and any source filter) left the Albums column thin but a deeper fetch
-  // would yield more, pull the next page automatically — otherwise a shelf that covers the first
-  // page of results shows an empty Albums column until you tap "Load more" by hand.
-  if (!loading && g && libAlbums.length + catalogAlbums.length < SEARCH_PAGE / 2 && more.albums && albumAutoFills < 3) {
-    albumAutoFills++;
-    loadMoreSection('albums');
-  }
+  // No auto "Load more": it used to re-run the whole catalog search at 40/60/80 when the Albums column
+  // came up thin after on-shelf dedup — but on a slow MA each escalation is brutal (limit 80 ≈ 18s on
+  // the Pi vs ~7s at 20), so a search for an artist you already own could balloon to 15s+. If the column
+  // is thin, the On-your-shelf column already shows your matches and the manual "Load more" fetches the
+  // rest on demand.
   const cats = document.createElement('div');
   cats.className = 'find-cats';
   cats.appendChild(artistsColumn((g?.artists ?? []).filter((a) => srcOk(a.source)), loading)); // narrow leading column
