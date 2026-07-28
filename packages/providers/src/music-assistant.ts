@@ -158,6 +158,11 @@ const BUILTIN_PLAYLIST_KEYS = [
   'infinite_mix_favorites',
 ];
 
+// Display-thumbnail size (px) for search/list artwork. Search views pull dozens of covers at once, so
+// full-res (imageproxy size=0) is needlessly heavy — MA re-fetches + serves each original, brutal on a
+// Pi. 320 is crisp for the wall's small cards, and MA caches the resized variant so repeats are instant.
+const SEARCH_ART_PX = 320;
+
 export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   readonly id = 'music-assistant';
   private readonly client: MaClient;
@@ -410,6 +415,24 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return `${this.maBaseUrl}/imageproxy?${q.toString()}`;
   }
 
+  /** Shrink an artwork URL to a display thumbnail (SEARCH_ART_PX) for search/list cards, where the wall
+      pulls dozens at once. MA usually hands back the provider's own CDN URL (full-res), so rewrite the
+      common ones to a smaller variant the CDN serves + caches directly:
+        - Apple Music (mzstatic): size is baked into the filename, "/1000x1000bb.jpg" → "/320x320bb.jpg".
+        - Spotify (i.scdn.co): the id prefix encodes size; "0000b273" (640) → "00001e02" (300).
+        - MA imageproxy: ask MA for the resized variant (size=N).
+      Anything else passes through untouched. Applied to search results only — the library-sync/cache
+      path uses getAlbum art (never thumbed), so shelf covers stay full-res. */
+  private thumbArt(url: string | null): string | null {
+    if (!url) return url;
+    if (url.includes('/imageproxy?')) return url.replace('size=0', `size=${SEARCH_ART_PX}`);
+    if (url.includes('mzstatic.com'))
+      return url.replace(/\/\d+x\d+([a-z]*)\.(jpg|jpeg|png|webp)/i, `/${SEARCH_ART_PX}x${SEARCH_ART_PX}$1.$2`);
+    if (url.includes('i.scdn.co')) return url.replace('0000b273', '00001e02'); // Spotify 640 → 300 (album art)
+    if (url.includes('mosaic.scdn.co/640/')) return url.replace('mosaic.scdn.co/640/', 'mosaic.scdn.co/300/'); // Spotify playlist mosaic 640 → 300
+    return url;
+  }
+
   private toProviderAlbum(item: Record<string, unknown>): ProviderAlbum | null {
     const uri = str(item['uri']);
     const title = str(item['name']);
@@ -463,7 +486,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     );
     return arr(result['albums'])
       .map((a) => this.toProviderAlbum(rec(a)))
-      .filter((a): a is ProviderAlbum => a !== null);
+      .filter((a): a is ProviderAlbum => a !== null)
+      .map((a) => ({ ...a, artworkUrl: this.thumbArt(a.artworkUrl) }));
   }
 
   private toTrackHit(item: Record<string, unknown>): ProviderTrackHit | null {
@@ -506,11 +530,12 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         ...(providerInstance ? { provider: providerInstance } : {}),
       }),
     );
+    const t = (u: string | null): string | null => this.thumbArt(u);
     return {
-      artists: arr(result['artists']).map((a) => this.toProviderArtist(rec(a))).filter((a): a is ProviderArtist => a !== null),
-      albums: arr(result['albums']).map((a) => this.toProviderAlbum(rec(a))).filter((a): a is ProviderAlbum => a !== null),
-      playlists: arr(result['playlists']).map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null),
-      tracks: arr(result['tracks']).map((t) => this.toTrackHit(rec(t))).filter((t): t is ProviderTrackHit => t !== null),
+      artists: arr(result['artists']).map((a) => this.toProviderArtist(rec(a))).filter((a): a is ProviderArtist => a !== null).map((a) => ({ ...a, artworkUrl: t(a.artworkUrl) })),
+      albums: arr(result['albums']).map((a) => this.toProviderAlbum(rec(a))).filter((a): a is ProviderAlbum => a !== null).map((a) => ({ ...a, artworkUrl: t(a.artworkUrl) })),
+      playlists: arr(result['playlists']).map((p) => this.toProviderPlaylist(rec(p))).filter((p): p is ProviderPlaylist => p !== null).map((p) => ({ ...p, artworkUrl: t(p.artworkUrl) })),
+      tracks: arr(result['tracks']).map((tk) => this.toTrackHit(rec(tk))).filter((tk): tk is ProviderTrackHit => tk !== null).map((tk) => ({ ...tk, artworkUrl: t(tk.artworkUrl) })),
     };
   }
 
@@ -784,7 +809,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     );
     return arr(result['playlists'])
       .map((p) => this.toProviderPlaylist(rec(p)))
-      .filter((p): p is ProviderPlaylist => p !== null);
+      .filter((p): p is ProviderPlaylist => p !== null)
+      .map((p) => ({ ...p, artworkUrl: this.thumbArt(p.artworkUrl) }));
   }
 
   async getPlaylist(providerUri: string): Promise<ProviderPlaylist | null> {
@@ -870,7 +896,8 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     );
     return arr(result[m.result])
       .map((r) => this.toProviderMedia(rec(r)))
-      .filter((r): r is ProviderMediaItem => r !== null);
+      .filter((r): r is ProviderMediaItem => r !== null)
+      .map((r) => ({ ...r, artworkUrl: this.thumbArt(r.artworkUrl) }));
   }
 
   /** The user's saved items of one kind from the MA library. NB: omit the `favorite` filter —

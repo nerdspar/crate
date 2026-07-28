@@ -486,8 +486,17 @@ export class Service {
       each hit is attributed to its real source and the UI badges + filters on that. The `source`
       argument is accepted for back-compat but ignored — the client filters the returned hits. */
   async globalSearch(query: string, _source?: string, limit = 20): Promise<GlobalSearchResponse> {
-    const providers = await this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []);
     const labels = this.db.getSettings().sourceLabels ?? {};
+    const shelved = this.db.shelfedUris();
+    // Providers (for source attribution), the catalog search, and the saved library — all in parallel.
+    // providers is cached (30s), but on a cache miss this keeps it from serializing ahead of the slow
+    // catalog search instead of overlapping it. MA's catalog hits never carry the library flag, so the
+    // "in your library" tier comes from the dedicated listLibraryAlbums query.
+    const [providers, r, libRaw] = await Promise.all([
+      this.ma.listMusicProviders().catch((): MusicSourceInfo[] => []),
+      this.ma.searchAll(query, limit).catch(() => ({ artists: [], albums: [], playlists: [], tracks: [] })),
+      this.ma.listLibraryAlbums({ search: query, limit, offset: 0 }).catch((): ProviderLibraryAlbum[] => []),
+    ]);
     const labeled = (s: { instanceId: string; name: string }): string => labels[s.instanceId] ?? s.name;
     const perDomain = new Map<string, number>();
     for (const s of providers) if (s.domain) perDomain.set(s.domain, (perDomain.get(s.domain) ?? 0) + 1);
@@ -510,13 +519,6 @@ export class Service {
       if (d) usedDomains.add(d);
       return (iid && byInstance.get(iid)) || 'Library';
     };
-    const shelved = this.db.shelfedUris();
-    // One aggregated catalog search + the saved library in parallel (MA's catalog hits never
-    // carry the library flag, so the "in your library" tier comes from a dedicated query).
-    const [r, libRaw] = await Promise.all([
-      this.ma.searchAll(query, limit).catch(() => ({ artists: [], albums: [], playlists: [], tracks: [] })),
-      this.ma.listLibraryAlbums({ search: query, limit, offset: 0 }).catch((): ProviderLibraryAlbum[] => []),
-    ]);
     const key = (artist: string, title: string): string => `${artist}|${title}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
     const albums: SearchAlbum[] = [];
     // Library albums first (marked in-library); their keys suppress duplicate catalog hits.
