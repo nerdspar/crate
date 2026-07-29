@@ -1112,6 +1112,9 @@ export class Service {
 
   /** Re-run the artwork + spine-scan pipeline for every shelved album (admin refresh). */
   async refreshArtwork(): Promise<void> {
+    // Tell the wall a deliberate refresh is starting so it closes any open album and shows the
+    // covers updating live (rather than deferring the per-album `shelf` updates under an open card).
+    this.hub.broadcast({ type: 'refresh-art' });
     for (const row of this.db.listShelf()) {
       // Try the stored cover URL; if it's absent or stale (e.g. an iTunes-Match / uploaded Apple
       // album's signed URL that has expired — reusing it just re-downloads a dead link), re-query MA

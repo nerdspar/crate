@@ -455,6 +455,9 @@ export type WsMessage =
   | { type: 'progress'; playerId: string; elapsed: number }
   | { type: 'shelf' }
   | { type: 'shelves' }
+  /** A user-triggered artwork refresh is starting — the wall closes any open album so its covers
+      visibly update live (background `shelf` updates instead leave an open card in place). */
+  | { type: 'refresh-art' }
   | { type: 'players' }
   | { type: 'sync'; progress: number; message: string }
   | { type: 'settings'; settings: Settings }

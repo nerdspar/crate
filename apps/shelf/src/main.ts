@@ -6958,6 +6958,7 @@ function connectWs(): void {
       }
     }
     else if (msg.type === 'progress') handleProgress(msg.playerId, msg.elapsed);
+    else if (msg.type === 'refresh-art') closeAlbum(); // deliberate refresh → close the card so its covers update live
     else if (msg.type === 'shelf' || msg.type === 'shelves') scheduleReloadShelf();
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
