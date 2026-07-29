@@ -1076,18 +1076,21 @@ export class Service {
     return out.slice(0, limit);
   }
 
-  private async processArtwork(id: string, url: string, opts: { scan?: boolean } = {}): Promise<void> {
+  private async processArtwork(id: string, url: string, opts: { scan?: boolean } = {}): Promise<boolean> {
+    let ok = false;
     try {
       const art = await buildArtwork(id, url, { artDir: this.cfg.artDir, coverHeightPx: this.cfg.coverHeightPx });
       this.db.updateArtwork(id, art.artworkPath, art.spineStripPath, art.palette);
       invalidateArtCache(id);
       this.hub.broadcast({ type: 'shelf' });
+      ok = true;
     } catch (err) {
       process.stderr.write(`[crate] artwork failed for ${id}: ${(err as Error).message}\n`);
     }
     // Real spine scan (best-effort, slow: MusicBrainz is rate-limited) — after
     // the fast artwork so the spine appears immediately, upgraded if a scan lands.
     if (opts.scan !== false) void this.processSpineScan(id);
+    return ok;
   }
 
   private async processSpineScan(id: string): Promise<void> {
@@ -1110,8 +1113,20 @@ export class Service {
   /** Re-run the artwork + spine-scan pipeline for every shelved album (admin refresh). */
   async refreshArtwork(): Promise<void> {
     for (const row of this.db.listShelf()) {
-      if (row.artwork_url) await this.processArtwork(row.id, row.artwork_url);
-      else void this.processSpineScan(row.id);
+      // Try the stored cover URL; if it's absent or stale (e.g. an iTunes-Match / uploaded Apple
+      // album's signed URL that has expired — reusing it just re-downloads a dead link), re-query MA
+      // for the current URL and cache that instead. Only the failing albums incur the extra lookup.
+      let url = row.artwork_url;
+      const ok = url ? await this.processArtwork(row.id, url) : false;
+      if (!ok && row.kind === 'album') {
+        const fresh = await this.ma.getAlbum(row.provider_uri).then((a) => a?.artworkUrl ?? null).catch(() => null);
+        if (fresh && fresh !== url) {
+          this.db.setArtworkUrl(row.id, fresh);
+          await this.processArtwork(row.id, fresh);
+          url = fresh;
+        }
+      }
+      if (!url) void this.processSpineScan(row.id); // never had any cover URL → at least try a spine scan
       // Backfill album runtime for shelves added before duration was tracked.
       if (row.total_duration == null) {
         const tracks = await this.ma.getTracks(row.provider_uri).catch((): Track[] => []);

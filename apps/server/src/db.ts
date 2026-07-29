@@ -217,6 +217,11 @@ export class Db {
       .run(artworkPath, spineStripPath, palette ? JSON.stringify(palette) : null, id);
   }
 
+  /** Replace the stored remote cover URL (e.g. when a refresh re-queries MA for a fresher one). */
+  setArtworkUrl(id: string, url: string | null): void {
+    this.db.prepare('UPDATE albums SET artwork_url = ? WHERE id = ?').run(url, id);
+  }
+
   setSpineScan(id: string, spineScanPath: string | null): void {
     this.db.prepare('UPDATE albums SET spine_scan_path = ? WHERE id = ?').run(spineScanPath, id);
   }
