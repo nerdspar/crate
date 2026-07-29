@@ -163,6 +163,12 @@ const BUILTIN_PLAYLIST_KEYS = [
 // full-res (imageproxy size=0) is needlessly heavy — MA re-fetches + serves each original, brutal on a
 // Pi. 320 is crisp for the wall's small cards, and MA caches the resized variant so repeats are instant.
 const SEARCH_ART_PX = 320;
+// MA's proxy-id image endpoint (/imageproxy/<proxy_id>?size=N) only accepts a fixed preset set —
+// just 256 and 512 (0/none/other → 4xx). We use it for non-remotely-accessible art (iTunes-Match /
+// uploaded Apple Music albums, whose stored URLs are signed + expire), so pick 512 for covers and
+// 256 for search thumbs. (Regular public CDN art keeps its direct URL + SEARCH_ART_PX thumbing.)
+const PROXY_ART_FULL = 512;
+const PROXY_ART_THUMB = 256;
 
 export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   readonly id = 'music-assistant';
@@ -415,6 +421,14 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     const path = str(img['path']);
     const provider = str(img['provider']);
     if (!path) return null;
+    // A non-remotely-accessible image (iTunes-Match / uploaded Apple Music albums) is a signed,
+    // short-lived URL the browser can't fetch (it 4xxs once the signature expires — usually ~24h).
+    // Serve it through MA's stable proxy_id endpoint, which re-resolves it server-side. (This is the
+    // only path that supports the fixed preset sizes, so ask for the larger; thumbArt shrinks it.)
+    const proxyId = str(img['proxy_id']);
+    if (img['remotely_accessible'] === false && proxyId) {
+      return `${this.maBaseUrl}/imageproxy/${proxyId}?size=${PROXY_ART_FULL}`;
+    }
     if (/^https?:\/\//.test(path)) return path;
     // Non-URL provider path → route through MA's image proxy.
     const q = new URLSearchParams({ path, size: '0' });
@@ -433,6 +447,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
       path uses getAlbum art (never thumbed), so shelf covers stay full-res. */
   private thumbArt(url: string | null): string | null {
     if (!url) return url;
+    if (url.includes('/imageproxy/')) return url.replace(/([?&]size=)\d+/, `$1${PROXY_ART_THUMB}`); // proxy_id form (256/512 only)
     if (url.includes('/imageproxy?')) return url.replace('size=0', `size=${SEARCH_ART_PX}`);
     if (url.includes('mzstatic.com'))
       return url.replace(/\/\d+x\d+([a-z]*)\.(jpg|jpeg|png|webp)/i, `/${SEARCH_ART_PX}x${SEARCH_ART_PX}$1.$2`);
