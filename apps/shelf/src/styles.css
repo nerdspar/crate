@@ -1197,7 +1197,9 @@ body.idle #queue-grip::after { opacity: 0; }
 #find.osk-on #osk { display: block; }
 #find.osk-on #find-bar { bottom: 40vh; max-height: 60vh; }
 /* simple-keyboard dark theme */
-#osk .simple-keyboard { max-width: 100%; }
+/* Centered, not stretched across the 2560px-wide wall — keeps keys a comfortable tap size with
+   generous side margins rather than one row spanning the whole screen. */
+#osk .simple-keyboard { max-width: 46vw; margin: 0 auto; }
 .crate-osk.hg-theme-default { background: transparent; padding: 0; border-radius: 0; }
 .crate-osk .hg-row { margin-bottom: 1vh; }
 .crate-osk .hg-row:last-child { margin-bottom: 0; }

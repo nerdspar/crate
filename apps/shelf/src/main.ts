@@ -4020,8 +4020,10 @@ findSearch.addEventListener('input', () => {
   filterQuery = findSearch.value.trim();
   findClear.hidden = !findSearch.value;
   artistView = null; // typing leaves any open artist detail
-  if (!filterQuery) renderRecents(); // empty box → offer the last few searches
-  else renderSearchPrompt(); // typed but not committed → nudge toward Done (no MA call yet)
+  if (!filterQuery) {
+    find.classList.remove('searching'); // empty box (e.g. after tapping ✕) → shrink back to the browse sheet
+    renderRecents(); // and offer the last few searches
+  } else renderSearchPrompt(); // typed but not committed → nudge toward Done (no MA call yet)
 });
 /** Shown while typing, before the query is committed — so the results area isn't blank or stale. */
 function renderSearchPrompt(): void {
