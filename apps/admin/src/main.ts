@@ -116,32 +116,58 @@ function srcArtIcon(source?: string): string {
   return icon ? `<span class="src-ico" title="${esc(source)}">${icon}</span>` : '';
 }
 
-/* ================= Tab navigation ================= */
+/* ================= Tab + route navigation (coarse hash routes) =================
+   The admin is one page; we mirror the *coarse* location — which tab, and within Settings which
+   category — in location.hash (e.g. #/settings/ma) so a refresh restores your place and the
+   browser/phone back button steps through it. Deep, transient states (a shelf's albums, a
+   playlist's songs, the add-source picker, the onboarding wizard) are intentionally NOT routed:
+   they ride on dummy history entries (pushDetailHistory) and simply collapse on reload. */
+type Route = { tab: string; cat?: string };
+
 function switchTab(name: string): void {
   document.querySelectorAll<HTMLElement>('.tab-pane').forEach((p) => p.classList.toggle('on', p.dataset['tab'] === name));
   document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset['tab'] === name));
 }
+
+function parseHash(): Route {
+  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const tab = parts[0] === 'shelves' || parts[0] === 'settings' ? parts[0] : 'search';
+  if (tab === 'settings' && parts[1] && SETTINGS_CATS.some((c) => c.id === parts[1])) return { tab, cat: parts[1] };
+  return { tab };
+}
+function hashFor(r: Route): string {
+  return r.tab === 'settings' && r.cat ? `#/settings/${r.cat}` : `#/${r.tab}`;
+}
+/** Go to a coarse location, recording it in history so back/forward and refresh work. */
+function navTo(route: Route): void {
+  const target = hashFor(route);
+  if (target !== (location.hash || '#/search')) history.pushState({}, '', target);
+  applyRoute(route);
+}
+/** Render whatever the given route points at. Idempotent — also the popstate/boot entry point. */
+function applyRoute(route: Route): void {
+  backToIndex(); // collapse any open shelf/playlist detail when the coarse screen changes
+  switchTab(route.tab);
+  const cat = route.tab === 'settings' && route.cat ? SETTINGS_CATS.find((c) => c.id === route.cat) : undefined;
+  if (cat && settings) {
+    showSettingsCat(cat);
+  } else {
+    // Settings index (or a non-settings tab). A settings-category route whose data isn't loaded
+    // yet lands here; init re-applies it once loadSettingsPanel() resolves.
+    settingsDetailEl.hidden = true;
+    settingsIndexEl.hidden = false;
+    currentSettingsCat = null;
+  }
+}
 document.querySelectorAll<HTMLElement>('.tab-btn').forEach((b) => {
-  b.addEventListener('click', () => {
-    // Tapping a tab always drops you on that tab's top-level screen (out of any detail).
-    resetToTabTop();
-    switchTab(b.dataset['tab']!);
-  });
+  b.addEventListener('click', () => navTo({ tab: b.dataset['tab']! }));
 });
 
-/* ---- Screen navigation: tab tap returns to the top; the phone back button (and the
-   in-app back buttons) step out of detail screens one level at a time (History API). ---- */
-function resetToTabTop(): void {
-  if (typeof backToIndex === 'function') backToIndex();
-  settingsDetailEl.hidden = true;
-  settingsIndexEl.hidden = false;
-  currentSettingsCat = null;
+/** True if a shelf/playlist detail overlay is showing (these ride dummy history entries). */
+function anEphemeralDetailIsOpen(): boolean {
+  return !playlistSongsEl.hidden || !shelfDetailEl.hidden;
 }
-/** True if any detail sub-screen is currently showing. */
-function aDetailIsOpen(): boolean {
-  return !playlistSongsEl.hidden || !shelfDetailEl.hidden || !settingsDetailEl.hidden;
-}
-/** Close the deepest-open detail screen (returns to its parent). */
+/** Close the deepest-open ephemeral detail (returns to its parent). */
 function goBackOneLevel(): void {
   if (!playlistSongsEl.hidden) {
     playlistSongsEl.hidden = true;
@@ -149,18 +175,16 @@ function goBackOneLevel(): void {
     else shelvesIndexEl.hidden = false;
   } else if (!shelfDetailEl.hidden) {
     backToIndex();
-  } else if (!settingsDetailEl.hidden) {
-    settingsDetailEl.hidden = true;
-    settingsIndexEl.hidden = false;
-    currentSettingsCat = null;
   }
 }
-/** Push a history entry when opening a detail screen, so the back button steps out. */
+/** Push a history entry when opening an ephemeral detail, so the back button steps out. */
 function pushDetailHistory(): void {
   history.pushState({ crateDetail: true }, '');
 }
 window.addEventListener('popstate', () => {
-  if (aDetailIsOpen()) goBackOneLevel();
+  // Ephemeral overlays close one level at a time; anything else is a coarse route change.
+  if (anEphemeralDetailIsOpen()) goBackOneLevel();
+  else applyRoute(parseHash());
 });
 
 /* ================= Add — one search over your library + the catalog ================= */
@@ -497,7 +521,7 @@ function albumCard(it: LibraryAlbum | SearchAlbum): HTMLElement {
 
 /** Jump from an Add-tab album to that album inside the All-albums shelf, and flash it. */
 async function openAlbumInAllShelf(albumId: string): Promise<void> {
-  switchTab('shelves');
+  navTo({ tab: 'shelves' });
   await openShelf('all', 'All albums');
   const card = shelfListEl.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(albumId)}"]`);
   if (card) {
@@ -3187,12 +3211,16 @@ function renderSettingsCats(): void {
   }
 }
 let currentSettingsCat: SettingsCat | null = null;
+/** Open a settings category as a route, so refresh and the back button work. Rendering itself
+    lives in showSettingsCat (called by applyRoute). */
 function openSettingsCat(cat: SettingsCat): void {
+  navTo({ tab: 'settings', cat: cat.id });
+}
+function showSettingsCat(cat: SettingsCat): void {
   if (!settings) return;
   currentSettingsCat = cat;
   settingsIndexEl.hidden = true;
   settingsDetailEl.hidden = false;
-  pushDetailHistory();
   settingsCatName.textContent = cat.name;
   settingsCatBody.innerHTML = '';
   cat.render(settingsCatBody);
@@ -3734,6 +3762,13 @@ void loadSources();
 updateAddToolbar();
 setContentType('album'); // seeds Add + Shelves for the shared Albums/Playlists choice
 void loadShelvesIndex();
-void loadSettingsPanel();
+// Restore the coarse location from the URL and land on the right tab immediately. A settings-
+// category route needs the settings data, so re-apply it once loadSettingsPanel() resolves.
+if (!location.hash) history.replaceState({}, '', '#/search');
+applyRoute(parseHash());
+void loadSettingsPanel().then(() => {
+  const r = parseHash();
+  if (r.tab === 'settings' && r.cat) applyRoute(r);
+});
 void maybeAuthGate();
 void maybeOnboard();
