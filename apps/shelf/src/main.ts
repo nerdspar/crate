@@ -9,7 +9,7 @@
  * touchscreen issue (see conventions).
  */
 
-import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type AudiobookChapter, type MediaKind, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
+import { CrateClient, DEFAULT_SETTINGS, EXTRA_MEDIA, isSpeaker, type PodcastEpisode, type AudiobookChapter, type MediaKind, type MediaBrowseItem, type MediaSearchResponse, type MusicSourceInfo, type ExtraMediaKind, type SourceKinds, type AfterAlbum, type AfterPlay, type IdleContent, type InkMode, type InkSize, type InkWeight, type GlowRadius, type GlowIntensity, type GroupPreset, type LabelLayout, type LabelVary, type GlobalSearchResponse, type LibraryPlaylist, type OpenMode, type ProviderAlbumDetail, type Player, type PlayerState, type QueueInsert, type RepeatMode, type SearchAlbum, type SearchArtist, type SearchSong, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type ShelfKind, type SortBy, type SpineMode, type SpineTextDir, type SpineThickness, type SpineWidthMode, type SystemStatus, type Track, type WsMessage, type YearDisplay, type YearEmphasis, type YearPos } from '@crate/shared';
 // Fonts bundled locally (§12) — the kiosk must not depend on Google Fonts.
 // Weights span light→heavy so the ink-weight setting has real range to move across.
 import '@fontsource/archivo-narrow/400.css';
@@ -728,6 +728,7 @@ function autoOpenIfSingle(): void {
 
 function expand(el: HTMLElement, on: boolean): void {
   closeCardPop(); // a ⋯ popover must never linger across an expand/collapse
+  closeSongMenu();
   el.classList.toggle('expanded', on);
   el.style.width = openWidth(el) + 'px'; // grows to the right, pushing later spines along
   if (on && openIdx !== null) {
@@ -753,16 +754,18 @@ function closeCardPop(): void {
 document.addEventListener(
   'pointerdown',
   (e) => {
-    if (!openCardPop) return;
     const t = e.target as Node | null;
-    if (t && (openCardPop.contains(t) || (t instanceof Element && t.closest('.panel-menu')))) return;
-    closeCardPop(); // tap landed outside the popover (and not on its ⋯ toggle) → dismiss
+    // Card ⋯ popover: dismiss on any tap outside it (and not on its ⋯ toggle).
+    if (openCardPop && !(t && (openCardPop.contains(t) || (t instanceof Element && t.closest('.panel-menu'))))) closeCardPop();
+    // Per-song long-press menu: dismiss on any tap outside it.
+    if (songMenuEl && !(t && songMenuEl.contains(t))) closeSongMenu();
   },
   true,
 );
 
 function closeAlbum(): void {
   closeCardPop();
+  closeSongMenu();
   if (openIdx === null) return;
   const el = shelf.children[openIdx] as HTMLElement;
   el.classList.remove('open', 'expanded');
@@ -1056,12 +1059,129 @@ const audiobookChaptersCache = new Map<string, AudiobookChapter[]>(); // for the
 function wireTrackSelect(row: HTMLElement, wrap: HTMLElement, albumId: string, ti: number): void {
   row.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (performance.now() < suppressTrackTapUntil) return; // the click that trails a long-press → ignore
     songCue.set(albumId, ti);
     wrap.querySelectorAll('.track').forEach((r, idx) => {
       if (!r.classList.contains('now')) r.classList.toggle('cued', idx === ti);
     });
     updatePlayButton(); // a different track than what's playing → the Play button plays the selection
   });
+}
+
+// After a long-press opens the per-song menu, swallow the click/select that the same gesture trails.
+let suppressTrackTapUntil = 0;
+/** Long-press a music track row → the per-song action menu (Play now / next / Add to queue / station).
+    Cancels if the finger moves (that's a scroll), so it never fights the track list's vertical scroll. */
+function wireTrackLongPress(row: HTMLElement, trackUri: string | null | undefined): void {
+  if (!trackUri) return;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let sx = 0;
+  let sy = 0;
+  const clear = (): void => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+  row.addEventListener('pointerdown', (e) => {
+    if (e.button > 0) return; // primary/touch only
+    sx = e.clientX;
+    sy = e.clientY;
+    clear();
+    timer = setTimeout(() => {
+      timer = null;
+      suppressTrackTapUntil = performance.now() + 600;
+      openSongMenu(trackUri, sx, sy);
+    }, 450);
+  });
+  row.addEventListener('pointermove', (e) => {
+    if (timer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) clear(); // moved → it's a scroll
+  });
+  row.addEventListener('pointerup', clear);
+  row.addEventListener('pointercancel', clear);
+}
+
+/* ================= Per-item queue + station actions =================
+   Shared by the per-song long-press menu and the album/playlist ⋯ menu. */
+/** The speaker these actions target: whatever's playing, else the sticky pick the Play button uses. */
+function queueTarget(): string | null {
+  return now.playerId ?? activePlayerId;
+}
+/** A per-item queue write (Play now / Play next / Add to queue). Hand-curating the queue stands down
+    the album-end auto-advance so "next album on shelf" can't clobber what you just added. */
+function queueInsert(uri: string, option: QueueInsert, okMsg: string): void {
+  const pid = queueTarget();
+  if (!pid) {
+    showToast('Pick a speaker first');
+    return;
+  }
+  afterAlbumWatch = null;
+  void client
+    .queueEnqueue(pid, uri, option)
+    .then(() => showToast(okMsg))
+    .catch(() => showToast('Could not update the queue'));
+}
+/** Start an endless station seeded by an item (or, with `artist`, by its primary artist). Also a
+    hand-curation, so it stands down the album-end auto-advance. */
+function startStation(uri: string, okMsg: string, artist = false): void {
+  const pid = queueTarget();
+  if (!pid) {
+    showToast('Pick a speaker first');
+    return;
+  }
+  afterAlbumWatch = null;
+  void client
+    .startStation(pid, uri, artist)
+    .then(() => showToast(okMsg))
+    .catch(() => showToast('Could not start the station'));
+}
+
+/* ---- Per-song long-press menu: floats at the finger; dismissed by the shared capture-phase
+   outside-tap listener and on card collapse. ---- */
+let songMenuEl: HTMLElement | null = null;
+function closeSongMenu(): void {
+  if (!songMenuEl) return;
+  songMenuEl.remove();
+  songMenuEl = null;
+}
+function openSongMenu(trackUri: string, x: number, y: number): void {
+  closeCardPop();
+  closeSongMenu();
+  const menu = document.createElement('div');
+  menu.className = 'song-menu';
+  const item = (label: string, fn: () => void): void => {
+    const b = document.createElement('button');
+    b.className = 'song-menu-item';
+    b.textContent = label;
+    b.addEventListener('pointerdown', (e) => e.stopPropagation()); // its own tap target, no bubbling
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeSongMenu();
+      fn();
+    });
+    menu.appendChild(b);
+  };
+  item('Play now', () => queueInsert(trackUri, 'play', 'Playing now'));
+  item('Play next', () => queueInsert(trackUri, 'next', 'Playing next'));
+  item('Add to queue', () => queueInsert(trackUri, 'add', 'Added to queue'));
+  const sep = document.createElement('div');
+  sep.className = 'song-menu-sep';
+  menu.appendChild(sep);
+  item('Start station', () => startStation(trackUri, 'Starting station'));
+  document.body.appendChild(menu);
+  positionSongMenu(menu, x, y);
+  songMenuEl = menu;
+}
+/** Sit the menu beside the finger (right, or flipped left near the edge), vertically centered on it,
+    clamped fully into the short 2560×720 viewport. */
+function positionSongMenu(menu: HTMLElement, x: number, y: number): void {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const { width: w, height: h } = menu.getBoundingClientRect();
+  let left = x + 14;
+  if (left + w > vw - 8) left = x - w - 14;
+  left = Math.max(8, Math.min(left, vw - w - 8));
+  const top = Math.max(8, Math.min(y - h / 2, vh - h - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
 }
 
 /** A dim description block (podcast/audiobook synopsis) clamped to a few lines, with a
@@ -1256,6 +1376,7 @@ async function renderTracks(el: HTMLElement, i: number): Promise<void> {
         e.stopPropagation();
         void play(i, ti);
       });
+      wireTrackLongPress(row, t.uri); // long-press → per-song queue/station menu
       wrap.appendChild(row);
     });
   };
@@ -5617,14 +5738,52 @@ async function openAsSongShelf(playlistMediaId: string, name: string): Promise<v
   await switchShelf(sh.id);
 }
 
-/** Populate the opened card's ⋯ popover, per media kind:
-    - album: "Add to shelf" list + "Add to queue" + Remove
-    - playlist case: "Open as shelf" + "Add to queue" + Remove
-    - playlist song: "Add to queue" + Remove
+/** Populate the opened card's ⋯ popover in up to three divider-separated sections, per media kind:
+    - album:         [Play now / Play next / Add to queue] · [Album radio / Artist radio] · [Add to shelf + Remove]
+    - playlist:      [Play now / Play next / Add to queue] · [Open as shelf + Remove]
+    - playlist song: [Play now / Play next / Add to queue] · [Song radio] · [Remove]
     - radio / podcast / audiobook: Remove only (radio never ends; spoken-word is resume-based). */
 function renderCardMenu(pop: HTMLElement, a: ShelfItem): void {
   pop.innerHTML = '';
-  const enqueueUri = a.albumUri ?? a.providerUri; // song → its track uri; else the album/playlist uri
+  const uri = a.albumUri ?? a.providerUri; // song spine → its track uri; else the album/playlist uri
+  const music = (a.kind === 'album' || a.kind === 'playlist') && !!uri;
+  const sepIfNeeded = (): void => {
+    if (!pop.children.length) return; // no leading/duplicate dividers
+    const d = document.createElement('div');
+    d.className = 'panel-pop-sep';
+    pop.appendChild(d);
+  };
+  const action = (label: string, fn: () => void): void => {
+    const b = document.createElement('button');
+    b.className = 'panel-shelf-add';
+    b.textContent = label;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      closeCardPop();
+      fn();
+    };
+    pop.appendChild(b);
+  };
+
+  // 1) Queue — Play now / Play next / Add to queue (whole album/playlist, or a song spine's track).
+  if (music && uri) {
+    action('Play now', () => queueInsert(uri, 'play', 'Playing now'));
+    action('Play next', () => queueInsert(uri, 'next', 'Playing next'));
+    action('Add to queue', () => queueInsert(uri, 'add', 'Added to queue'));
+  }
+
+  // 2) Radio — album gets album + artist radio; a playlist song spine gets song radio.
+  if (a.kind === 'album' && uri) {
+    sepIfNeeded();
+    action('Album radio', () => startStation(uri, 'Starting album radio'));
+    action('Artist radio', () => startStation(uri, 'Starting artist radio', true));
+  } else if (a.kind === 'playlist' && a.albumUri) {
+    sepIfNeeded();
+    action('Song radio', () => startStation(a.albumUri as string, 'Starting station'));
+  }
+
+  // 3) Library / manage — Add to shelf (albums) or Open as shelf (playlists), then Remove.
+  sepIfNeeded();
   if (a.kind === 'album') {
     const lbl = document.createElement('div');
     lbl.className = 'panel-pop-label';
@@ -5635,36 +5794,7 @@ function renderCardMenu(pop: HTMLElement, a: ShelfItem): void {
     pop.appendChild(list);
     renderAddShelves(list, a.albumId);
   } else if (a.kind === 'playlist' && !a.albumUri) {
-    const open = document.createElement('button');
-    open.className = 'panel-shelf-add';
-    open.textContent = 'Open as shelf';
-    open.onclick = (e) => {
-      e.stopPropagation();
-      pop.hidden = true;
-      void openAsSongShelf(a.albumId, a.title);
-    };
-    pop.appendChild(open);
-  }
-  if ((a.kind === 'album' || a.kind === 'playlist') && enqueueUri) {
-    const q = document.createElement('button');
-    q.className = 'panel-shelf-add';
-    q.textContent = 'Add to queue';
-    q.onclick = (e) => {
-      e.stopPropagation();
-      const pid = now.playerId ?? activePlayerId;
-      if (!pid) {
-        showToast('Nothing playing to queue behind');
-        return;
-      }
-      q.disabled = true;
-      q.textContent = 'Added to queue ✓';
-      void client.queueEnqueue(pid, enqueueUri).catch(() => {
-        q.disabled = false;
-        q.textContent = 'Add to queue';
-        showToast('Could not add to queue');
-      });
-    };
-    pop.appendChild(q);
+    action('Open as shelf', () => void openAsSongShelf(a.albumId, a.title));
   }
   // Remove — every kind. Two-tap to arm so it can't fire by accident on a wall.
   const rm = document.createElement('button');

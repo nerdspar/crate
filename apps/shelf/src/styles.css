@@ -1326,6 +1326,21 @@ body.idle #queue-grip::after { opacity: 0; }
 }
 .panel-shelf-add:disabled { color: var(--ink-dim); }
 .panel-pop-empty { font-size: 1.5vh; color: var(--ink-dim); padding: 0.8vh 2vh; max-width: 44vh; white-space: normal; line-height: 1.35; }
+.panel-pop-sep { height: 1px; background: rgba(236,231,221,0.12); margin: 0.5vh 1.2vh; }
+
+/* Per-song long-press menu — floats at the finger (left/top set inline); same look as the ⋯ popover. */
+.song-menu {
+  position: fixed; z-index: 60;
+  background: rgba(30,27,32,0.98); border: 1px solid rgba(236,231,221,0.14);
+  border-radius: 1.2vh; padding: 0.8vh; box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 0.4vh; min-width: 26vh;
+}
+.song-menu-item {
+  background: transparent; color: var(--ink); border: none; text-align: left;
+  border-radius: 0.8vh; font-size: 1.9vh; font-weight: 600; padding: 1.1vh 2vh; white-space: nowrap;
+}
+.song-menu-item:active { background: rgba(236,231,221,0.10); }
+.song-menu-sep { height: 1px; background: rgba(236,231,221,0.12); margin: 0.5vh 1.2vh; }
 
 /* Global search results: a source dropdown + three columns (Albums/Playlists/Songs). */
 #find-results { display: flex; flex-direction: column; gap: 1vh; }
