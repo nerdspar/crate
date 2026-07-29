@@ -23,6 +23,7 @@ import type {
   MusicSourceInfo,
   NowPlaying,
   QueueResponse,
+  QueueInsert,
   SearchSong,
   PlayerState,
   PlayersResponse,
@@ -1219,8 +1220,19 @@ export class Service {
   queueClear(playerId: string): Promise<void> {
     return this.ma.clearQueue(playerId);
   }
-  queueEnqueue(playerId: string, providerUri: string): Promise<void> {
-    return this.ma.enqueue(playerId, providerUri);
+  queueEnqueue(playerId: string, providerUri: string, option: QueueInsert = 'add'): Promise<void> {
+    return this.ma.enqueue(playerId, providerUri, option);
+  }
+  /** Start an endless station seeded by a uri. `artistSeed` first resolves the item's primary
+      artist (so "Artist radio" can be driven from an album uri the wall already has). */
+  async startStation(playerId: string, uri: string, artistSeed = false): Promise<void> {
+    let seed = uri;
+    if (artistSeed) {
+      const artistUri = await this.ma.artistUriForAlbum(uri).catch(() => null);
+      if (!artistUri) throw new Error('no artist to seed a station from');
+      seed = artistUri;
+    }
+    return this.ma.startStation(playerId, seed);
   }
 
   group(playerIds: string[]): Promise<void> {

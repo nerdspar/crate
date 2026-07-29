@@ -400,6 +400,10 @@ export interface QueueResponse {
   items: QueueTrack[];
   currentIndex: number | null;
 }
+/** How a per-item queue write inserts (mirrors MA's QueueOption): 'add' = end of queue, 'next' =
+    right after the current item, 'play' = now (pushing the rest down so it resumes after). The
+    destructive "replace" case stays on double-tap, not these menu actions. */
+export type QueueInsert = 'add' | 'next' | 'play';
 
 /** One podcast episode — rendered in the podcast's track-list view and playable by uri. */
 export interface PodcastEpisode {

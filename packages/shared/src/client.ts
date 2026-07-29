@@ -15,6 +15,7 @@ import type {
   PlayRequest,
   PlayersResponse,
   QueueResponse,
+  QueueInsert,
   ProviderAlbumDetail,
   AudiobookDetail,
   MediaBrowseItem,
@@ -158,9 +159,15 @@ export class CrateClient {
   queueClear(playerId: string): Promise<{ ok: true }> {
     return this.post('/api/queue/clear', { player: playerId });
   }
-  /** Append a media item (album/playlist/track uri) to the end of a player's queue. */
-  queueEnqueue(playerId: string, uri: string): Promise<{ ok: true }> {
-    return this.post('/api/queue/enqueue', { player: playerId, uri });
+  /** Insert a media item (album/playlist/track uri) into a player's queue. `option`: 'add' = end,
+      'next' = right after the current item, 'play' = now (keeping the rest). */
+  queueEnqueue(playerId: string, uri: string, option: QueueInsert = 'add'): Promise<{ ok: true }> {
+    return this.post('/api/queue/enqueue', { player: playerId, uri, option });
+  }
+  /** Start an endless station (dynamic radio) seeded by a uri. `artist: true` seeds from the item's
+      primary artist instead of the item itself (album uri → artist radio). */
+  startStation(playerId: string, uri: string, artist = false): Promise<{ ok: true }> {
+    return this.post('/api/queue/station', { player: playerId, uri, artist });
   }
 
   addToShelf(body: AddToShelfRequest): Promise<{ ok: true; albumId: string; duplicate: boolean }> {

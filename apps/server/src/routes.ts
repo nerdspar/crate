@@ -11,6 +11,7 @@ import type {
   MaConfigValue,
   OverrideRequest,
   PlayRequest,
+  QueueInsert,
   Settings,
   ShelfAlbumRequest,
   RepeatRequest,
@@ -45,7 +46,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['POST', /^\/api\/playlists\/prewarm$/],
     ['POST', /^\/api\/(play|transport|volume|shuffle|repeat|group)$/],
     ['GET', /^\/api\/queue$/],
-    ['POST', /^\/api\/queue\/(play|move|remove|clear|enqueue)$/],
+    ['POST', /^\/api\/queue\/(play|move|remove|clear|enqueue|station)$/],
     // Wall-facing media reads: podcast/audiobook browse (library), tab-scoped search, episode
     // lists, audiobook detail, continue-listening — plus the played/unplayed toggle. All are wall
     // (unauthenticated touchscreen) surfaces; the media MUTATIONS (POST /api/media/:kind add + sync)
@@ -278,8 +279,14 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     return { ok: true };
   });
   app.post('/api/queue/enqueue', async (req) => {
-    const b = (req.body ?? {}) as{ player: string; uri: string };
-    await service.queueEnqueue(b.player, b.uri);
+    const b = (req.body ?? {}) as { player: string; uri: string; option?: QueueInsert };
+    await service.queueEnqueue(b.player, b.uri, b.option ?? 'add');
+    return { ok: true };
+  });
+  // Endless station (MA dynamic radio) seeded by a uri; `artist` first resolves the item's artist.
+  app.post('/api/queue/station', async (req) => {
+    const b = (req.body ?? {}) as { player: string; uri: string; artist?: boolean };
+    await service.startStation(b.player, b.uri, b.artist === true);
     return { ok: true };
   });
 

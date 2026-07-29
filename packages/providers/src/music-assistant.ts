@@ -20,6 +20,7 @@ import type {
   PlayerState,
   PlayerType,
   RepeatMode,
+  QueueInsert,
   SourceKinds,
   Track,
 } from '@crate/shared';
@@ -1093,9 +1094,30 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
   async clearQueue(playerId: string): Promise<void> {
     await this.client.command('player_queues/clear', { queue_id: await this.activeQueueId(playerId) });
   }
-  /** Append a media item (album/playlist/track uri) to the end of the player's queue. */
-  async enqueue(playerId: string, providerUri: string): Promise<void> {
-    await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option: 'add' });
+  /** Insert a media item (album/playlist/track uri) into the player's queue. `option`: 'add' = end,
+      'next' = right after the current item, 'play' = now (pushing the rest down so it resumes after).
+      Mirrors MA's QueueOption of the same names. */
+  async enqueue(playerId: string, providerUri: string, option: QueueInsert = 'add'): Promise<void> {
+    await this.client.command('player_queues/play_media', { queue_id: playerId, media: providerUri, option });
+  }
+
+  /** Start an endless station (MA dynamic radio) seeded by an item uri (track/album/artist). It
+      replaces the queue and self-refills, so it's a "take over" action like a fresh play — repeat
+      is forced off so the seed doesn't loop before the mix fills in. */
+  async startStation(playerId: string, seedUri: string): Promise<void> {
+    void this.client.command('player_queues/repeat', { queue_id: playerId, repeat_mode: 'off' }).catch(() => {});
+    await this.client.command('player_queues/play_media', { queue_id: playerId, media: seedUri, option: 'replace', radio_mode: true });
+  }
+
+  /** Resolve the primary artist's provider uri for an album uri (backs "Artist radio"). Null if the
+      album carries no artist with a uri. */
+  async artistUriForAlbum(albumUri: string): Promise<string | null> {
+    const item = rec(await this.client.command('music/item_by_uri', { uri: albumUri }));
+    for (const a of arr(item['artists'])) {
+      const uri = str(rec(a)['uri']);
+      if (uri) return uri;
+    }
+    return null;
   }
 
   async setVolume(playerId: string, level: number): Promise<void> {
