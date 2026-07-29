@@ -396,13 +396,6 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     return values;
   }
 
-  /** Whether MA's builtin smart playlists are currently exposed (any of them still enabled). */
-  async getBuiltinPlaylistsEnabled(): Promise<boolean> {
-    const values = await this.builtinConfigValues();
-    // Each defaults to true, so "enabled" = not explicitly set to false.
-    return BUILTIN_PLAYLIST_KEYS.some((k) => values[k] !== false);
-  }
-
   /** Enable or disable ALL of MA's builtin smart playlists at once. Submits the provider's full
       config (MA's save validates the whole set, e.g. it rejects a missing log_level) with just the
       playlist keys overridden, preserving every other builtin setting (`config/providers/save`). */

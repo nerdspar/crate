@@ -2871,33 +2871,10 @@ function renderMaCat(body: HTMLElement, opts?: { onboarding?: boolean }): void {
     add.addEventListener('click', () => void showPicker());
     body.appendChild(add);
 
-    // Built-in smart playlists — MA auto-generates these; off by default so they don't clutter search.
-    // Hidden during onboarding (we hide them automatically there — no decision to make); the toggle
-    // lives only in Settings for anyone who wants them back later.
+    // MA's auto-generated "smart" playlists (Random Album, Infinite Mix, Recently played…) are hidden
+    // for good — the server disables them once per install on first MA connect, so there's no toggle.
+    // Tab/source management isn't shown during onboarding — sources are still being added.
     if (opts?.onboarding) return;
-    const plField = document.createElement('div');
-    plField.className = 'field field-toggle ma-builtin-pl';
-    const plCb = document.createElement('input');
-    plCb.type = 'checkbox';
-    plCb.disabled = true;
-    const plLab = document.createElement('label');
-    plLab.appendChild(plCb);
-    plLab.append(' Show built-in smart playlists');
-    plField.appendChild(plLab);
-    const plHint = document.createElement('p');
-    plHint.className = 'field-desc';
-    plHint.textContent = 'Music Assistant auto-generates playlists (Random Album, Infinite Mix, Recently played…). Turn this off to keep them out of Crate search.';
-    plField.appendChild(plHint);
-    body.appendChild(plField);
-    void client.getMaBuiltinPlaylists().then((r) => { plCb.checked = r.enabled; plCb.disabled = false; }).catch(() => (plCb.disabled = false));
-    plCb.addEventListener('change', () => {
-      plCb.disabled = true;
-      void client
-        .setMaBuiltinPlaylists(plCb.checked)
-        .then((r) => showToast(r.enabled ? 'Built-in playlists shown' : 'Built-in playlists hidden'))
-        .catch((e) => { plCb.checked = !plCb.checked; maErr(e); })
-        .finally(() => (plCb.disabled = false));
-    });
 
     // Tabs & sources — per kind: show/hide the tab, choose which connected sources it searches, and
     // its default source. Radio/Podcasts/Audiobooks also require a source that serves that kind.
@@ -3692,12 +3669,9 @@ async function obSources(body: HTMLElement): Promise<ObNext> {
   host.className = 'ob-sources';
   body.appendChild(host);
   renderMaCat(host, { onboarding: true });
-  // Hide MA's auto-generated smart playlists automatically — no need to ask during setup
-  // (the toggle is in Settings → Music Assistant for anyone who wants them later).
-  return async () => {
-    await client.setMaBuiltinPlaylists(false).catch(() => {});
-    return true;
-  };
+  // MA's auto-generated smart playlists are hidden automatically by the server (once, on first MA
+  // connect) — nothing to do here.
+  return undefined;
 }
 
 async function obSpeakers(body: HTMLElement): Promise<ObNext> {

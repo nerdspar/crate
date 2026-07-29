@@ -126,6 +126,7 @@ export class Service {
       void this.refreshPlayers();
       void this.pushState();
       void this.refreshExtraMediaMetadata(); // once: fix spine second lines on already-shelved items
+      void this.defaultOffBuiltinPlaylists(); // once: hide MA's auto-generated smart playlists
     });
     // Reflect speaker renames / added / removed within ~1s (not just on reconnect).
     this.ma.onPlayersChanged(() => void this.refreshPlayers());
@@ -919,6 +920,20 @@ export class Service {
     if (changed) this.hub.broadcast({ type: 'shelf' });
   }
 
+  /** One-time: hide MA's auto-generated "smart" playlists (Random Album, Infinite Mix, Recently
+      played…) so they don't clutter Crate's Playlists tab and Search. Runs once per install on the
+      first successful MA connect; the persisted flag means a later manual re-enable in MA isn't
+      fought, and a transient failure just retries on the next connect. */
+  private async defaultOffBuiltinPlaylists(): Promise<void> {
+    if (this.db.getRaw<boolean>('ma.builtinPlaylists.defaultedOff', false)) return;
+    try {
+      await this.ma.setBuiltinPlaylists(false);
+      this.db.setRaw('ma.builtinPlaylists.defaultedOff', true);
+    } catch {
+      // MA not ready / transient — leave the flag unset so we retry on the next connect.
+    }
+  }
+
   /** Search one media kind across the connected sources; marks already-saved ones + attributes
       each hit to its source (the client filters + badges on that). */
   async searchMedia(kind: ExtraMediaKind, query: string, _source?: string): Promise<MediaSearchResponse> {
@@ -1385,16 +1400,6 @@ export class Service {
   /** Reload a source. */
   maReloadSource(instanceId: string): Promise<void> {
     return this.ma.reloadSource(instanceId);
-  }
-
-  /** Whether MA's builtin smart playlists are exposed (they otherwise clutter Crate search). */
-  maBuiltinPlaylistsEnabled(): Promise<boolean> {
-    return this.ma.getBuiltinPlaylistsEnabled();
-  }
-
-  /** Turn MA's builtin smart playlists on/off. The install flow disables them by default. */
-  maSetBuiltinPlaylists(enabled: boolean): Promise<void> {
-    return this.ma.setBuiltinPlaylists(enabled);
   }
 
   // --- Backup / restore (Phase 5) -----------------------------------------
