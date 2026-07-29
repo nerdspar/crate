@@ -612,8 +612,14 @@ function buildShelf(): void {
     const panelPop = el.querySelector('.panel-pop') as HTMLElement;
     el.querySelector('.panel-menu')!.addEventListener('click', (e) => {
       stop(e);
-      panelPop.hidden = !panelPop.hidden;
-      if (!panelPop.hidden) renderCardMenu(panelPop, a);
+      if (panelPop.hidden) {
+        closeCardPop(); // only one card ⋯ menu open at a time
+        renderCardMenu(panelPop, a);
+        panelPop.hidden = false;
+        openCardPop = panelPop;
+      } else {
+        closeCardPop();
+      }
     });
     panelPop.addEventListener('pointerdown', stop); // taps inside the popover don't bubble to the card
     wireVol(el.querySelector('.vol') as HTMLElement);
@@ -721,6 +727,7 @@ function autoOpenIfSingle(): void {
 }
 
 function expand(el: HTMLElement, on: boolean): void {
+  closeCardPop(); // a ⋯ popover must never linger across an expand/collapse
   el.classList.toggle('expanded', on);
   el.style.width = openWidth(el) + 'px'; // grows to the right, pushing later spines along
   if (on && openIdx !== null) {
@@ -732,7 +739,30 @@ function expand(el: HTMLElement, on: boolean): void {
   }
 }
 
+/* ---- Card ⋯ popover dismissal ----
+   Only one card ⋯ menu is open at a time. It closes on any tap outside it (CAPTURE phase — the card
+   and its panel stopPropagation on pointerdown, so a bubble-phase listener would never see the tap)
+   and whenever a card expands/collapses, so it never lingers when you reopen the card. The same
+   helper will back the per-song long-press menu. */
+let openCardPop: HTMLElement | null = null;
+function closeCardPop(): void {
+  if (!openCardPop) return;
+  openCardPop.hidden = true;
+  openCardPop = null;
+}
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (!openCardPop) return;
+    const t = e.target as Node | null;
+    if (t && (openCardPop.contains(t) || (t instanceof Element && t.closest('.panel-menu')))) return;
+    closeCardPop(); // tap landed outside the popover (and not on its ⋯ toggle) → dismiss
+  },
+  true,
+);
+
 function closeAlbum(): void {
+  closeCardPop();
   if (openIdx === null) return;
   const el = shelf.children[openIdx] as HTMLElement;
   el.classList.remove('open', 'expanded');
