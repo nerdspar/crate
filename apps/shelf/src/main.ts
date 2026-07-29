@@ -773,6 +773,7 @@ function closeAlbum(): void {
   hideGlow();
   openIdx = null;
   groupSelect = null; // leaving the card exits any in-progress grouping
+  if (pendingShelfReload) scheduleReloadShelf(); // flush any shelf change deferred while the card was open
 }
 
 // Cumulative left offset of every spine (paddingLeft + Σ spine-w + gap). Caching it makes each
@@ -5818,7 +5819,10 @@ function renderCardMenu(pop: HTMLElement, a: ShelfItem): void {
     if (timer) clearTimeout(timer);
     void client
       .removeFromShelf(a.albumId)
-      .then(() => showToast('Removed'))
+      .then(() => {
+        closeAlbum(); // close the card we removed (its deferred reload flushes here → spine drops out)
+        showToast('Removed');
+      })
       .catch(() => showToast('Remove failed'));
   };
   pop.appendChild(rm);
@@ -6966,6 +6970,7 @@ function connectWs(): void {
 // The server emits `shelf` liberally (art + enrichment land per item), and each rebuilds the
 // whole spine DOM. Coalesce a burst into one rebuild ~200ms after it settles.
 let reloadShelfTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingShelfReload = false;
 function scheduleReloadShelf(): void {
   shelfItemsCache.clear(); // a shelf changed → the "On your shelf" search column may be stale
   clearTimeout(reloadShelfTimer);
@@ -6973,6 +6978,14 @@ function scheduleReloadShelf(): void {
 }
 
 async function reloadShelf(): Promise<void> {
+  // Don't rebuild the shelf DOM while a card is open: a background art/enrichment `shelf` broadcast
+  // (e.g. the per-album stream during a bulk "Refresh art") tears the open card down and re-opens it,
+  // replaying its flip animation over and over. Defer until the card closes (flushed in closeAlbum).
+  if (openIdx !== null) {
+    pendingShelfReload = true;
+    return;
+  }
+  pendingShelfReload = false;
   const tok = ++shelfLoadToken;
   const res = await client.getShelf(activeShelf === 'all' ? undefined : activeShelf);
   if (tok !== shelfLoadToken) return; // a newer load (e.g. a shelf switch) superseded this
