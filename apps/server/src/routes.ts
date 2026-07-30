@@ -58,6 +58,8 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
     ['POST', /^\/api\/system\/display\/(sleep|wake)$/],
     ['POST', /^\/api\/system\/services\/restart$/],
+    // Presence/ambient-light sensor input — posted by the local sensor daemon on the Pi.
+    ['POST', /^\/api\/sensor$/],
     // Software update from the on-screen System settings: a read-only check + the update trigger. Same
     // physical-access trust as reboot above (both need someone standing at the touchscreen).
     ['GET', /^\/api\/system\/update(\/progress)?$/],
@@ -433,6 +435,13 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.get('/api/settings', () => service.getSettings());
 
   app.put('/api/settings', (req) => service.putSettings(req.body as Partial<Settings>));
+
+  // Presence + ambient-light from the sensor daemon (or a mock curl). Presence → wake/idle on the
+  // wall; lux → auto-brightness when enabled.
+  app.post('/api/sensor', (req) => {
+    const b = (req.body ?? {}) as { present?: boolean; lux?: number };
+    return service.sensorUpdate(b);
+  });
 
   // Re-run artwork + spine-scan for all shelved albums (backfills scans for
   // albums added before scan mode existed). Runs in the background.

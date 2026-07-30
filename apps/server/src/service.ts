@@ -1670,6 +1670,30 @@ export class Service {
     return status;
   }
 
+  /** A reading from the presence/ambient-light sensor daemon (or a mock POST). Presence drives the
+      wall's wake/idle (broadcast to the touchscreen, which owns that state machine); lux drives
+      auto-brightness when that mode is enabled. */
+  sensorUpdate(input: { present?: boolean; lux?: number }): { ok: true } {
+    if (typeof input.present === 'boolean') {
+      this.hub.broadcast({ type: 'presence', present: input.present });
+    }
+    if (typeof input.lux === 'number' && this.db.getSettings().autoBrightness) {
+      void this.setBrightness(this.luxToBrightness(input.lux));
+    }
+    return { ok: true };
+  }
+
+  /** Map an ambient-light reading (lux) to a 0–100 brightness. Comfortable indoor mapping: ~20 lux
+      (dim room) → 15%, ~400 lux (bright) → 100%, clamped so a dark room never goes fully black.
+      (Reasonable defaults; could be exposed as settings later.) */
+  private luxToBrightness(lux: number): number {
+    const MIN_PCT = 15;
+    const LUX_LOW = 20;
+    const LUX_HIGH = 400;
+    const t = Math.max(0, Math.min(1, (lux - LUX_LOW) / (LUX_HIGH - LUX_LOW)));
+    return Math.round(MIN_PCT + t * (100 - MIN_PCT));
+  }
+
   /** Restart the app process. Only on the appliance, where systemd relaunches
       it (Restart=always); a no-op elsewhere so dev previews aren't killed. */
   restart(): { ok: boolean } {

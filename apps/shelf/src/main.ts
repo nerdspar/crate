@@ -6965,6 +6965,7 @@ function connectWs(): void {
     else if (msg.type === 'players') void reloadPlayers();
     else if (msg.type === 'settings') applySettings(msg.settings);
     else if (msg.type === 'system') applySystemStatus(msg.status);
+    else if (msg.type === 'presence') handlePresence(msg.present);
     else if (msg.type === 'reload' && msg.app === 'shelf') location.reload();
   };
   ws.onclose = () => setTimeout(connectWs, 2000);
@@ -7094,6 +7095,11 @@ function applySettings(s: Settings): void {
     zones stay live regardless, so a single swipe both reveals and opens. */
 const IDLE_MS = 10000;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+// A sensor-governed wall idles once the room has read empty this long. mmWave presence can briefly
+// drop even with someone standing there, so we wait out a short grace rather than idling on the
+// first empty frame. (When idleAfterMin is also set, whichever elapses first idles the wall.)
+const SENSOR_ABSENCE_GRACE_MS = 45000;
+let absenceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastMarkActive = 0;
 function markActive(): void {
   const t = performance.now();
@@ -7103,6 +7109,7 @@ function markActive(): void {
   lastMarkActive = t;
   lastTouchAt = t;
   document.body.classList.remove('idle');
+  if (absenceTimer) { clearTimeout(absenceTimer); absenceTimer = null; } // a touch means someone's here
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => document.body.classList.add('idle'), IDLE_MS);
   // A touch during scheduled sleep wakes the screen for a couple of minutes.
@@ -7117,6 +7124,26 @@ function markActive(): void {
 window.addEventListener('pointerdown', markActive, { passive: true });
 window.addEventListener('pointermove', markActive, { passive: true });
 window.addEventListener('keydown', markActive);
+
+/** Presence from the mmWave sensor (server broadcast). While someone's present an approach wakes the
+    wall (wakeOnSensor) and continued presence keeps resetting the idle clock (idleUseSensor); the
+    daemon re-posts presence periodically, so standing there holds the wall awake. When the room reads
+    empty and the sensor governs idle (idleUseSensor), the wall idles after a short grace — this is what
+    lets the sensor idle the wall on its own, even with no inactivity timer set. The screen-off stage
+    (screenOffAfterMin) still runs off the same clock, so it follows once the room's stayed empty. */
+function handlePresence(present: boolean): void {
+  if (present) {
+    if (absenceTimer) { clearTimeout(absenceTimer); absenceTimer = null; }
+    if (settings.wakeOnSensor) markActive(); // approached → wake + reset the idle clock
+    else if (settings.idleUseSensor) restartIdleWatch(); // present but not waking → just defer idle
+    return;
+  }
+  if (!settings.idleUseSensor || absenceTimer) return; // sensor doesn't govern idle, or already counting
+  absenceTimer = setTimeout(() => {
+    absenceTimer = null;
+    void enterIdle();
+  }, SENSOR_ABSENCE_GRACE_MS);
+}
 
 /* ---------- Idle actions + attract mode + sleep schedule (unified §7) ----------
    Timer-based idle (dim/screen-off + now-playing/shelf/auto-open) and the per-day

@@ -463,4 +463,6 @@ export type WsMessage =
   | { type: 'settings'; settings: Settings }
   | { type: 'system'; status: SystemStatus }
   /** Tell every connected client of one app to reload itself (a service "restart"). */
-  | { type: 'reload'; app: 'shelf' | 'admin' };
+  | { type: 'reload'; app: 'shelf' | 'admin' }
+  /** Presence from the motion/mmWave sensor (drives wake-on-approach / idle-from-sensor). */
+  | { type: 'presence'; present: boolean };
