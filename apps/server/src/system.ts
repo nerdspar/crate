@@ -41,10 +41,10 @@ export function detectBrightnessMethod(): BrightnessMethod {
   } catch {
     /* fall through */
   }
-  if (existsSync('/usr/bin/ddcutil') || existsSync('/usr/local/bin/ddcutil')) {
-    cachedMethod = 'ddcutil';
-    return cachedMethod;
-  }
+  // NB: ddcutil is intentionally NOT used as the general brightness method. On some panels the DDC
+  // brightness scale is non-linear/erratic (e.g. an HDR ultrawide where 25 = brightest, 55+ = off),
+  // so the wall's software dim veil is the more predictable slider/idle-dim path. DDC/CI is used only
+  // for display *sleep* (setDisplaySleep) — a coarse darken-then-restore that doesn't need a sane scale.
   cachedMethod = 'software';
   return cachedMethod;
 }
@@ -120,6 +120,43 @@ export async function setDisplayPower(on: boolean): Promise<void> {
     } catch {
       /* try the next method */
     }
+  }
+}
+
+/** Load the i2c-dev module so ddcutil can reach the HDMI DDC bus (best-effort; harmless if built-in). */
+async function ensureI2cDev(): Promise<void> {
+  try {
+    await pexec('modprobe', ['i2c-dev']);
+  } catch {
+    /* not permitted / already present — ddcutil will still try */
+  }
+}
+
+/** Read the monitor's current DDC/CI brightness (VCP 0x10), or null if unavailable. Used to snapshot
+    the level before sleep so wake can restore the exact value (the panel's 0–100 scale may be
+    non-linear/inverted, so we never assume what a value "means"). */
+export async function readDdcBrightness(): Promise<number | null> {
+  await ensureI2cDev();
+  try {
+    const { stdout } = await pexec('ddcutil', ['getvcp', '--terse', '10']);
+    // terse form: "VCP 10 C <current> <max>"
+    const line = stdout.split('\n').find((l) => l.startsWith('VCP'));
+    const cur = line ? Number.parseInt(line.trim().split(/\s+/)[3] ?? '', 10) : NaN;
+    return Number.isFinite(cur) ? cur : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Set the monitor's DDC/CI brightness (VCP 0x10) to a 0–100 value. `--noverify` because some panels
+    (cheap HDR ones) don't read back the value cleanly even when the write takes effect. */
+export async function setDdcBrightness(value: number): Promise<boolean> {
+  await ensureI2cDev();
+  try {
+    await pexec('ddcutil', ['setvcp', '--noverify', '10', String(Math.max(0, Math.min(100, Math.round(value))))]);
+    return true;
+  } catch {
+    return false;
   }
 }
 

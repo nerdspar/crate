@@ -173,6 +173,10 @@ if [[ $WITH_KIOSK -eq 1 ]]; then
   # and a fallback pointer shows anyway); sway has a first-class `seat hide_cursor` directive. swaybg
   # paints the black background for the ~1s before Chromium draws.
   apt-get install -y sway swaybg chromium || apt-get install -y sway swaybg chromium-browser
+  # ddcutil lets Crate dim/blank the panel over DDC/CI for display sleep (many HDMI monitors ignore
+  # DPMS or answer it with a test-pattern). Best-effort — skip if unavailable. The i2c-dev module it
+  # needs is loaded on demand by the server (modprobe) when sleeping.
+  apt-get install -y ddcutil || true
   CHROMIUM="$(command -v chromium || command -v chromium-browser)"
   # sway (wlroots) needs DRM/KMS + input access. Pi OS' first user is usually already in these groups,
   # but a fresh Lite image or a custom user may not be — add them so the kiosk can open the display.
