@@ -741,6 +741,10 @@ body.nowpaused .track-eq i, body.nowpaused .eq i { animation-play-state: paused;
 .set-pane[data-pane='sleep'].on, .set-pane[data-pane='system'].on { columns: auto; }
 /* Players: its three rows are the three columns — spread them across the whole frame. */
 .set-pane[data-pane='players'].on { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4vw; align-items: start; }
+/* Idle pane: keep each group's settings together and let the groups wrap into columns — four across a
+   wide wall, reflowing to fewer on narrower screens (responsive, not a fixed grid). */
+.set-pane[data-pane='idle'].on { columns: auto; display: flex; flex-wrap: wrap; gap: 0 4vw; align-items: flex-start; }
+.set-pane[data-pane='idle'] .set-group { flex: 1 1 20vw; min-width: 280px; }
 /* Keeps grouped rows (e.g. When-idle-screen + its dim slider) together in one column. */
 .setting-keep { break-inside: avoid; }
 .setting-row { display: flex; flex-direction: column; gap: 1.6vh; margin-bottom: 3vh; }
