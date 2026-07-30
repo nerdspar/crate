@@ -66,9 +66,44 @@ export async function applyBrightness(level: number): Promise<void> {
   }
 }
 
-/** Power the display on/off. Tries the common kiosk stacks; failures are
-    non-fatal (the client overlay still blanks the screen). No-op on dev. */
+/** The running sway compositor's IPC socket (the kiosk user's session). sway writes it to
+    /run/user/<uid>/sway-ipc.<uid>.<pid>.sock, which the root crate.service can read. */
+function findSwaySocket(): string | null {
+  try {
+    for (const uid of readdirSync('/run/user')) {
+      let files: string[];
+      try {
+        files = readdirSync(`/run/user/${uid}`);
+      } catch {
+        continue;
+      }
+      const sock = files.find((f) => f.startsWith('sway-ipc.') && f.endsWith('.sock'));
+      if (sock) return `/run/user/${uid}/${sock}`;
+    }
+  } catch {
+    /* no sway session (dev, or a different kiosk stack) */
+  }
+  return null;
+}
+
+/** Power the display on/off. On the sway kiosk this DPMS-es the output so the panel actually powers
+    down (backlight off), not just a black frame; other stacks fall back to wlopm/vcgencmd. Failures
+    are non-fatal (the client overlay still blanks the screen). No-op on dev. */
 export async function setDisplayPower(on: boolean): Promise<void> {
+  const state = on ? 'on' : 'off';
+  // Preferred on the wall: ask sway to DPMS the output (swaymsg ships with sway). `power` is the
+  // modern verb, `dpms` the pre-1.7 one — try both against the kiosk session's socket.
+  const sock = findSwaySocket();
+  if (sock) {
+    for (const verb of ['power', 'dpms']) {
+      try {
+        await pexec('swaymsg', ['-s', sock, `output * ${verb} ${state}`]);
+        return;
+      } catch {
+        /* try the older verb, then the generic fallbacks below */
+      }
+    }
+  }
   const cmds: Array<[string, string[]]> = on
     ? [
         ['wlopm', ['--on', '*']],
