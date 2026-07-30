@@ -132,17 +132,19 @@ async function ensureI2cDev(): Promise<void> {
   }
 }
 
-/** Power the monitor off/on over DDC/CI (VCP D6). `value` is the raw D6 code — commonly '05' = off
-    (some panels use '04'), '01' = on. Unlike DPMS this keeps the HDMI signal up, so the panel simply
-    powers its backlight (no "no-signal" test-pattern) and touch still wakes it. `--noverify` because
-    these panels don't read the value back cleanly. Returns whether the command went through. */
-export async function setDdcPower(value: string): Promise<boolean> {
+/** Read the monitor's current DDC/CI brightness (VCP 0x10), or null if unavailable. Used to snapshot
+    the level before sleep so wake can restore the exact value (the panel's 0–100 scale may be
+    non-linear/inverted, so we never assume what a value "means"). */
+export async function readDdcBrightness(): Promise<number | null> {
   await ensureI2cDev();
   try {
-    await pexec('ddcutil', ['setvcp', '--noverify', 'd6', value]);
-    return true;
+    const { stdout } = await pexec('ddcutil', ['getvcp', '--terse', '10']);
+    // terse form: "VCP 10 C <current> <max>"
+    const line = stdout.split('\n').find((l) => l.startsWith('VCP'));
+    const cur = line ? Number.parseInt(line.trim().split(/\s+/)[3] ?? '', 10) : NaN;
+    return Number.isFinite(cur) ? cur : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
