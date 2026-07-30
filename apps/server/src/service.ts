@@ -61,7 +61,7 @@ import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum, titleArtistKey } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, invalidateArtCache, songShelfItem, spineWidthFor } from './shelf.js';
-import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, readDdcBrightness, rebootSystem, setDdcBrightness, setDisplayPower, spawnUpdate, updateProgress } from './system.js';
+import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, rebootSystem, setDdcPower, setDisplayPower, spawnUpdate, updateProgress } from './system.js';
 import { githubCheck, githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
@@ -154,6 +154,9 @@ export class Service {
     // A DDC/CI panel's brightness scale can be inverted/erratic (100 may be *dark*), so don't drive a
     // value into it at boot — leave it at its own default; the client still resets its software dim.
     if (detectBrightnessMethod() === 'sysfs') void applyBrightness(100);
+    // A DDC panel may have been left powered off via D6 sleep — boot it back on and awake.
+    this.db.setRaw('system.displayAsleep', false);
+    void setDdcPower('01');
     // Warn only when NO token is configured anywhere. The real one is usually the DB override set
     // during onboarding (which wins over env), so a wall set up through the wizard stays quiet even
     // with an empty MA_TOKEN env var — the old env-only check cried wolf on every boot.
@@ -1642,28 +1645,12 @@ export class Service {
   }
 
   async setDisplaySleep(asleep: boolean): Promise<SystemStatus> {
-    const wasAsleep = this.db.getRaw<boolean>('system.displayAsleep', false);
     this.db.setRaw('system.displayAsleep', asleep);
-    // Prefer DDC/CI (independent of the general brightness method, which stays 'software' so the wall's
-    // dim veil keeps working): dim the backlight to its darkest and restore the exact pre-sleep level
-    // on wake — the panel's 0–100 scale can be non-linear, so we snapshot the raw value rather than
-    // assume anything. DDC dodges the colour test-pattern that some panels show when DPMS cuts the
-    // signal. Only when the monitor doesn't answer DDC do we fall back to output power (DPMS/wlopm).
-    let handled = false;
-    if (asleep) {
-      // Snapshot the live level only on the awake→asleep edge, so a repeat "sleep" can't capture the
-      // already-dark value as what to wake back to.
-      if (!wasAsleep) {
-        const cur = await readDdcBrightness(); // null if the monitor doesn't speak DDC/CI
-        if (cur != null) this.db.setRaw('system.ddcWakeBrightness', cur);
-      }
-      if (this.db.getRaw<number>('system.ddcWakeBrightness', -1) >= 0) {
-        handled = await setDdcBrightness(this.db.getRaw<number>('system.sleepBrightness', 100));
-      }
-    } else {
-      const saved = this.db.getRaw<number>('system.ddcWakeBrightness', -1);
-      if (saved >= 0) handled = await setDdcBrightness(saved);
-    }
+    // Power the panel off/on over DDC/CI (VCP D6): 05 = off (it holds, and because the HDMI signal
+    // stays up there's no "no-signal" test-pattern and touch still wakes it), 01 = on. This doesn't
+    // touch brightness (VCP 10), so wake returns exactly where it was. Fall back to output power
+    // (DPMS/wlopm) only when the monitor doesn't answer DDC.
+    const handled = await setDdcPower(asleep ? this.db.getRaw<string>('system.ddcOffCode', '05') : '01');
     if (!handled) await setDisplayPower(!asleep);
     const status = this.systemStatus();
     this.hub.broadcast({ type: 'system', status });
