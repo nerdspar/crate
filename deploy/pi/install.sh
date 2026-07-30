@@ -173,10 +173,18 @@ if [[ $WITH_KIOSK -eq 1 ]]; then
   # and a fallback pointer shows anyway); sway has a first-class `seat hide_cursor` directive. swaybg
   # paints the black background for the ~1s before Chromium draws.
   apt-get install -y sway swaybg chromium || apt-get install -y sway swaybg chromium-browser
-  # ddcutil lets Crate dim/blank the panel over DDC/CI for display sleep (many HDMI monitors ignore
-  # DPMS or answer it with a test-pattern). Best-effort — skip if unavailable. The i2c-dev module it
-  # needs is loaded on demand by the server (modprobe) when sleeping.
+  # Display sleep: Crate dims/blanks the panel over DDC/CI (ddcutil) because many HDMI monitors ignore
+  # DPMS or answer it with a test-pattern; sway's DPMS (swaymsg, from the sway install above) is only the
+  # fallback, and vcgencmd ships with the Pi firmware — so ddcutil is the one screen-control tool that
+  # isn't already present. `apt-get install` upgrades it to the current version on every reinstall, so a
+  # re-run keeps it updated. Best-effort — the server degrades to DPMS if ddcutil is unavailable.
   apt-get install -y ddcutil || true
+  # ddcutil reaches the panel over the HDMI DDC i2c bus, which the i2c-dev kernel module exposes. The
+  # server modprobes it on demand, but load it at boot too (and now) so the first display-sleep is
+  # instant and it keeps working even if crate.service is ever run unprivileged.
+  install -d /etc/modules-load.d
+  echo "i2c-dev" > /etc/modules-load.d/crate.conf
+  modprobe i2c-dev 2>/dev/null || true
   CHROMIUM="$(command -v chromium || command -v chromium-browser)"
   # sway (wlroots) needs DRM/KMS + input access. Pi OS' first user is usually already in these groups,
   # but a fresh Lite image or a custom user may not be — add them so the kiosk can open the display.
