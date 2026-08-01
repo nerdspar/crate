@@ -4728,6 +4728,7 @@ let modalTracks: Track[] = [];
 
 function closeAlbumModal(): void {
   albumModal.hidden = true;
+  find.classList.remove('under-modal'); // restore the search overlay (its results are still there)
   modalUri = null;
   modalAlbumUri = null;
   groupSelect = null; // leaving the overlay exits any in-progress grouping
@@ -4815,6 +4816,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   albumModal.hidden = false;
+  find.classList.add('under-modal'); // suspend the search overlay behind this modal (if it's open)
   syncVol(albumModal.querySelector('.am-vol'));
 
   let d: ProviderAlbumDetail;
@@ -4899,6 +4901,7 @@ async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).appendChild(playlistAddControl(pl));
   albumModal.hidden = false;
+  find.classList.add('under-modal'); // suspend the search overlay behind this modal (if it's open)
   syncVol(albumModal.querySelector('.am-vol'));
   renderRooms(albumModal.querySelector('.am-card') as HTMLElement);
   updateModalTransport();
