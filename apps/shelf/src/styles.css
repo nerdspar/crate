@@ -1520,6 +1520,9 @@ body.idle #queue-grip::after { opacity: 0; }
 .am-rooms { margin: 1.6vh 0; }
 .am-tracks { flex: 1; min-height: 0; overflow-y: auto; margin-top: 0.4vh; }
 .am-tracks::-webkit-scrollbar { display: none; }
+/* Loading / empty / error note shown in the track area (e.g. a playlist whose songs are still
+   loading or couldn't be fetched), in place of a blank list. */
+.am-note { color: var(--ink-dim); font-size: 2vh; padding: 1.2vh 0.2vw; }
 .find-card-art {
   position: relative;
   width: 7vh; height: 7vh; flex-shrink: 0; border-radius: 0.8vh;

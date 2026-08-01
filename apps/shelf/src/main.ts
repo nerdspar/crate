@@ -4875,7 +4875,11 @@ async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
   set('.am-title', pl.name);
   set('.am-artist', pl.owner ?? '');
   (albumModal.querySelector('.am-cover') as HTMLElement).style.backgroundImage = pl.artworkUrl ? `url('${pl.artworkUrl}')` : '';
-  (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
+  const tracksEl = albumModal.querySelector('.am-tracks') as HTMLElement;
+  // The title is already the playlist name, so (unlike the album overlay) it can't double as the
+  // loading cue — a provider track fetch can take a few seconds cold. Show a note in the track area
+  // instead of a blank list, so a slow/empty fetch never reads as "no songs".
+  tracksEl.innerHTML = '<div class="am-note">Loading songs…</div>';
   (albumModal.querySelector('.am-add') as HTMLElement).innerHTML = '';
   (albumModal.querySelector('.am-add') as HTMLElement).appendChild(playlistAddControl(pl));
   albumModal.hidden = false;
@@ -4886,10 +4890,14 @@ async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
   try {
     tracks = await client.getPlaylistTracks(pl.providerUri);
   } catch {
-    if (modalUri === pl.providerUri) (albumModal.querySelector('.am-tracks') as HTMLElement).innerHTML = '';
+    if (modalUri === pl.providerUri) tracksEl.innerHTML = '<div class="am-note">Couldn’t load songs. Try again.</div>';
     return;
   }
   if (modalUri !== pl.providerUri) return; // superseded
+  if (!tracks.length) {
+    tracksEl.innerHTML = '<div class="am-note">No songs found for this playlist.</div>';
+    return;
+  }
   renderModalTracks(tracks, -1, true);
 }
 

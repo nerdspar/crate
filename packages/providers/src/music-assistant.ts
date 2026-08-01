@@ -718,7 +718,9 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
     if (cached && Date.now() - cached.at < MusicAssistantProvider.TRACK_TTL_MS) return cached.tracks;
     if (parsed.type === 'playlist') {
       const pl = await this.getPlaylistTracks(parsed.provider, parsed.id);
-      this.trackCache.set(providerUri, { tracks: pl, at: Date.now() });
+      // Don't cache an empty result: a transient MA hiccup (or a >20s resolve that returned nothing)
+      // would otherwise pin the playlist to "no songs" for the whole TTL, even once MA can serve it.
+      if (pl.length) this.trackCache.set(providerUri, { tracks: pl, at: Date.now() });
       return pl;
     }
     const raw = await this.client.command('music/albums/album_tracks', {
@@ -737,7 +739,7 @@ export class MusicAssistantProvider implements MusicSource, PlayerTarget {
         explicit: trackExplicit(item),
       };
     });
-    this.trackCache.set(providerUri, { tracks, at: Date.now() });
+    if (tracks.length) this.trackCache.set(providerUri, { tracks, at: Date.now() }); // never cache an empty/failed fetch
     return tracks;
   }
 
