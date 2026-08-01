@@ -1158,11 +1158,6 @@ body.idle #queue-grip::after { opacity: 0; }
   z-index: 17;
 }
 #find.open { opacity: 1; pointer-events: auto; }
-/* A play-now modal (album/playlist) opens on top of the find overlay (z 60 > 17). While it's up, fade
-   the find sheet out and stop it taking taps — otherwise its search controls (the "All" pill, tabs)
-   show through the modal's dim backdrop looking tappable, but a tap there only hits the backdrop and
-   dismisses the modal. Restored when the modal closes, with the search results intact. */
-#find.open.under-modal { opacity: 0; pointer-events: none; }
 #find-bar {
   position: absolute; left: 0; right: 0; bottom: 0;
   display: flex; flex-direction: column; gap: 1.6vh;
