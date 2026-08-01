@@ -4690,6 +4690,10 @@ let modalUri: string | null = null; // the uri we asked to open (album or track)
 let modalAlbumUri: string | null = null; // resolved real album uri to play
 let modalCue = -1;
 let modalIsPlaylist = false; // the overlay is showing a playlist (plays the playlist uri)
+/** The tracks currently rendered in the overlay. A playing playlist reports its current track's
+    album (not the playlist), so we recognise "this playlist is playing" by matching the live track
+    uri against these rows — same signal the playlist-shelf song spines use. */
+let modalTracks: Track[] = [];
 
 (albumModal.querySelector('.am-backdrop') as HTMLElement).addEventListener('click', closeAlbumModal);
 (albumModal.querySelector('.am-play') as HTMLElement).addEventListener('click', () => void onModalPlay());
@@ -4729,10 +4733,16 @@ function closeAlbumModal(): void {
   groupSelect = null; // leaving the overlay exits any in-progress grouping
 }
 
-/** Is the album shown in the overlay the one currently playing? (Playlists report the
-    current track's album, not the playlist, so we don't track "playing" for them.) */
+/** The overlay row whose track is playing right now, or -1. Playlists report the current track's
+    album (not the playlist), so match by the live track uri against the rendered rows. */
+function modalNowRow(): number {
+  if (now.state === 'idle' || !now.trackUri) return -1;
+  return modalTracks.findIndex((t) => t.uri === now.trackUri);
+}
+/** Is the album/playlist shown in the overlay the one currently playing? For a playlist that's
+    "the live track is one of these rows"; for an album it's the album-id match. */
 function modalIsPlaying(): boolean {
-  if (modalIsPlaylist) return false;
+  if (modalIsPlaylist) return modalNowRow() >= 0;
   const id = modalAlbumUri ? albumIdFromUri(modalAlbumUri) : null;
   return !!id && now.state !== 'idle' && now.albumId === id;
 }
@@ -4740,7 +4750,10 @@ function modalIsPlaying(): boolean {
 function modalSelectionChanged(): boolean {
   if (!modalIsPlaying()) return false;
   const roomChanged = activePlayerId != null && activePlayerId !== now.playerId;
-  const trackChanged = modalCue >= 0 && modalCue !== now.trackIndex;
+  // A playlist's live queue index doesn't map to the rendered rows, so compare the cued row against
+  // the row we matched by uri instead of now.trackIndex.
+  const nowRow = modalIsPlaylist ? modalNowRow() : now.trackIndex;
+  const trackChanged = modalCue >= 0 && modalCue !== nowRow;
   return roomChanged || trackChanged;
 }
 /** Overlay Play button: pause/resume when this album is playing unchanged, else play
@@ -4791,6 +4804,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
   modalAlbumUri = null;
   modalCue = -1;
   modalIsPlaylist = false;
+  modalTracks = [];
   const set = (sel: string, text: string): void => {
     (albumModal.querySelector(sel) as HTMLElement).textContent = text;
   };
@@ -4841,6 +4855,7 @@ async function openProviderAlbum(uri: string): Promise<void> {
 /** Render the overlay's track list (album or playlist). Tap = select/highlight only;
     the top Play button plays the selected track. Playlist rows show the track artist. */
 function renderModalTracks(tracks: Track[], cueIndex: number, withArtist = false): void {
+  modalTracks = tracks; // remember them so a playing playlist can be matched by track uri
   const tw = albumModal.querySelector('.am-tracks') as HTMLElement;
   tw.innerHTML = '';
   tracks.forEach((t, ti) => {
@@ -4868,6 +4883,7 @@ async function openPlaylistOverlay(pl: LibraryPlaylist): Promise<void> {
   modalAlbumUri = pl.providerUri; // playModal plays the playlist uri
   modalCue = -1;
   modalIsPlaylist = true;
+  modalTracks = [];
   const set = (sel: string, text: string): void => {
     (albumModal.querySelector(sel) as HTMLElement).textContent = text;
   };
@@ -4905,30 +4921,34 @@ async function playModal(trackIndex?: number): Promise<void> {
   if (!modalAlbumUri) return;
   const cue = trackIndex ?? (modalCue >= 0 ? modalCue : 0);
   if (activePlayerId && activeSolo) await ungroupActiveSoloIfNeeded();
-  // Optimistic now-state so the overlay flips to playing right away (song EQ + the
-  // ⏮ Pause ⏭ transport), like the album card. Albums only — a playlist reports its
-  // current track's album, not the playlist itself, so it can't be matched here.
-  if (!modalIsPlaylist) {
-    userPaused = false;
-    pauseGuardUntil = 0;
-    resumeGuardUntil = performance.now() + 8000;
-    selfPlayUntil = performance.now() + 8000; // Crate started this — not "external"
-    if (activePlayerId) focusedPlayerId = activePlayerId;
-    // Selection is committed to playback — clear the cue so it doesn't read as a pending
-    // change. The queue index MA reports (0 after start_item) won't match the tapped index,
-    // which otherwise kept modalSelectionChanged() true and flipped the button back to Play
-    // (leaving no way to pause). Mirrors songCue.delete in the card's play().
-    modalCue = -1;
-    // Buffer like the card: show the connecting spinner (not the EQ) until the room really plays
-    // what we asked for. No shelf spine here, so gate on the uri only.
-    playPendingIdx = -1;
-    playPendingUntil = performance.now() + 8000;
+  // Optimistic now-state so the overlay flips to playing right away — the connecting spinner then
+  // the song EQ + the ⏮ Pause ⏭ transport, like the album card. Albums match on the album uri; a
+  // playlist reports its current track's album (not the playlist), so it's tracked by the track uri:
+  // the row we expect to start (cue) confirms the room began and gets the spinner → EQ.
+  userPaused = false;
+  pauseGuardUntil = 0;
+  resumeGuardUntil = performance.now() + 8000;
+  selfPlayUntil = performance.now() + 8000; // Crate started this — not "external"
+  if (activePlayerId) focusedPlayerId = activePlayerId;
+  // Selection is committed to playback — clear the cue so it doesn't read as a pending change. The
+  // queue index MA reports (0 after start_item) won't match the tapped row, which otherwise kept
+  // modalSelectionChanged() true and flipped the button back to Play (leaving no way to pause).
+  modalCue = -1;
+  // Buffer like the card: show the connecting spinner (not the EQ) until the room really plays what
+  // we asked for. No shelf spine here, so gate on the uri only.
+  playPendingIdx = -1;
+  playPendingUntil = performance.now() + 8000;
+  if (modalIsPlaylist) {
+    playPendingUri = modalTracks[cue]?.uri ?? null; // the track we expect to start confirms the room began
+    playPendingAlbum = null; // a playlist track reports its own album, not a name we know here
+    now = { playerId: activePlayerId, albumId: null, trackIndex: cue, trackUri: modalTracks[cue]?.uri ?? null, elapsed: 0, duration: 0, state: 'playing', mediaKind: 'playlist', at: performance.now() };
+  } else {
     playPendingUri = modalAlbumUri;
     playPendingAlbum = (albumModal.querySelector('.am-title') as HTMLElement)?.textContent || null; // name fallback
     now = { playerId: activePlayerId, albumId: albumIdFromUri(modalAlbumUri), trackIndex: cue, trackUri: null, elapsed: 0, duration: 0, state: 'playing', mediaKind: 'album', at: performance.now() };
-    applyNow();
-    renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's spinner now
   }
+  applyNow();
+  renderRooms(albumModal.querySelector('.am-card') as HTMLElement); // reflect the target room's spinner now
   showToast(`Sent to ${roomName(activePlayerId)}…`);
   client
     .play({
