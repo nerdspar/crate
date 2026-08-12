@@ -1641,6 +1641,13 @@ export class Service {
     return status;
   }
 
+  /** Set once any DDC/CI op has succeeded on this display. A DDC-capable panel is slept by dimming its
+      backlight over DDC (video signal untouched), so we must NEVER fall back to cutting the signal
+      (DPMS) on it — on some panels DPMS shows a colour test-pattern, and worse it can drop power to a
+      monitor-side USB hub (e.g. the one the touchscreen hangs off, stranding touch until a re-plug).
+      Signal-cut sleep stays only for panels with no DDC and no backlight control at all. */
+  private ddcSeen = false;
+
   async setDisplaySleep(asleep: boolean): Promise<SystemStatus> {
     const wasAsleep = this.db.getRaw<boolean>('system.displayAsleep', false);
     this.db.setRaw('system.displayAsleep', asleep);
@@ -1648,23 +1655,33 @@ export class Service {
     // dim veil keeps working): dim the backlight to its darkest and restore the exact pre-sleep level
     // on wake — the panel's 0–100 scale can be non-linear, so we snapshot the raw value rather than
     // assume anything. DDC dodges the colour test-pattern that some panels show when DPMS cuts the
-    // signal. Only when the monitor doesn't answer DDC do we fall back to output power (DPMS/wlopm).
+    // signal, and keeps the monitor (and its USB) powered.
     let handled = false;
     if (asleep) {
       // Snapshot the live level only on the awake→asleep edge, so a repeat "sleep" can't capture the
       // already-dark value as what to wake back to.
       if (!wasAsleep) {
         const cur = await readDdcBrightness(); // null if the monitor doesn't speak DDC/CI
-        if (cur != null) this.db.setRaw('system.ddcWakeBrightness', cur);
+        if (cur != null) {
+          this.db.setRaw('system.ddcWakeBrightness', cur);
+          this.ddcSeen = true;
+        }
       }
       if (this.db.getRaw<number>('system.ddcWakeBrightness', -1) >= 0) {
         handled = await setDdcBrightness(this.db.getRaw<number>('system.sleepBrightness', 100));
+        if (handled) this.ddcSeen = true;
       }
     } else {
       const saved = this.db.getRaw<number>('system.ddcWakeBrightness', -1);
-      if (saved >= 0) handled = await setDdcBrightness(saved);
+      if (saved >= 0) {
+        handled = await setDdcBrightness(saved);
+        if (handled) this.ddcSeen = true;
+      }
     }
-    if (!handled) await setDisplayPower(!asleep);
+    // Cut the video signal (DPMS/wlopm) only as a true last resort — never on a DDC-capable panel,
+    // where dimming already handled it and dropping the signal risks a test-pattern and can unpower a
+    // monitor-side USB hub. Dim-in-place is always safe.
+    if (!handled && !this.ddcSeen) await setDisplayPower(!asleep);
     const status = this.systemStatus();
     this.hub.broadcast({ type: 'system', status });
     return status;
