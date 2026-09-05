@@ -12,7 +12,7 @@ import { networkInterfaces } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { BrightnessMethod } from '@crate/shared';
+import type { BrightnessMethod, WifiNetwork, WifiStatus } from '@crate/shared';
 
 const pexec = promisify(execFile);
 
@@ -278,4 +278,106 @@ export function getLocalIp(): string | null {
     }
   }
   return null;
+}
+
+// --- WiFi (NetworkManager) --------------------------------------------------
+// The wall's networking is NetworkManager (Bookworm default). These shell out to `nmcli` for the admin
+// Network page (scan/join/status) and to detect the offline-fallback setup hotspot. All best-effort:
+// on a dev box without nmcli they return empty/false so the UI still renders. The hotspot connection
+// name MUST match deploy/pi/wifi-fallback.sh (which raises the AP when the wall can't reach a network).
+const HOTSPOT_CON = 'crate-setup';
+
+/** Split one `nmcli --terse` line into fields, honouring nmcli's `\:` / `\\` escaping so an SSID that
+    contains a colon isn't mis-split. */
+function nmcliFields(line: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '\\' && i + 1 < line.length) {
+      cur += line[++i]; // unescape \: and \\
+      continue;
+    }
+    if (c === ':') {
+      out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** Current WiFi state: connected SSID (if any), and whether the setup hotspot is the active AP. */
+export async function wifiStatus(): Promise<WifiStatus> {
+  const status: WifiStatus = { connected: false, ssid: null, hotspot: false, ip: getLocalIp() };
+  try {
+    const { stdout } = await pexec('nmcli', ['--terse', '--fields', 'ACTIVE,SSID', 'device', 'wifi'], { timeout: 6000 });
+    for (const line of stdout.split('\n')) {
+      const f = nmcliFields(line);
+      if (f[0] === 'yes') {
+        status.connected = true;
+        status.ssid = (f[1] ?? '').trim() || null;
+        break;
+      }
+    }
+  } catch {
+    /* nmcli absent (dev) — leave defaults */
+  }
+  try {
+    const { stdout } = await pexec('nmcli', ['--terse', '--fields', 'NAME', 'connection', 'show', '--active'], { timeout: 6000 });
+    if (stdout.split('\n').some((l) => nmcliFields(l)[0] === HOTSPOT_CON)) {
+      // In setup-hotspot mode the AP is "connected" at the device level but we're not on a real network.
+      status.hotspot = true;
+      status.connected = false;
+      status.ssid = null;
+    }
+  } catch {
+    /* ignore */
+  }
+  return status;
+}
+
+/** Scan nearby WiFi networks, deduped by SSID (strongest signal kept), strongest first. */
+export async function wifiScan(): Promise<WifiNetwork[]> {
+  try {
+    // `--rescan auto`, not `yes`: while the setup hotspot is up wlan0 is an AP and can't actively scan
+    // (single radio), so we serve NetworkManager's cached list — which holds the networks it saw right
+    // before raising the hotspot (the ones at this location). In station mode `auto` still refreshes.
+    const { stdout } = await pexec(
+      'nmcli',
+      ['--terse', '--fields', 'SIGNAL,SECURITY,SSID', 'device', 'wifi', 'list', '--rescan', 'auto'],
+      { timeout: 20000 },
+    );
+    const best = new Map<string, WifiNetwork>();
+    for (const line of stdout.split('\n')) {
+      if (!line.trim()) continue;
+      const f = nmcliFields(line);
+      const signal = Number.parseInt(f[0] ?? '', 10) || 0;
+      const security = (f[1] ?? '').trim();
+      const ssid = (f.slice(2).join(':') ?? '').trim(); // SSID is last; rejoin in case it held colons
+      if (!ssid) continue; // hidden network
+      const secured = security !== '' && security !== '--';
+      const prev = best.get(ssid);
+      if (!prev || signal > prev.signal) best.set(ssid, { ssid, signal, secured });
+    }
+    return [...best.values()].sort((a, b) => b.signal - a.signal);
+  } catch {
+    return [];
+  }
+}
+
+/** Join a WiFi network (creates/activates a NetworkManager profile). Switching wlan0 to the new
+    network drops the setup hotspot, so callers fire this without waiting on the phone-side response;
+    if it fails, wifi-fallback.sh re-raises the hotspot within its grace window. */
+export async function wifiConnect(ssid: string, password?: string): Promise<{ ok: boolean; error?: string }> {
+  if (!ssid) return { ok: false, error: 'missing ssid' };
+  const args = ['device', 'wifi', 'connect', ssid, ...(password ? ['password', password] : []), 'ifname', 'wlan0'];
+  try {
+    await pexec('nmcli', args, { timeout: 45000 });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message.split('\n')[0] || 'connect failed' };
+  }
 }

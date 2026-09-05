@@ -71,6 +71,26 @@ export interface SystemStatus {
   version: string;
 }
 
+/** One WiFi network from a scan (deduped by SSID, strongest signal kept). */
+export interface WifiNetwork {
+  ssid: string;
+  /** 0–100 signal strength. */
+  signal: number;
+  /** True if the network needs a passphrase (WPA/WEP), false if open. */
+  secured: boolean;
+}
+
+/** Current WiFi state for the admin Network page. */
+export interface WifiStatus {
+  /** Connected to a normal network (not the setup hotspot). */
+  connected: boolean;
+  /** The connected network's SSID, or null. */
+  ssid: string | null;
+  /** True while the Crate setup hotspot is the active AP (offline-fallback mode). */
+  hotspot: boolean;
+  ip: string | null;
+}
+
 /** Health of one Crate service (the three apps + Music Assistant) for the System view. */
 export interface ServiceHealth {
   id: 'server' | 'shelf' | 'admin' | 'musicAssistant';

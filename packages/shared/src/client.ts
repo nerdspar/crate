@@ -35,6 +35,8 @@ import type {
   UpdateStatus,
   UpdateTarget,
   VolumeRequest,
+  WifiNetwork,
+  WifiStatus,
 } from './api.js';
 import type { ExtraMediaKind, Settings, Shelf, Track } from './domain.js';
 import type { MaConfigEntry, MaConfigValue, MaConnection, MaProviderManifest, MaSource, MaStatus } from './ma.js';
@@ -324,6 +326,24 @@ export class CrateClient {
 
   reboot(): Promise<{ ok: boolean }> {
     return this.post('/api/system/reboot', {});
+  }
+
+  // --- WiFi (admin Network page) ---
+  /** Current WiFi state (connected SSID, or setup-hotspot mode). */
+  wifiStatus(): Promise<WifiStatus> {
+    return this.req('/api/system/wifi');
+  }
+
+  /** Scan nearby WiFi networks (deduped, strongest first). */
+  wifiScan(): Promise<WifiNetwork[]> {
+    return this.req('/api/system/wifi/scan');
+  }
+
+  /** Join a WiFi network. Returns as soon as the attempt starts — joining drops the setup hotspot, so
+      a phone provisioning over it won't see the result; the wall reconnecting (or a re-check on the
+      shared network) is the confirmation. */
+  wifiConnect(ssid: string, password?: string): Promise<{ ok: true }> {
+    return this.post('/api/system/wifi/connect', { ssid, ...(password ? { password } : {}) });
   }
 
   /** Restart one service: the server process, a front-end (reloads its clients), or

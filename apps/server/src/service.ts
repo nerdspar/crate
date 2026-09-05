@@ -50,6 +50,8 @@ import type {
   UpdateProgress,
   UpdateStatus,
   UpdateTarget,
+  WifiNetwork,
+  WifiStatus,
 } from '@crate/shared';
 import { MusicAssistantProvider, maSetupState, mintMaToken, parseProviderUri, setupMaAccount } from '@crate/providers';
 import type { ProviderAlbum, ProviderEpisode, ProviderLibraryAlbum, ProviderMediaItem, ProviderTrackHit } from '@crate/providers';
@@ -61,7 +63,7 @@ import type { AlbumRow, Db } from './db.js';
 import { rowToAlbum, titleArtistKey } from './db.js';
 import type { Hub } from './hub.js';
 import { albumIdFromUri, artUrl, buildShelfItem, invalidateArtCache, songShelfItem, spineWidthFor } from './shelf.js';
-import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, readDdcBrightness, rebootSystem, setDdcBrightness, setDisplayPower, spawnUpdate, updateProgress } from './system.js';
+import { applyBrightness, checkForUpdate, detectBrightnessMethod, getLocalIp, latestMaRelease, readDdcBrightness, rebootSystem, setDdcBrightness, setDisplayPower, spawnUpdate, updateProgress, wifiConnect as nmWifiConnect, wifiScan as nmWifiScan, wifiStatus as nmWifiStatus } from './system.js';
 import { githubCheck, githubGet, githubListRepos, githubPush, type GithubTarget } from './github.js';
 import type { Track } from '@crate/shared';
 
@@ -1697,6 +1699,25 @@ export class Service {
     if (typeof input.lux === 'number' && this.db.getSettings().autoBrightness) {
       void this.setBrightness(this.luxToBrightness(input.lux));
     }
+    return { ok: true };
+  }
+
+  /** WiFi state for the admin Network page (connected SSID / setup-hotspot mode). */
+  wifiStatus(): Promise<WifiStatus> {
+    return nmWifiStatus();
+  }
+
+  /** Scan nearby WiFi networks for the admin Network page. */
+  wifiScan(): Promise<WifiNetwork[]> {
+    return nmWifiScan();
+  }
+
+  /** Join a WiFi network. Fire-and-forget on purpose: switching wlan0 to the new network drops the
+      setup hotspot, so a phone provisioning over that hotspot would never receive the result. We kick
+      it off and return immediately; if the join fails, wifi-fallback.sh re-raises the hotspot so the
+      user can retry. */
+  wifiConnect(ssid: string, password?: string): { ok: true } {
+    void nmWifiConnect(ssid, password);
     return { ok: true };
   }
 

@@ -539,3 +539,17 @@ input[type='search']::-webkit-search-cancel-button { display: none; } /* using o
 .ma-hist-status.error { color: #c83a3a; background: color-mix(in srgb, #c83a3a 15%, transparent); }
 .ma-hist-commit { color: var(--ink-dim); font-variant-numeric: tabular-nums; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 .ma-hist-commit a { color: var(--brass); }
+
+/* Network (WiFi provisioning) page */
+.wifi-state { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.3rem; }
+.wifi-state.ok { color: #46c46e; }
+.wifi-state.warn { color: #c9a54a; }
+.wifi-list { display: flex; flex-direction: column; gap: 0; margin-top: 0.6rem; border: 1px solid var(--line); border-radius: 0.8rem; overflow: hidden; }
+.wifi-list:empty { border: 0; }
+.wifi-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.8rem 1rem; cursor: pointer; border-top: 1px solid var(--line); }
+.wifi-row:first-child { border-top: 0; }
+.wifi-row:hover { background: var(--panel-2); }
+.wifi-ssid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wifi-meta { color: var(--ink-dim); font-variant-numeric: tabular-nums; letter-spacing: 0.05em; }
+.wifi-editor { display: flex; gap: 0.6rem; padding: 0.7rem 1rem; background: var(--panel-2); border-top: 1px solid var(--line); }
+.wifi-pass { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; color: var(--ink); font: inherit; padding: 0.55rem 1rem; outline: none; }

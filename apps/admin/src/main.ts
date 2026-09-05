@@ -4,7 +4,7 @@
  * and Settings (mirrors the wall). Per-album spine overrides live in a modal.
  */
 
-import { CrateClient, EXTRA_MEDIA, isSpeaker, type AutoUpdateConfig, type CrateBackup, type ExtraMediaKind, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MediaKind, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MediaBrowseItem, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type SourceKinds, type UpdateProgress, type UpdateStatus, type UpdateTarget } from '@crate/shared';
+import { CrateClient, EXTRA_MEDIA, isSpeaker, type AutoUpdateConfig, type CrateBackup, type ExtraMediaKind, type GithubBackupConfig, type GroupPreset, type LibraryAlbum, type LibraryPlaylist, type MediaKind, type MaConfigEntry, type MaConfigValue, type MaProviderManifest, type MaSource, type MaStatus, type MediaBrowseItem, type MusicSourceInfo, type OverrideRequest, type Player, type SearchAlbum, type ServiceHealth, type Settings, type Shelf, type ShelfItem, type SourceKinds, type UpdateProgress, type UpdateStatus, type UpdateTarget, type WifiNetwork } from '@crate/shared';
 import crateMark from './crate-mark.svg';
 import crateLogo from './crate-logo.svg';
 import '@fontsource/archivo-narrow/500.css';
@@ -1746,6 +1746,7 @@ const SETTINGS_CATS: SettingsCat[] = [
   { id: 'sleep', name: 'Sleep Schedule', render: (b) => renderSchedule(b) },
   { id: 'backup', name: 'Backup', render: renderBackupCat },
   { id: 'security', name: 'Security', render: renderSecurityCat },
+  { id: 'network', name: 'Network', render: renderNetworkCat },
   { id: 'system', name: 'System', render: renderSystemCat },
 ];
 
@@ -1997,6 +1998,121 @@ function svcRestartBtn(s: ServiceHealth): HTMLButtonElement {
       .finally(() => setTimeout(() => (btn.disabled = false), 1500));
   });
   return btn;
+}
+
+function renderNetworkCat(body: HTMLElement): void {
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent =
+    'Change which WiFi network Crate uses. If Crate ever can’t reach a saved network it raises a "Crate-Setup" hotspot — join that from your phone, open this page, and pick a network here.';
+  body.appendChild(intro);
+
+  const status = document.createElement('div');
+  status.className = 'sys-status';
+  status.innerHTML = '<div class="hint">Checking…</div>';
+  body.appendChild(status);
+
+  const refreshStatus = (): void =>
+    void client
+      .wifiStatus()
+      .then((s) => {
+        if (s.hotspot) {
+          status.innerHTML =
+            '<div class="wifi-state warn">Setup hotspot active</div>' +
+            '<div class="hint">You’re in offline setup mode. Pick a network below to reconnect Crate.</div>';
+        } else if (s.connected) {
+          status.innerHTML =
+            `<div class="wifi-state ok">Connected — ${esc(s.ssid ?? '')}</div>` +
+            `<div class="sys-line"><span class="sys-key">IP address</span><span class="sys-val">${esc(s.ip ?? '—')}</span></div>`;
+        } else {
+          status.innerHTML = '<div class="wifi-state warn">Not connected</div><div class="hint">Scan and pick a network below.</div>';
+        }
+      })
+      .catch(() => (status.innerHTML = '<div class="hint">Status unavailable</div>'));
+  refreshStatus();
+
+  const head = document.createElement('div');
+  head.className = 'set-subhead';
+  head.textContent = 'Available networks';
+  body.appendChild(head);
+
+  const scanBtn = document.createElement('button');
+  scanBtn.className = 'ghost';
+  scanBtn.textContent = 'Scan for networks';
+  body.appendChild(scanBtn);
+
+  const list = document.createElement('div');
+  list.className = 'wifi-list';
+  body.appendChild(list);
+
+  const join = (net: WifiNetwork, password?: string): void =>
+    void client
+      .wifiConnect(net.ssid, password)
+      .then(() => {
+        showToast(`Joining ${net.ssid}…`);
+        status.innerHTML =
+          `<div class="wifi-state">Joining ${esc(net.ssid)}…</div>` +
+          '<div class="hint">If you’re on the "Crate-Setup" hotspot it drops now — reconnect your device to your normal WiFi; Crate will come back on the joined network. Wrong password? The setup hotspot returns in about a minute so you can retry.</div>';
+      })
+      .catch(() => showToast('Join failed'));
+
+  const renderList = (nets: WifiNetwork[]): void => {
+    list.innerHTML = '';
+    if (!nets.length) {
+      list.innerHTML = '<div class="hint">No networks found — tap Scan.</div>';
+      return;
+    }
+    for (const net of nets) {
+      const row = document.createElement('div');
+      row.className = 'wifi-row';
+      const bars = net.signal >= 67 ? '▂▄▆' : net.signal >= 34 ? '▂▄' : '▂';
+      row.innerHTML = `<span class="wifi-ssid">${esc(net.ssid)}</span><span class="wifi-meta">${net.secured ? '🔒 ' : ''}${bars}</span>`;
+      row.addEventListener('click', () => {
+        const open = row.nextElementSibling?.classList.contains('wifi-editor');
+        list.querySelectorAll('.wifi-editor').forEach((e) => e.remove());
+        if (open) return; // second tap on the same row collapses it
+        const ed = document.createElement('div');
+        ed.className = 'wifi-editor';
+        const go = document.createElement('button');
+        go.className = 'ghost';
+        if (net.secured) {
+          const inp = document.createElement('input');
+          inp.type = 'password';
+          inp.placeholder = 'Password';
+          inp.className = 'wifi-pass';
+          inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') join(net, inp.value);
+          });
+          go.textContent = 'Join';
+          go.addEventListener('click', () => join(net, inp.value));
+          ed.append(inp, go);
+          row.after(ed);
+          inp.focus();
+        } else {
+          go.textContent = 'Join (open network)';
+          go.addEventListener('click', () => join(net));
+          ed.appendChild(go);
+          row.after(ed);
+        }
+      });
+      list.appendChild(row);
+    }
+  };
+
+  const scan = (): void => {
+    scanBtn.disabled = true;
+    scanBtn.textContent = 'Scanning…';
+    void client
+      .wifiScan()
+      .then(renderList)
+      .catch(() => (list.innerHTML = '<div class="hint">Scan failed</div>'))
+      .finally(() => {
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan for networks';
+      });
+  };
+  scanBtn.addEventListener('click', scan);
+  scan();
 }
 
 function renderSystemCat(body: HTMLElement): void {

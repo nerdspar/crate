@@ -244,6 +244,45 @@ EOF
   systemctl enable crate-kiosk.service
   echo "    Kiosk installed — it launches on boot (takes over tty1 from the login prompt)."
   echo "    If the screen stays blank, this Pi's display stack may differ — see INSTALL.md (seat/DRM access)."
+
+  # WiFi fallback hotspot: if the wall can't reach a known network, raise a "Crate-Setup" AP so it can be
+  # reconfigured from a phone (join it, open http://10.42.0.1/admin → Network). Needs NetworkManager
+  # (Bookworm's default); the watchdog script + nmcli run as root.
+  mkdir -p /etc/crate
+  if command -v nmcli >/dev/null 2>&1; then
+    if [[ ! -f /etc/crate/wifi-fallback.conf ]]; then
+      cat > /etc/crate/wifi-fallback.conf <<'EOF'
+# Crate offline setup-hotspot settings. Edit, then: systemctl restart crate-wifi-fallback
+HOTSPOT_SSID="Crate-Setup"
+HOTSPOT_PASS="cratewifi"     # the hotspot's WiFi password (WPA2, 8+ chars)
+WIFI_IFACE="wlan0"
+GRACE=25                     # seconds to let NetworkManager auto-join on boot before checking
+CHECK=15                     # how often to re-check connectivity
+NEED=3                       # consecutive offline checks before raising the hotspot (debounces blips)
+EOF
+    fi
+    cat > /etc/systemd/system/crate-wifi-fallback.service <<EOF
+[Unit]
+Description=Crate WiFi fallback hotspot (offline provisioning)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash $REPO_DIR/deploy/pi/wifi-fallback.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable crate-wifi-fallback.service
+    systemctl restart crate-wifi-fallback.service
+    echo "    WiFi fallback enabled — raises the 'Crate-Setup' hotspot when no known network is reachable."
+  else
+    echo "    nmcli not found — skipping WiFi fallback hotspot (needs NetworkManager)."
+  fi
 fi
 
 echo

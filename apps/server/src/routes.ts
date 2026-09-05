@@ -470,6 +470,15 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
   app.post('/api/system/restart', () => service.restart());
   app.post('/api/system/reboot', () => service.reboot());
 
+  // WiFi provisioning (admin Network page). NOT on the OPEN allowlist: reconfiguring the network is an
+  // admin action, reached by logging into /admin over the offline setup hotspot. nmcli runs as root.
+  app.get('/api/system/wifi', () => service.wifiStatus());
+  app.get('/api/system/wifi/scan', () => service.wifiScan());
+  app.post('/api/system/wifi/connect', (req) => {
+    const b = (req.body ?? {}) as { ssid?: string; password?: string };
+    return service.wifiConnect((b.ssid ?? '').trim(), b.password);
+  });
+
   // Software update. The check/progress + trigger are on the wall's OPEN allowlist (on-screen System
   // settings); the auto-update config below stays admin-only. The check is a read-only git fetch; the
   // POST launches deploy/pi/update.sh and only runs on the appliance.
