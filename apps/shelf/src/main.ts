@@ -682,7 +682,7 @@ function openWidth(el: HTMLElement): number {
 }
 
 /* ---------- Open / close / expand ---------- */
-function openAlbum(i: number, autoscroll = true): void {
+function openAlbum(i: number, autoscroll = true, light = false): void {
   if (openIdx === i) return;
   closeAlbum();
   const el = shelf.children[i] as HTMLElement;
@@ -690,6 +690,15 @@ function openAlbum(i: number, autoscroll = true): void {
   // Shuffle/repeat reset to off for each newly-opened album — nothing carries over.
   // (renderCardModes below still shows the live queue if this album is what's playing.)
   cardShuffle = false;
+  // Fast drag sweep (light): do only the visual flip now — the card content (rooms/tracks) and the
+  // glow re-blur are the costly part, and rebuilding them for every album swept past is what janks the
+  // drag. Defer them to finalizeOpen() once the sweep settles (see the pointerup/pointercancel handlers).
+  if (light) {
+    el.classList.add('open');
+    if (openMode === 'card') el.classList.add('expanded');
+    el.style.width = openWidth(el) + 'px';
+    return;
+  }
   // Opening the album that's actually playing → snap the picker + cued track to where
   // it's really playing (overrides any sticky room pick), so the card reflects reality.
   const it = items[i];
@@ -712,6 +721,28 @@ function openAlbum(i: number, autoscroll = true): void {
     const target = openScrollTarget(i);
     if (Math.abs(target - vp.scrollLeft) > 1) smoothScrollTo(vp, target); // open in place unless it'd overflow
   });
+}
+
+/** Render the card content + glow that a light (drag-sweep) open deferred, for the album now settled
+    under openIdx. Rebuilding rooms/tracks and re-blurring the glow for every album swept past is the
+    drag's main cost, so the sweep does only the flip and this fills the rest in once the finger lifts. */
+function finalizeOpen(): void {
+  if (openIdx === null) return;
+  const i = openIdx;
+  const el = shelf.children[i] as HTMLElement | undefined;
+  if (!el || !el.classList.contains('open')) return;
+  const it = items[i];
+  if (it && now.playerId && now.state !== 'idle' && now.albumId === it.albumId) {
+    activePlayerId = now.playerId;
+    activeSolo = groupMembers(leaderOf(now.playerId)).length < 2;
+    songCue.set(it.albumId, now.trackIndex);
+  }
+  renderRooms(el);
+  void renderTracks(el, i);
+  syncVol(el.querySelector('.vol'));
+  handleState(lastStates); // refocus now-playing on the settled album
+  renderCardModes();
+  positionGlow(i);
 }
 
 /** A shelf holding a single spine always shows flipped open — a lone closed spine is pointless.
@@ -6304,7 +6335,7 @@ function stepAlbum(dir: number): void {
   if (openIdx === null) return;
   const next = Math.min(Math.max(openIdx + dir, 0), items.length - 1);
   if (next === openIdx) return;
-  openAlbum(next, false);
+  openAlbum(next, false, true); // light: flip only; finalizeOpen() fills the card when the sweep settles
   followOpen();
 }
 
@@ -6473,6 +6504,7 @@ window.addEventListener('pointercancel', (e) => {
   if (wasPinching || !pDown) return;
   pDown = false;
   moved = false;
+  if (stepping) finalizeOpen(); // sweep cancelled — still fill in the settled card
   stepping = false;
   heldOpen = false;
   openSwipeDone = false;
@@ -6492,6 +6524,7 @@ window.addEventListener('pointerup', (e) => {
 
   if (stepping) {
     stepping = false;
+    finalizeOpen(); // sweep settled — render the card content + glow deferred during the flip-through
     if (vSwipe === 1) return; // a vertical swipe already expanded/collapsed — not a tap
     if (heldOpen) {
       heldOpen = false;
@@ -7366,3 +7399,32 @@ async function boot(): Promise<void> {
 }
 
 void boot();
+
+// Dev FPS meter: add `?fps` to the wall URL (http://localhost/wall/?fps) for a live frame-rate readout
+// with a running minimum — the min is the useful number, it catches the worst dip during a drag. No
+// cost unless the flag is present. Not shown in normal operation.
+if (new URLSearchParams(location.search).has('fps')) {
+  const el = document.createElement('div');
+  el.style.cssText =
+    'position:fixed;top:8px;left:8px;z-index:99999;background:rgba(0,0,0,.6);color:#3f6;font:600 16px monospace;padding:4px 8px;border-radius:6px;pointer-events:none;white-space:nowrap;';
+  document.body.appendChild(el);
+  let frames = 0;
+  let last = performance.now();
+  let lo = Infinity;
+  const tick = (now: number): void => {
+    frames++;
+    const dt = now - last;
+    if (dt >= 500) {
+      const fps = Math.round((frames * 1000) / dt);
+      lo = Math.min(lo, fps);
+      el.textContent = `${fps} fps · min ${lo === Infinity ? '—' : lo}`;
+      frames = 0;
+      last = now;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  // Tap the readout to reset the running minimum (so you can measure one drag at a time).
+  el.style.pointerEvents = 'auto';
+  el.addEventListener('click', () => (lo = Infinity));
+}
