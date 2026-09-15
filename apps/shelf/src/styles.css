@@ -94,16 +94,15 @@ body {
 .sweeping .spine,
 .sweeping .flap { transition: none; }
 
-/* Browser-native virtualization: let the browser skip layout + paint for spines that are off-screen,
-   so a shelf/playlist of hundreds isn't all live at once (the flip only reflows the visible spines, and
-   only the visible ones ever paint/decode). Scoped to CLOSED spines: content-visibility forces paint
-   containment, which would clip the OPEN album's cover + glow that overflow the spine box — and the open
-   spine is always on-screen, so it never needed skipping. contain-intrinsic-size reserves each skipped
-   spine's box (its width × the shelf height) so the scroll range and neighbour positions stay exact;
-   `auto` uses the real size once a spine has rendered, the vars are the placeholder until then. */
+/* Isolate each closed spine's layout + paint from its neighbours, so opening an album (which changes
+   one spine's width and shifts the row) doesn't re-lay-out or repaint every other spine — the browser
+   just moves their cached layers. This is what smoothed the flip/scroll on a big shelf. Scoped to CLOSED
+   spines because paint containment clips overflow, which would cut off the OPEN album's cover + glow.
+   NB: NOT `content-visibility: auto` — that also SKIPS off-screen rendering, which staggered the ~200
+   spine-image decodes into a 10s streaming load (vs ~2s rendering them all upfront). Plain containment
+   keeps the interaction win without that load regression. */
 .spine:not(.open) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--spine-w, 20px) auto var(--shelf-h, 680px);
+  contain: layout paint style;
 }
 
 .flap {
