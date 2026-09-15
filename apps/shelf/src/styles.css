@@ -87,6 +87,13 @@ body {
               margin var(--flip-t) cubic-bezier(0.32, 0.9, 0.3, 1);
 }
 
+/* During an active drag-sweep, SNAP the flip instead of animating width/margin/transform per step.
+   Tweening width/margin forces a full-shelf reflow every frame for every spine mid-transition — that's
+   what tanks the sweep to single-digit fps on the Pi. The discrete step is the motion (followOpen
+   already scrolls with no animation). Transitions are restored the instant the finger lifts. */
+.sweeping .spine,
+.sweeping .flap { transition: none; }
+
 .flap {
   position: absolute; inset: 0;
   transform-style: preserve-3d;

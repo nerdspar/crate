@@ -731,6 +731,10 @@ function finalizeOpen(): void {
   const i = openIdx;
   const el = shelf.children[i] as HTMLElement | undefined;
   if (!el || !el.classList.contains('open')) return;
+  // Bloom the glow FIRST so it lands right as the finger lifts — the cover is already settled, and
+  // running it before the heavier renderRooms/renderTracks (slow on the Pi) is what removes the
+  // multi-second glow lag after a sweep.
+  positionGlow(i);
   const it = items[i];
   if (it && now.playerId && now.state !== 'idle' && now.albumId === it.albumId) {
     activePlayerId = now.playerId;
@@ -742,7 +746,6 @@ function finalizeOpen(): void {
   syncVol(el.querySelector('.vol'));
   handleState(lastStates); // refocus now-playing on the settled album
   renderCardModes();
-  positionGlow(i);
 }
 
 /** A shelf holding a single spine always shows flipped open — a lone closed spine is pointless.
@@ -6335,6 +6338,7 @@ function stepAlbum(dir: number): void {
   if (openIdx === null) return;
   const next = Math.min(Math.max(openIdx + dir, 0), items.length - 1);
   if (next === openIdx) return;
+  shelf.classList.add('sweeping'); // snap the flip (no per-frame width/margin reflow) while sweeping
   openAlbum(next, false, true); // light: flip only; finalizeOpen() fills the card when the sweep settles
   followOpen();
 }
@@ -6504,7 +6508,10 @@ window.addEventListener('pointercancel', (e) => {
   if (wasPinching || !pDown) return;
   pDown = false;
   moved = false;
-  if (stepping) finalizeOpen(); // sweep cancelled — still fill in the settled card
+  if (stepping) {
+    shelf.classList.remove('sweeping');
+    finalizeOpen(); // sweep cancelled — still fill in the settled card
+  }
   stepping = false;
   heldOpen = false;
   openSwipeDone = false;
@@ -6524,6 +6531,7 @@ window.addEventListener('pointerup', (e) => {
 
   if (stepping) {
     stepping = false;
+    shelf.classList.remove('sweeping'); // restore flip transitions for the settled album
     finalizeOpen(); // sweep settled — render the card content + glow deferred during the flip-through
     if (vSwipe === 1) return; // a vertical swipe already expanded/collapsed — not a tap
     if (heldOpen) {
