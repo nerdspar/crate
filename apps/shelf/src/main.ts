@@ -256,6 +256,8 @@ function refreshShelfMetrics(): void {
   const cs = getComputedStyle(shelf);
   shelfContentH = shelf.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
   vpW = vp.clientWidth;
+  // Placeholder height for a spine the browser skips (content-visibility off-screen) — see styles.css.
+  if (shelfContentH > 0) shelf.style.setProperty('--shelf-h', `${Math.round(shelfContentH)}px`);
 }
 function coverW(): number {
   // The open cover fills the spine's rendered height (the shelf's CONTENT box, minus padding) so it

@@ -94,6 +94,18 @@ body {
 .sweeping .spine,
 .sweeping .flap { transition: none; }
 
+/* Browser-native virtualization: let the browser skip layout + paint for spines that are off-screen,
+   so a shelf/playlist of hundreds isn't all live at once (the flip only reflows the visible spines, and
+   only the visible ones ever paint/decode). Scoped to CLOSED spines: content-visibility forces paint
+   containment, which would clip the OPEN album's cover + glow that overflow the spine box — and the open
+   spine is always on-screen, so it never needed skipping. contain-intrinsic-size reserves each skipped
+   spine's box (its width × the shelf height) so the scroll range and neighbour positions stay exact;
+   `auto` uses the real size once a spine has rendered, the vars are the placeholder until then. */
+.spine:not(.open) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--spine-w, 20px) auto var(--shelf-h, 680px);
+}
+
 .flap {
   position: absolute; inset: 0;
   transform-style: preserve-3d;
