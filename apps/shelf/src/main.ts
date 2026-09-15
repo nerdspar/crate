@@ -336,6 +336,7 @@ function hideGlow(): void {
   shelfGlow.style.left = '0';
   shelfGlow.style.width = '0';
   shelfGlow.style.height = '0';
+  shelfGlow.style.transform = 'none';
 }
 
 /** A soft square halo centred on the open cover. The cover swings out on a 3D flap (so its
@@ -359,8 +360,17 @@ function positionGlow(i: number): void {
   shelfGlow.style.filter = `blur(${rad.blurVh}vh) saturate(${inten.sat})`;
   shelfGlow.style.setProperty('--glow-op', String(inten.opacity));
   shelfGlow.classList.add('on');
+  // Pre-bake: blur the halo ONCE at a fixed reference size (the square cover), then track the cover with
+  // a compositor-only transform (translate + scale) instead of RESIZING the element every frame.
+  // Resizing a filtered layer forces a full re-Gaussian each frame — that was the glow's cost during the
+  // flip; a transform just moves/scales the already-blurred texture (no re-blur).
+  const REF = Math.max(1, coverW());
+  shelfGlow.style.left = '0';
+  shelfGlow.style.top = '0';
+  shelfGlow.style.width = `${REF}px`;
+  shelfGlow.style.height = `${REF}px`;
   // Measure only — no DOM writes here, so a frame where the cover hasn't moved stays free of the
-  // reflow-and-re-blur that writing left/top/width/height would trigger (see step()).
+  // transform write in step().
   const measure = (): { key: string; left: number; top: number; w: number; h: number } => {
     const sr = shelf.getBoundingClientRect();
     const cr = (cover ?? el).getBoundingClientRect();
@@ -394,10 +404,8 @@ function positionGlow(i: number): void {
     };
   };
   const apply = (m: { left: number; top: number; w: number; h: number }): void => {
-    shelfGlow.style.left = `${m.left}px`;
-    shelfGlow.style.top = `${m.top}px`;
-    shelfGlow.style.width = `${m.w}px`;
-    shelfGlow.style.height = `${m.h}px`;
+    // Position + size the pre-blurred REF-size layer with a transform (compositor-only, no re-Gaussian).
+    shelfGlow.style.transform = `translate(${m.left}px, ${m.top}px) scale(${m.w / REF}, ${m.h / REF})`;
   };
   cancelAnimationFrame(glowTrackRaf);
   const start = performance.now();

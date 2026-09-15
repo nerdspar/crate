@@ -239,6 +239,9 @@ body {
   position: absolute;
   z-index: 0; pointer-events: none; /* behind the spines (z-index 1); never a negative layer */
   background-size: cover; background-position: center;
+  /* JS blurs it ONCE at a fixed size and tracks the cover with a transform (translate+scale) from this
+     top-left origin — a compositor move of the already-blurred texture, never a per-frame re-Gaussian. */
+  transform-origin: 0 0;
   filter: blur(4vh) saturate(1.5); /* fallback; JS sets blur/saturate from the Glow settings */
   /* Fade on the SAME clock + curve as the flip (--flip-t) so the halo blooms in step with the
      cover turning to face you, instead of popping in mid-flip. */
