@@ -246,20 +246,23 @@ function roomName(id: string | null): string {
   return players.find((p) => p.id === id)?.name ?? 'player';
 }
 
-let coverWCache = { h: -1, v: 0 };
+// Cached shelf/viewport metrics. These are LAYOUT reads (shelf.clientHeight, vp.clientWidth), so reading
+// them in the open-drag hot path — right after a step writes a spine width — forces a full-shelf
+// synchronous relayout every step (O(spine count)), which thrashed the sweep on a big shelf. They only
+// change on resize, so cache them and refresh only then (or lazily on first use).
+let shelfContentH = 0; // shelf content-box height = the square open-cover size
+let vpW = 0; // vp.clientWidth
+function refreshShelfMetrics(): void {
+  const cs = getComputedStyle(shelf);
+  shelfContentH = shelf.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  vpW = vp.clientWidth;
+}
 function coverW(): number {
-  // The open cover fills the spine's rendered height (`.spine { height: 93% }` of #shelf's
-  // CONTENT box, i.e. minus padding). Return exactly that so the cover comes out SQUARE — album
-  // art is square, so a non-square cover box (the old `clientHeight * 0.89` ignored the padding
-  // and came out wider than tall) crops the art, and that crop "pops" as the flip flattens.
-  // Cached on clientHeight (padding is vh-based, so it only changes when the height does) —
-  // coverW() is called per-spine during a build, and getComputedStyle every time thrashes reflow.
-  if (shelf.clientHeight !== coverWCache.h) {
-    const cs = getComputedStyle(shelf);
-    const contentH = shelf.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    coverWCache = { h: shelf.clientHeight, v: contentH }; // = `.spine { height: 100% }` of the content box → square cover
-  }
-  return coverWCache.v;
+  // The open cover fills the spine's rendered height (the shelf's CONTENT box, minus padding) so it
+  // comes out SQUARE (album art is square; a non-square box crops the art and the crop "pops" as the
+  // flip flattens). Served from the resize-refreshed cache so the drag hot path takes no layout read.
+  if (!shelfContentH) refreshShelfMetrics();
+  return shelfContentH;
 }
 function panelW(): number {
   return Math.round(coverW() * 0.66); // the extended card's text panel ≈ 2/3 the album cover's width
@@ -660,6 +663,7 @@ const SPINE_ZOOM_MIN = 1;
 const SPINE_ZOOM_MAX = 2.2;
 
 function sizeFaces(): void {
+  refreshShelfMetrics(); // refresh the cached metrics on any layout-affecting change (resize/settings/zoom)
   const cw = coverW();
   const pw = panelW();
   shelf.style.setProperty('--zoom', String(spineZoom));
@@ -673,7 +677,7 @@ function sizeFaces(): void {
   });
   cumLeft = null; // spine widths just changed — settledLeft's cache is stale
 }
-window.addEventListener('resize', sizeFaces);
+window.addEventListener('resize', sizeFaces); // sizeFaces refreshes the cached metrics at its top
 
 function openWidth(el: HTMLElement): number {
   // spine (binding, stays) + cover swung out to its right + optional details panel
@@ -6335,8 +6339,10 @@ function followOpen(): void {
   if (openIdx === null) return;
   // Track the stepped album to ~12% from the left with NO animation. During a fast drag steps
   // arrive quickly; a smooth glide can't keep up on a full shelf and lags several albums behind,
-  // which reads as sluggish. The discrete step IS the motion.
-  vp.scrollLeft = settledLeft(openIdx) - vp.clientWidth * 0.12;
+  // which reads as sluggish. The discrete step IS the motion. Uses the cached vpW (not vp.clientWidth)
+  // so a step never forces a synchronous relayout — the drag's main cost on a big shelf.
+  if (!vpW) refreshShelfMetrics();
+  vp.scrollLeft = settledLeft(openIdx) - vpW * 0.12;
 }
 
 function stepAlbum(dir: number): void {
