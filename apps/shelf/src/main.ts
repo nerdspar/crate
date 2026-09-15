@@ -485,14 +485,17 @@ function buildShelf(): void {
     const artistCol = a.artistColor ?? baseInk;
     const titleCol = a.titleColor ?? (settings.inkMode === 'match' ? matchInk(a) : baseInk);
 
+    // A solid album-colour base under every art layer, so while the ~N spine images decode (slow on the
+    // Pi, and staggered by content-visibility) each spine shows its colour immediately and the art
+    // sharpens in over it — instead of blank placeholders filling top-down like progress bars.
     const spineBg = isSong
-      ? `background:linear-gradient(90deg, rgba(16,15,18,0.62), rgba(16,15,18,0.42)), url('${a.spineStripUrl}') left center / auto 100% no-repeat`
+      ? `background:linear-gradient(90deg, rgba(16,15,18,0.62), rgba(16,15,18,0.42)), url('${a.spineStripUrl}') left center / auto 100% no-repeat ${a.primaryColor}`
       : useCustom
-        ? `background-image:url('${a.customSpineUrl}')`
+        ? `background-image:url('${a.customSpineUrl}');background-color:${a.primaryColor}`
         : useScan
-          ? `background-image:url('${a.spineScanUrl}')`
+          ? `background-image:url('${a.spineScanUrl}');background-color:${a.primaryColor}`
           : useStrip
-            ? `background-image:url('${a.spineStripUrl}')`
+            ? `background-image:url('${a.spineStripUrl}');background-color:${a.primaryColor}`
             : `background:linear-gradient(90deg, ${a.darkColor}, ${a.primaryColor} 45%, ${a.darkColor})`;
     const coverArt = a.artworkUrl ? ` has-art" style="background-image:url('${a.artworkUrl}')` : '';
     // Year display/orientation is per-album; position is global (drives the shared gutter).
