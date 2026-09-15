@@ -12,3 +12,6 @@ apps/*/data/
 !.env.example
 *.secret
 .claude/launch.json
+
+# Marker written by deploy/pi/update.sh: the commit last built on the appliance
+.crate-built

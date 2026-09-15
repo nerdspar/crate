@@ -121,9 +121,18 @@ if [[ $DO_CRATE -eq 1 ]]; then
     exit 1
   fi
   AFTER="$(as_user git -C "$REPO_DIR" rev-parse HEAD)"
+  # Track the commit we last built. A manual `git pull` before this script makes BEFORE==AFTER, which
+  # would otherwise skip the rebuild+restart and leave the OLD build running ("already up to date" but
+  # stale). Rebuild whenever the built commit doesn't match HEAD, not just when git moved here.
+  BUILT_MARKER="$REPO_DIR/.crate-built"
+  BUILT="$(cat "$BUILT_MARKER" 2>/dev/null || echo none)"
 
-  if [[ "$BEFORE" != "$AFTER" || $FORCE -eq 1 ]]; then
-    echo "    ${BEFORE:0:7} -> ${AFTER:0:7}; installing deps + building"
+  if [[ "$BEFORE" != "$AFTER" || $FORCE -eq 1 || "$BUILT" != "$AFTER" ]]; then
+    if [[ "$BEFORE" != "$AFTER" ]]; then
+      echo "    ${BEFORE:0:7} -> ${AFTER:0:7}; installing deps + building"
+    else
+      echo "    rebuilding ${AFTER:0:7} (build was stale, or --force)"
+    fi
     maybe_add_swap
     # npm ci wipes node_modules first, so a failure here can leave the service unable to start until a
     # re-run — retry rather than bail on the first transient OOM.
@@ -141,6 +150,7 @@ if [[ $DO_CRATE -eq 1 ]]; then
     systemctl restart crate.service
     # Confirm it actually came back — don't declare success on a silent crash-loop.
     if wait_healthy; then
+      as_user bash -lc "echo '$AFTER' > '$BUILT_MARKER'" || true  # remember what we built (see BUILT above)
       echo "    Crate updated and serving (${AFTER:0:7})."
       # Reload the on-screen wall too: the kiosk browser (sway/Chromium) is a separate service that
       # caches the built frontend, so restarting only the server leaves the OLD page on the screen.
