@@ -69,6 +69,8 @@ export interface SystemStatus {
   /** True on the kiosk appliance, where restart/reboot actually work. */
   appliance: boolean;
   version: string;
+  /** Dev: show the on-wall FPS meter (perf measuring). Toggled live via POST /api/system/fps. */
+  showFps?: boolean;
 }
 
 /** One WiFi network from a scan (deduped by SSID, strongest signal kept). */

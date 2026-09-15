@@ -1301,7 +1301,16 @@ export class Service {
       ip: getLocalIp(),
       appliance: this.cfg.appliance,
       version: this.cfg.version,
+      showFps: this.db.getRaw<boolean>('system.showFps', false),
     };
+  }
+
+  /** Dev perf tool: toggle the on-wall FPS meter (broadcast so it flips live). Omit `on` to toggle. */
+  setShowFps(on?: boolean): SystemStatus {
+    this.db.setRaw('system.showFps', typeof on === 'boolean' ? on : !this.db.getRaw<boolean>('system.showFps', false));
+    const status = this.systemStatus();
+    this.hub.broadcast({ type: 'system', status });
+    return status;
   }
 
   /** Which front-end bundles the server actually mounted at boot (set from index.ts). */

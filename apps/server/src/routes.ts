@@ -58,6 +58,7 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
     ['POST', /^\/api\/system\/(brightness|restart|reboot)$/],
     ['POST', /^\/api\/system\/display\/(sleep|wake)$/],
     ['POST', /^\/api\/system\/services\/restart$/],
+    ['POST', /^\/api\/system\/fps$/],
     // Presence/ambient-light sensor input — posted by the local sensor daemon on the Pi.
     ['POST', /^\/api\/sensor$/],
     // Software update from the on-screen System settings: a read-only check + the update trigger. Same
@@ -469,6 +470,12 @@ export function registerRoutes(app: FastifyInstance, service: Service, auth: Aut
 
   app.post('/api/system/restart', () => service.restart());
   app.post('/api/system/reboot', () => service.reboot());
+
+  // Dev perf tool: toggle the on-wall FPS meter live (open, like brightness — a physical-access knob).
+  app.post('/api/system/fps', (req) => {
+    const b = (req.body ?? {}) as { on?: boolean };
+    return service.setShowFps(typeof b.on === 'boolean' ? b.on : undefined);
+  });
 
   // WiFi provisioning (admin Network page). NOT on the OPEN allowlist: reconfiguring the network is an
   // admin action, reached by logging into /admin over the offline setup hotspot. nmcli runs as root.

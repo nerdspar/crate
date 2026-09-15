@@ -5938,6 +5938,7 @@ function applyDim(): void {
 }
 function applySystemStatus(s: SystemStatus): void {
   system = s;
+  setFpsMeter(FPS_FORCED || !!s.showFps); // dev FPS meter reflects the live server toggle
   applyDim();
   ccBrightness.value = String(s.brightness);
   sleepEl.classList.toggle('on', s.displayAsleep);
@@ -6201,7 +6202,11 @@ const vp = document.getElementById('shelf-viewport') as HTMLElement;
     far end. Floored so huge shelves don't get hyper-twitchy (edge-hold covers their overflow),
     capped so tiny shelves keep a comfortable throw. */
 function stepPx(): number {
-  return Math.min(110, Math.max(12, window.innerWidth / Math.max(1, items.length)));
+  // Finger travel to advance one album in the open drag-through. A comfortable, roughly fixed distance
+  // (~5% of the screen width) so you can deliberately land on ONE album. The old innerWidth/count made
+  // each album a ~12px sliver on a large library — "one drag = the whole shelf" — which was too tight to
+  // control. Cross the whole library with the closed-spine scroll instead. Tune the 0.05 for feel.
+  return Math.max(80, Math.round(window.innerWidth * 0.05));
 }
 let pDown = false,
   moved = false,
@@ -7406,33 +7411,50 @@ async function boot(): Promise<void> {
   }, 20000);
 }
 
-void boot();
-
-// Dev FPS meter: add `?fps` to the wall URL (http://localhost/wall/?fps) for a live frame-rate readout
-// with a running minimum — the min is the useful number, it catches the worst dip during a drag. No
-// cost unless the flag is present. Not shown in normal operation.
-if (new URLSearchParams(location.search).has('fps')) {
-  const el = document.createElement('div');
-  el.style.cssText =
-    'position:fixed;top:8px;left:8px;z-index:99999;background:rgba(0,0,0,.6);color:#3f6;font:600 16px monospace;padding:4px 8px;border-radius:6px;pointer-events:none;white-space:nowrap;';
-  document.body.appendChild(el);
-  let frames = 0;
-  let last = performance.now();
-  let lo = Infinity;
-  const tick = (now: number): void => {
-    frames++;
-    const dt = now - last;
-    if (dt >= 500) {
-      const fps = Math.round((frames * 1000) / dt);
-      lo = Math.min(lo, fps);
-      el.textContent = `${fps} fps · min ${lo === Infinity ? '—' : lo}`;
-      frames = 0;
-      last = now;
-    }
+// Dev FPS meter: a live frame-rate readout with a running minimum (the min catches the worst dip during
+// a drag). Toggle it live from the Pi with `curl -X POST localhost/api/system/fps -d '{"on":true}'`
+// (persists in settings, survives updates, no kiosk-file editing) — the wall shows it via system status.
+// `?fps` in the URL forces it on regardless. Zero cost when off.
+const FPS_FORCED = (() => {
+  try {
+    return new URLSearchParams(location.search).has('fps');
+  } catch {
+    return false;
+  }
+})();
+let fpsMeterEl: HTMLElement | null = null;
+function setFpsMeter(on: boolean): void {
+  if (on) {
+    if (fpsMeterEl) return; // already running
+    const el = document.createElement('div');
+    el.style.cssText =
+      'position:fixed;top:8px;left:8px;z-index:99999;background:rgba(0,0,0,.6);color:#3f6;font:600 16px monospace;padding:4px 8px;border-radius:6px;pointer-events:auto;white-space:nowrap;';
+    document.body.appendChild(el);
+    fpsMeterEl = el;
+    let frames = 0;
+    let last = performance.now();
+    let lo = Infinity;
+    el.addEventListener('click', () => (lo = Infinity)); // tap to reset the min (measure one drag at a time)
+    const tick = (now: number): void => {
+      if (fpsMeterEl !== el) return; // toggled off — stop the loop and let this node go
+      frames++;
+      const dt = now - last;
+      if (dt >= 500) {
+        const fps = Math.round((frames * 1000) / dt);
+        lo = Math.min(lo, fps);
+        el.textContent = `${fps} fps · min ${lo === Infinity ? '—' : lo}`;
+        frames = 0;
+        last = now;
+      }
+      requestAnimationFrame(tick);
+    };
     requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-  // Tap the readout to reset the running minimum (so you can measure one drag at a time).
-  el.style.pointerEvents = 'auto';
-  el.addEventListener('click', () => (lo = Infinity));
+  } else if (fpsMeterEl && !FPS_FORCED) {
+    const el = fpsMeterEl;
+    fpsMeterEl = null; // the tick loop sees the mismatch and stops
+    el.remove();
+  }
 }
+if (FPS_FORCED) setFpsMeter(true); // URL override shows it immediately, before the first system status
+
+void boot();
